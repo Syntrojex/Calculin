@@ -102,3 +102,21 @@ Calculin provides dedicated tools for some of the most commonly used areas of ma
 - Number conversions
 
 ---
+
+## 📊 Interactive Graphing
+
+Calculin includes both **2D and 3D mathematical graphing**.
+
+### 2D Graphing
+
+Plot mathematical functions and visualize their behavior interactively.
+
+### 3D Graphing
+
+Explore mathematical surfaces using an interactive 3D environment powered by **Three.js**.
+
+### Implicit 3D Surfaces
+
+Calculin can also render implicit mathematical surfaces, allowing you to visualize equations that aren't easily represented as regular functions.
+
+---
