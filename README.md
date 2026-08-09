@@ -1,9 +1,21 @@
 # 🧮 Calculin
 
-### Advanced Math Solver — Step by Step
+### Advanced Math Solver — Step-by-Step, Interactive & Free
 
-**Derivatives · Integrals · 3D Graphs · Matrices · Complex Numbers · LaTeX Export**
+**Derivatives · Integrals · Equations · Limits · 2D/3D Graphs · Matrices · Complex Numbers · LaTeX · 17+ Tools**
 
-[🚀 Open App](https://calculin.vercel.app) · [🐛 Report Bug](https://github.com/Syntrojex/calculin/issues) · [💡 Request Feature](https://github.com/Syntrojex/calculin/issues)
+<p align="center">
+  <a href="https://calculin.vercel.app">
+    <strong>🚀 Try Calculin Live</strong>
+  </a>
+  ·
+  <a href="https://github.com/Syntrojex/calculin/issues">
+    Report a Bug
+  </a>
+  ·
+  <a href="https://github.com/Syntrojex/calculin/issues">
+    Request a Feature
+  </a>
+</p>
 
 ---
