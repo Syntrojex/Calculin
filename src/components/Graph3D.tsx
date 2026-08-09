@@ -7,6 +7,8 @@ interface Graph3DProps {
   expression: string;
   range?: number;
   resolution?: number;
+  /** When true, the canvas fills the height of its parent container instead of a fixed 480px. */
+  fillParent?: boolean;
 }
 
 /** Vivid multi-stop colormap (deep indigo → cyan → emerald → gold → orange → crimson), t in [0,1]. */
@@ -49,7 +51,7 @@ function makeAxisLabelSprite(text: string, color: string): THREE.Sprite {
   return sprite;
 }
 
-export function Graph3D({ expression, range = 5, resolution = 80 }: Graph3DProps) {
+export function Graph3D({ expression, range = 5, resolution = 80, fillParent = false }: Graph3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +68,7 @@ export function Graph3D({ expression, range = 5, resolution = 80 }: Graph3DProps
       return;
     }
 
-    const height = 480;
+    let height = container.clientHeight || 480;
     let width = container.clientWidth || 600;
 
     const isDark = document.documentElement.classList.contains("dark");
@@ -249,6 +251,7 @@ export function Graph3D({ expression, range = 5, resolution = 80 }: Graph3DProps
     const onResize = () => {
       if (!container) return;
       width = container.clientWidth || width;
+      height = container.clientHeight || height;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
@@ -281,14 +284,18 @@ export function Graph3D({ expression, range = 5, resolution = 80 }: Graph3DProps
         container.removeChild(renderer.domElement);
       }
     };
-  }, [expression, range, resolution]);
+  }, [expression, range, resolution, fillParent]);
 
   return (
-    <div className="space-y-2">
+    <div className={fillParent ? "space-y-2 h-full flex flex-col" : "space-y-2"}>
       <div
         ref={containerRef}
-        className="w-full rounded-xl border border-border overflow-hidden bg-gradient-to-b from-muted/30 to-muted/10"
-        style={{ height: 480, touchAction: "none" }}
+        className={
+          fillParent
+            ? "w-full flex-1 min-h-0 rounded-xl border border-border overflow-hidden bg-gradient-to-b from-muted/30 to-muted/10"
+            : "w-full rounded-xl border border-border overflow-hidden bg-gradient-to-b from-muted/30 to-muted/10"
+        }
+        style={fillParent ? { touchAction: "none" } : { height: 480, touchAction: "none" }}
       />
       {error && <p className="text-sm text-destructive">{error}</p>}
       {!error && (

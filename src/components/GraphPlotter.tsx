@@ -278,7 +278,7 @@ export function GraphPlotter() {
             variant="outline"
             size="icon"
             onClick={() => setIs3dFullscreen((v) => !v)}
-            className="absolute top-3 right-3 z-10 h-8 w-8 bg-background/90 backdrop-blur"
+            className="hidden sm:flex absolute top-3 right-3 z-10 h-8 w-8 bg-background/90 backdrop-blur"
             aria-label={is3dFullscreen ? "Exit fullscreen" : "View fullscreen"}
             title={is3dFullscreen ? "Exit fullscreen" : "View fullscreen"}
           >
@@ -292,7 +292,7 @@ export function GraphPlotter() {
             }
           >
             <div className={is3dFullscreen ? "flex-1 min-h-0" : ""}>
-              <Graph3D expression={plotted3d} range={settings.defaultGraphRange} />
+              <Graph3D expression={plotted3d} range={settings.defaultGraphRange} fillParent={is3dFullscreen} />
             </div>
           </Suspense>
         </motion.div>
