@@ -1,4 +1,4 @@
-import { useState, useMemo, Suspense, lazy } from "react";
+import { useState, useMemo, useEffect, Suspense, lazy } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { GraphCanvas, type GraphSeries } from "./GraphCanvas";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
-import { LineChart, Plus, Trash2, Box, Crosshair } from "lucide-react";
+import { LineChart, Plus, Trash2, Box, Crosshair, Maximize2, X } from "lucide-react";
 
 const Graph3D = lazy(() => import("./Graph3D").then(m => ({ default: m.Graph3D })));
 
@@ -70,6 +70,16 @@ export function GraphPlotter() {
   const [compareMode, setCompareMode] = useState(true);
   const [expr3d, setExpr3d] = useState("sin(x) * cos(y)");
   const [plotted3d, setPlotted3d] = useState("sin(x) * cos(y)");
+  const [is3dFullscreen, setIs3dFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!is3dFullscreen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIs3dFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [is3dFullscreen]);
 
   const examples3d = [
     "sin(x) * cos(y)",
@@ -253,7 +263,27 @@ export function GraphPlotter() {
       </Card>
 
       {mode === "3d" && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className={
+            is3dFullscreen
+              ? "fixed inset-0 z-50 bg-background p-4 flex flex-col"
+              : "relative"
+          }
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setIs3dFullscreen((v) => !v)}
+            className="absolute top-3 right-3 z-10 h-8 w-8 bg-background/90 backdrop-blur"
+            aria-label={is3dFullscreen ? "Exit fullscreen" : "View fullscreen"}
+            title={is3dFullscreen ? "Exit fullscreen" : "View fullscreen"}
+          >
+            {is3dFullscreen ? <X className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
           <Suspense
             fallback={
               <div className="h-[460px] rounded-xl border border-border flex items-center justify-center text-sm text-muted-foreground bg-muted/20">
@@ -261,7 +291,9 @@ export function GraphPlotter() {
               </div>
             }
           >
-            <Graph3D expression={plotted3d} range={settings.defaultGraphRange} />
+            <div className={is3dFullscreen ? "flex-1 min-h-0" : ""}>
+              <Graph3D expression={plotted3d} range={settings.defaultGraphRange} />
+            </div>
           </Suspense>
         </motion.div>
       )}
