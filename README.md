@@ -72,3 +72,33 @@ Calculin currently includes **17+ specialized mathematical tools**.
 | 17 | **LaTeX Export** | Export mathematical results in LaTeX format |
 
 ---
+
+## 📚 Calculus & Algebra
+
+Calculin provides dedicated tools for some of the most commonly used areas of mathematics.
+
+### Calculus
+
+- Derivatives
+- Integrals
+- Limits
+- Advanced calculus operations
+- Trigonometric identities
+
+### Algebra
+
+- Linear equations
+- Quadratic equations
+- Polynomial equations
+- Matrix operations
+- Complex numbers
+
+### Number Theory
+
+- Prime numbers
+- Greatest Common Divisor (GCD)
+- Least Common Multiple (LCM)
+- Factorization
+- Number conversions
+
+---
