@@ -46,3 +46,29 @@ Whether you're working on calculus, algebra, matrices, complex numbers, graphing
 - 🆓 Free and open source
 
 ---
+
+## 🛠️ Math Tools
+
+Calculin currently includes **17+ specialized mathematical tools**.
+
+| # | Tool | What it does |
+|---:|---|---|
+| 1 | **Derivative Solver** | Calculate derivatives with step-by-step solutions |
+| 2 | **Integration Solver** | Solve definite and indefinite integrals |
+| 3 | **Equation Solver** | Solve linear, quadratic, and polynomial equations |
+| 4 | **Limits Calculator** | Evaluate limits, including one-sided limits and infinity |
+| 5 | **2D Graph Plotter** | Plot mathematical functions interactively |
+| 6 | **3D Graph Plotter** | Visualize mathematical surfaces in 3D |
+| 7 | **Implicit Surface 3D** | Visualize implicit 3D equations |
+| 8 | **Matrix Calculator** | Matrix operations, determinants, inverses, and more |
+| 9 | **Complex Calculator** | Perform complex number calculations |
+| 10 | **Calculus+** | Additional advanced calculus operations |
+| 11 | **Trig Identities** | Explore and verify trigonometric identities |
+| 12 | **Number Theory** | Primes, GCD, LCM, factorization, and more |
+| 13 | **Number Conversions** | Convert between binary, octal, decimal, and hexadecimal |
+| 14 | **Unit Converter** | Convert between common measurement units |
+| 15 | **Shapes Calculator** | Calculate area, perimeter, surface area, and volume |
+| 16 | **Practice Mode** | Generate problems and practice mathematical concepts |
+| 17 | **LaTeX Export** | Export mathematical results in LaTeX format |
+
+---
