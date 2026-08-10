@@ -2,7 +2,7 @@
 
 ### Advanced Math Solver — Step-by-Step, Interactive & Free
 
-**Derivatives · Integrals · Equations · Limits · 2D/3D Graphs · Matrices · Complex Numbers · LaTeX · 17+ Tools**
+**Derivatives · Integrals · Equations · Limits · 2D/3D Graphs · Matrices · Complex Numbers · LaTeX**
 
 <p align="center">
   <a href="https://calculin.vercel.app">
