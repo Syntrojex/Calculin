@@ -29,3 +29,17 @@ Whether you're working on calculus, algebra, matrices, complex numbers, graphing
 👉 **[Open Calculin →](https://calculin.vercel.app)**
 
 ---
+
+## 📸 Preview
+
+<p align="center">
+  <img src="./screenshots/home.png" width="85%" alt="Calculin home page — all tools" />
+</p>
+
+<p align="center">
+  <img src="./screenshots/3d-graph.png" width="85%" alt="3D Graphing powered by Three.js" />
+</p>
+
+<p align="center"><sub><b>Home</b> — all 14 tools in one place &nbsp;·&nbsp; <b>3D Graphing</b> — interactive surfaces powered by Three.js</sub></p>
+
+---
