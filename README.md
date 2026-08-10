@@ -142,3 +142,9 @@ This project isn't currently accepting pull requests / contributions. If you run
 Have an idea instead? [Request a feature →](https://github.com/Syntrojex/calculin/issues)
 
 ---
+
+## 📄 License
+
+Calculin is released under the **MIT License** — free to use, modify, and distribute.
+
+---
