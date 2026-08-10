@@ -90,3 +90,12 @@ Want to practice instead of just calculating? **Practice Mode** generates random
 Solve it, check your answer, and get a fresh problem instantly — no repeats, no login, no tracking.
 
 ---
+
+## 🔐 Privacy First
+
+- No account or login required
+- No personal information required
+- No external math-solving APIs
+- Calculations run entirely in your browser
+
+---
