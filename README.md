@@ -36,7 +36,7 @@ Whether you're working on calculus, algebra, matrices, complex numbers, graphing
 
 | Home Page | 3D Graph |
 |:---------:|:--------:|
-| <img src="./screenshots/home.png" width="100%" alt="Calculin home page — all tools"/> | <img src="./screenshots/3d-graph.png" width="100%" alt="3D Graphing powered by Three.js"/> |
+| <img src="./screenshots/home-page.png" width="100%" alt="Calculin home page — all tools"/> | <img src="./screenshots/3d-graph.png" width="100%" alt="3D Graphing powered by Three.js"/> |
 | All 14 tools in one place | Interactive surfaces powered by Three.js |
 
 ---
