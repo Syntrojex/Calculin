@@ -148,3 +148,11 @@ Have an idea instead? [Request a feature →](https://github.com/Syntrojex/calcu
 Calculin is released under the **MIT License** — free to use, modify, and distribute.
 
 ---
+
+## ⭐ Support Calculin
+
+If you find Calculin useful, consider giving the project a ⭐ on GitHub. It helps the project grow and motivates future development.
+
+**[⭐ Star Calculin on GitHub →](https://github.com/Syntrojex/calculin)**
+
+---
