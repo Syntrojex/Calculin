@@ -1,3 +1,5 @@
+<div align="center">
+
 # 🧮 Calculin
 
 ### Advanced Math Solver — Step-by-Step, Interactive & Free
@@ -24,7 +26,7 @@ Whether you're working on calculus, algebra, matrices, complex numbers, graphing
 
 > 🎓 **Don't just get the answer. Understand the solution.**
 
-**No installation. No login. No account. Just open and start calculating.**
+**No installation. No login. No account. No external APIs. Just open and start calculating.**
 
 👉 **[Open Calculin →](https://calculin.vercel.app)**
 
@@ -32,15 +34,10 @@ Whether you're working on calculus, algebra, matrices, complex numbers, graphing
 
 ## 📸 Preview
 
-<p align="center">
-  <img src="./screenshots/home.png" width="85%" alt="Calculin home page — all tools" />
-</p>
-
-<p align="center">
-  <img src="./screenshots/3d-graph.png" width="85%" alt="3D Graphing powered by Three.js" />
-</p>
-
-<p align="center"><sub><b>Home</b> — all 14 tools in one place &nbsp;·&nbsp; <b>3D Graphing</b> — interactive surfaces powered by Three.js</sub></p>
+| Home Page | 3D Graph |
+|:---------:|:--------:|
+| <img src="./screenshots/home.png" width="100%" alt="Calculin home page — all tools"/> | <img src="./screenshots/3d-graph.png" width="100%" alt="3D Graphing powered by Three.js"/> |
+| All 14 tools in one place | Interactive surfaces powered by Three.js |
 
 ---
 
@@ -77,8 +74,7 @@ Every tool comes with full step-by-step working, and any result can be exported 
 - 🌙 **Dark & light themes**
 - 📱 **Fully responsive** — desktop, tablet, and mobile
 - ⚡ **Fast & client-side** — calculations run directly in your browser
-- 🔒 **No login required**
-- 🚫 **No external math APIs**
+- 🔒 **No login required — no tracking — no external APIs**
 - 🆓 **Free & open source**
 
 ---
@@ -91,49 +87,42 @@ Solve it, check your answer, and get a fresh problem instantly — no repeats, n
 
 ---
 
-## 🔐 Privacy First
-
-- No account or login required
-- No personal information required
-- No external math-solving APIs
-- Calculations run entirely in your browser
-
----
-
 ## 📁 Project Structure
 
-    calculin/
-    ├── src/
-    │   ├── components/          # All math tool components
-    │   │   ├── DerivativeSolver.tsx
-    │   │   ├── IntegrationSolver.tsx
-    │   │   ├── GraphPlotter.tsx
-    │   │   ├── Graph3D.tsx
-    │   │   ├── MatrixCalculator.tsx
-    │   │   ├── MathInput.tsx    # Math keyboard input field
-    │   │   ├── MathKeypad.tsx   # On-screen math keyboard
-    │   │   ├── ui/              # shadcn/ui primitives
-    │   │   └── ...more
-    │   │
-    │   ├── routes/              # TanStack Router pages
-    │   ├── lib/                 # Math engine & utilities
-    │   │   ├── math-solver.ts
-    │   │   ├── math-format.ts
-    │   │   ├── number-format.ts
-    │   │   └── utils.ts
-    │   │
-    │   ├── contexts/            # Settings & theme context
-    │   └── hooks/               # Custom React hooks
-    │
-    ├── index.html
-    ├── vite.config.ts
-    └── package.json
+```
+calculin/
+├── src/
+│   ├── components/          # All math tool components
+│   │   ├── DerivativeSolver.tsx
+│   │   ├── IntegrationSolver.tsx
+│   │   ├── GraphPlotter.tsx
+│   │   ├── Graph3D.tsx
+│   │   ├── MatrixCalculator.tsx
+│   │   ├── MathInput.tsx    # Math keyboard input field
+│   │   ├── MathKeypad.tsx   # On-screen math keyboard
+│   │   ├── ui/              # shadcn/ui primitives
+│   │   └── ...more
+│   │
+│   ├── routes/              # TanStack Router pages
+│   ├── lib/                 # Math engine & utilities
+│   │   ├── math-solver.ts
+│   │   ├── math-format.ts
+│   │   ├── number-format.ts
+│   │   └── utils.ts
+│   │
+│   ├── contexts/            # Settings & theme context
+│   └── hooks/               # Custom React hooks
+│
+├── index.html
+├── vite.config.ts
+└── package.json
+```
 
 ---
 
 ## 🐛 Found a Bug?
 
-This project isn't currently accepting pull requests / contributions. If you run into a bug or something isn't working right, please [open an issue](https://github.com/Syntrojex/calculin/issues) with:
+This project isn't currently accepting pull requests. If you run into a bug, please [open an issue](https://github.com/Syntrojex/calculin/issues) with:
 
 - What you were trying to do
 - What happened instead
@@ -157,20 +146,17 @@ If you find Calculin useful, consider giving the project a ⭐ on GitHub. It hel
 
 ---
 
-
 <p align="center">
-
 <a href="https://calculin.vercel.app">
 <img src="https://img.shields.io/badge/🚀_TRY_CALCULIN-Live_App-000000?style=for-the-badge" alt="Try Calculin">
 </a>
-
 </p>
 
 <p align="center">
-<strong>🧮 Calculin</strong><br>
-<sub>Calculate · Visualize · Understand</sub>
-</p>
 
-<p align="center">
-Built with ❤️ by <a href="https://github.com/Syntrojex">Syntrojex</a> (Muhammad Mustafa)
+### 🧮 Calculin
+**Calculate · Visualize · Understand**
+
+Built with ❤️ by [Syntrojex](https://github.com/Syntrojex) (Muhammad Mustafa)
+
 </p>
