@@ -4,19 +4,13 @@
 
 **Derivatives · Integrals · Equations · Limits · 2D/3D Graphs · Matrices · Complex Numbers · LaTeX**
 
-<p align="center">
-  <a href="https://calculin.vercel.app">
-    <strong>🚀 Try Calculin Live</strong>
-  </a>
-  ·
-  <a href="https://github.com/Syntrojex/calculin/issues">
-    Report a Bug
-  </a>
-  ·
-  <a href="https://github.com/Syntrojex/calculin/issues">
-    Request a Feature
-  </a>
-</p>
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-calculin.vercel.app-2563eb?style=for-the-badge)](https://calculin.vercel.app)
+![Version](https://img.shields.io/badge/Version-3.0.1-16a34a?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-f0db4f?style=for-the-badge)
+
+**[🚀 Open App](https://calculin.vercel.app)** · **[🐛 Report Bug](https://github.com/Syntrojex/calculin/issues)** · **[💡 Request Feature](https://github.com/Syntrojex/calculin/issues)**
+
+</div>
 
 ---
 
