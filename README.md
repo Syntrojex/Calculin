@@ -66,3 +66,19 @@ Every tool comes with full step-by-step working, and any result can be exported 
 | 🎯 **Practice Mode** | Auto-generated problems with instant grading |
 
 ---
+
+## ⚡ Features
+
+- 🧠 **Step-by-step solutions** — understand the calculation, not just the result
+- 🌐 **2D & 3D graphing** — powered by Three.js, including implicit surfaces
+- 📝 **LaTeX export** — copy any result straight into academic work
+- 🎯 **Practice mode** — auto-generated problems with instant grading
+- ⌨️ **Math keyboard** — no need to memorize input syntax
+- 🌙 **Dark & light themes**
+- 📱 **Fully responsive** — desktop, tablet, and mobile
+- ⚡ **Fast & client-side** — calculations run directly in your browser
+- 🔒 **No login required**
+- 🚫 **No external math APIs**
+- 🆓 **Free & open source**
+
+---
