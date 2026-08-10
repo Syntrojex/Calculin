@@ -130,3 +130,15 @@ Solve it, check your answer, and get a fresh problem instantly — no repeats, n
     └── package.json
 
 ---
+
+## 🐛 Found a Bug?
+
+This project isn't currently accepting pull requests / contributions. If you run into a bug or something isn't working right, please [open an issue](https://github.com/Syntrojex/calculin/issues) with:
+
+- What you were trying to do
+- What happened instead
+- Steps to reproduce (if possible)
+
+Have an idea instead? [Request a feature →](https://github.com/Syntrojex/calculin/issues)
+
+---
