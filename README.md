@@ -156,3 +156,21 @@ If you find Calculin useful, consider giving the project a ⭐ on GitHub. It hel
 **[⭐ Star Calculin on GitHub →](https://github.com/Syntrojex/calculin)**
 
 ---
+
+
+<p align="center">
+
+<a href="https://calculin.vercel.app">
+<img src="https://img.shields.io/badge/🚀_TRY_CALCULIN-Live_App-000000?style=for-the-badge" alt="Try Calculin">
+</a>
+
+</p>
+
+<p align="center">
+<strong>🧮 Calculin</strong><br>
+<sub>Calculate · Visualize · Understand</sub>
+</p>
+
+<p align="center">
+Built with ❤️ by <a href="https://github.com/Syntrojex">Syntrojex</a> (Muhammad Mustafa)
+</p>
