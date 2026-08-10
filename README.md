@@ -28,4 +28,10 @@ Instead of giving you only the final answer, Calculin focuses on **step-by-step 
 
 Whether you're working on calculus, algebra, matrices, complex numbers, graphing, or number theory, Calculin gives you the tools to solve, visualize, and understand the problem.
 
-> 🎓 **Learn the solution, don't just get the answer.**
+> 🎓 **Don't just get the answer. Understand the solution.**
+
+**No installation. No login. No account. Just open and start calculating.**
+
+👉 **[Open Calculin →](https://calculin.vercel.app)**
+
+---
