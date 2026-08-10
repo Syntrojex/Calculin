@@ -152,11 +152,12 @@ If you find Calculin useful, consider giving the project a ⭐ on GitHub. It hel
 </a>
 </p>
 
-<p align="center">
+<div align="center">
 
 ### 🧮 Calculin
-**Calculate · Visualize · Understand**
 
-Built with ❤️ by [Syntrojex](https://github.com/Syntrojex) (Muhammad Mustafa)
+### Calculate · Visualize · Understand
 
-</p>
+### Built with ❤️ by [Syntrojex](https://github.com/Syntrojex) (Muhammad Mustafa)
+
+</div>
