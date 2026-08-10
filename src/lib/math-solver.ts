@@ -96,6 +96,72 @@ export interface MathResult {
   numericResult?: number;
 }
 
+/** True if `variable` appears anywhere in this subtree (used to tell a real
+ *  product-of-functions like x·sin(x) apart from a constant coefficient
+ *  like 2·x², which only needs the power rule + constant multiple rule). */
+function nodeContainsVariable(node: MathNode, variable: string): boolean {
+  let found = false;
+  node.traverse((n: MathNode) => {
+    if (n.type === "SymbolNode" && (n as unknown as { name: string }).name === variable) found = true;
+  });
+  return found;
+}
+
+/** Walks the actual parsed expression tree to determine which differentiation
+ *  rules genuinely apply — replaces the old approach of substring-matching
+ *  the raw input text (e.g. checking for a bare "*" character), which
+ *  couldn't distinguish a real product-of-functions from a plain scalar
+ *  coefficient and so flagged "Product Rule may apply" on almost every
+ *  polynomial with a coefficient. */
+function detectDerivativeRules(node: MathNode, variable: string): string[] {
+  const rules = new Set<string>();
+  node.traverse((n: MathNode) => {
+    if (n.type === "OperatorNode") {
+      const op = n as unknown as { op: string; fn: string; args: MathNode[] };
+      if (op.op === "^") {
+        rules.add("power");
+      } else if (op.fn === "multiply" && op.args.length === 2) {
+        const [a, b] = op.args;
+        if (nodeContainsVariable(a, variable) && nodeContainsVariable(b, variable)) {
+          rules.add("product");
+        } else {
+          rules.add("constant multiple");
+        }
+      } else if (op.fn === "divide" && op.args.length === 2) {
+        if (nodeContainsVariable(op.args[1], variable)) rules.add("quotient");
+      } else if ((op.fn === "add" || op.fn === "subtract") && op.args.length === 2) {
+        rules.add("sum");
+      }
+    } else if (n.type === "FunctionNode") {
+      const name = (n as unknown as { fn: { name: string } }).fn.name;
+      if (name === "sin") rules.add("sin");
+      else if (name === "cos") rules.add("cos");
+      else if (name === "tan") rules.add("tan");
+      else if (name === "log" || name === "ln") rules.add("ln");
+      else if (name === "exp") rules.add("exp");
+      else if (name === "sqrt") rules.add("sqrt");
+    }
+  });
+  return [...rules];
+}
+
+const DERIVATIVE_RULE_TEXT: Record<string, string> = {
+  power: "Power Rule: d/dx[xⁿ] = n·xⁿ⁻¹",
+  "constant multiple": "Constant Multiple Rule: d/dx[c·f(x)] = c·f'(x)",
+  sum: "Sum/Difference Rule: d/dx[f ± g] = f' ± g'",
+  product: "Product Rule: d/dx[f·g] = f'·g + f·g'",
+  quotient: "Quotient Rule: d/dx[f/g] = (f'·g − f·g') / g²",
+  sin: "d/dx[sin(x)] = cos(x)",
+  cos: "d/dx[cos(x)] = -sin(x)",
+  tan: "d/dx[tan(x)] = sec²(x)",
+  ln: "d/dx[ln(x)] = 1/x",
+  exp: "d/dx[eˣ] = eˣ",
+  sqrt: "d/dx[√x] = 1/(2√x)",
+};
+
+// A sensible reading order: structural rules first, then function-specific ones.
+const DERIVATIVE_RULE_ORDER = ["power", "constant multiple", "sum", "product", "quotient", "sin", "cos", "tan", "ln", "exp", "sqrt"];
+
 // Derivative solver
 export function solveDerivative(
   expression: string,
@@ -112,19 +178,12 @@ export function solveDerivative(
     const deriv = derivative(node, variable);
     const simplified = simplify(deriv);
 
-    // Identify rules used
-    const exprStr = expression.toLowerCase();
-    if (exprStr.includes("^")) steps.push(`Power Rule: d/dx[xⁿ] = n·xⁿ⁻¹`);
-    if (exprStr.includes("sin")) steps.push(`sin rule: d/dx[sin(x)] = cos(x)`);
-    if (exprStr.includes("cos")) steps.push(`cos rule: d/dx[cos(x)] = -sin(x)`);
-    if (exprStr.includes("tan")) steps.push(`tan rule: d/dx[tan(x)] = sec²(x)`);
-    if (exprStr.includes("log") || exprStr.includes("ln"))
-      steps.push(`ln rule: d/dx[ln(x)] = 1/x`);
-    if (exprStr.includes("exp") || exprStr.includes("e^"))
-      steps.push(`exp rule: d/dx[eˣ] = eˣ`);
-    if (/[+-]/.test(exprStr) && exprStr.length > 2)
-      steps.push(`Sum/Difference Rule applied`);
-    if (/\*/.test(exprStr)) steps.push(`Product Rule may apply`);
+    // Identify rules actually used, from the real expression tree — not
+    // guessed from the raw input text.
+    const rulesUsed = detectDerivativeRules(node, variable);
+    for (const rule of DERIVATIVE_RULE_ORDER) {
+      if (rulesUsed.includes(rule)) steps.push(DERIVATIVE_RULE_TEXT[rule]);
+    }
 
     steps.push(`Derivative = ${deriv.toString()}`);
     steps.push(`Simplified = ${simplified.toString()}`);
