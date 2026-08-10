@@ -82,3 +82,11 @@ Every tool comes with full step-by-step working, and any result can be exported 
 - 🆓 **Free & open source**
 
 ---
+
+## 🎯 Practice Mode
+
+Want to practice instead of just calculating? **Practice Mode** generates random math problems on the fly — pick **Easy, Medium, or Hard**, and the difficulty shapes the actual problem: smaller numbers and simpler forms on Easy, larger coefficients and more advanced patterns (trig, exponential) mixed in as you go up to Hard.
+
+Solve it, check your answer, and get a fresh problem instantly — no repeats, no login, no tracking.
+
+---
