@@ -99,3 +99,34 @@ Solve it, check your answer, and get a fresh problem instantly — no repeats, n
 - Calculations run entirely in your browser
 
 ---
+
+## 📁 Project Structure
+
+    calculin/
+    ├── src/
+    │   ├── components/          # All math tool components
+    │   │   ├── DerivativeSolver.tsx
+    │   │   ├── IntegrationSolver.tsx
+    │   │   ├── GraphPlotter.tsx
+    │   │   ├── Graph3D.tsx
+    │   │   ├── MatrixCalculator.tsx
+    │   │   ├── MathInput.tsx    # Math keyboard input field
+    │   │   ├── MathKeypad.tsx   # On-screen math keyboard
+    │   │   ├── ui/              # shadcn/ui primitives
+    │   │   └── ...more
+    │   │
+    │   ├── routes/              # TanStack Router pages
+    │   ├── lib/                 # Math engine & utilities
+    │   │   ├── math-solver.ts
+    │   │   ├── math-format.ts
+    │   │   ├── number-format.ts
+    │   │   └── utils.ts
+    │   │
+    │   ├── contexts/            # Settings & theme context
+    │   └── hooks/               # Custom React hooks
+    │
+    ├── index.html
+    ├── vite.config.ts
+    └── package.json
+
+---
