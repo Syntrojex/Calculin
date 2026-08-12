@@ -39,13 +39,13 @@ export function CalculusPlus() {
     if (mode === "partial") {
       setResult(solvePartialDerivative(expr, wrt, [varX, varY]));
     } else if (mode === "extrema1d") {
-      setResult(solveExtrema1D(expr, varX, parseFloat(xMin), parseFloat(xMax)));
+      setResult(solveExtrema1D(expr, varX, parseFloat(xMin), parseFloat(xMax), settings));
     } else {
-      setResult(solveExtrema2D(expr, varX, varY, 10));
+      setResult(solveExtrema2D(expr, varX, varY, 10, settings));
     }
   };
 
-  useAutoRun([mode, expr, varX, varY, wrt, xMin, xMax], solve, settings.autoCalculate);
+  useAutoRun([mode, expr, varX, varY, wrt, xMin, xMax, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);
 
   return (
     <div className="space-y-6">

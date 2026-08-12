@@ -83,6 +83,21 @@ function AboutPage() {
           at the bottom of the page.
         </p>
       </section>
+
+      <section>
+        <h2>Version</h2>
+        <p>
+          You're using <strong>Calculin v3.0.1</strong>. Calculin follows{" "}
+          <a href="https://semver.org" target="_blank" rel="noopener noreferrer">
+            semantic versioning
+          </a>{" "}
+          (major.minor.patch) — patch releases are bug fixes and small
+          polish, minor releases add new tools or features, and major
+          releases mark a significant rework. The project is updated
+          regularly, so if something looks off, mentioning the version
+          number in your feedback helps track it down faster.
+        </p>
+      </section>
     </LegalPageLayout>
   );
 }

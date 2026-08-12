@@ -1,5 +1,9 @@
 import { derivative, parse, simplify, evaluate, type MathNode } from "mathjs";
-import { toFraction } from "./number-format";
+import { toFraction, formatNumber, type FormatSettings } from "./number-format";
+
+// Default display settings used when a solver is called without explicit
+// settings (keeps existing call sites backward-compatible).
+const DEFAULT_FORMAT_SETTINGS: FormatSettings = { numberForm: "decimal", decimalPlaces: 4 };
 
 // ── Numeric tolerance constants ───────────────────────────────────────────────
 const EPS      = 1e-10;  // near-zero test (e.g. "is this coefficient zero?")
@@ -232,7 +236,8 @@ export function solveDefiniteIntegral(
   variable: string = "x",
   lower: number,
   upper: number,
-  n: number = 1000
+  n: number = 1000,
+  settings: FormatSettings = DEFAULT_FORMAT_SETTINGS
 ): MathResult {
   try {
     assertNonEmptyExpression(expression);
@@ -266,11 +271,11 @@ export function solveDefiniteIntegral(
 
     const rounded = Math.round(result * EPS_ROUND) / EPS_ROUND;
     if (Math.abs(result - Math.round(result)) < EPS) {
-      steps.push(`Result = ${Math.round(result)} (exact)`);
+      steps.push(`Result = ${formatNumber(Math.round(result), settings)} (exact)`);
     } else {
       const frac = toFraction(result, 1000);
       const isNiceFraction = frac.includes("/") && Math.abs(evaluateFractionString(frac) - result) < 1e-5;
-      steps.push(`Result ≈ ${rounded}${isNiceFraction ? `  (= ${frac})` : ""}`);
+      steps.push(`Result ≈ ${formatNumber(rounded, settings)}${isNiceFraction ? `  (= ${frac})` : ""}`);
     }
 
     return { input: expression, result: rounded.toString(), steps, numericResult: rounded };
@@ -306,7 +311,8 @@ export function solveDoubleIntegral(
   xUpper: number,
   yLower: number,
   yUpper: number,
-  n: number = 100
+  n: number = 100,
+  settings: FormatSettings = DEFAULT_FORMAT_SETTINGS
 ): MathResult {
   try {
     assertNonEmptyExpression(expression);
@@ -353,7 +359,7 @@ export function solveDoubleIntegral(
 
     steps.push(`Method: Double Simpson's Rule (${n}×${n} grid)`);
     steps.push(`hx = ${hx.toFixed(6)}, hy = ${hy.toFixed(6)}`);
-    steps.push(`Result ≈ ${rounded}`);
+    steps.push(`Result ≈ ${formatNumber(rounded, settings)}`);
 
     return { input: expression, result: rounded.toString(), steps, numericResult: rounded };
   } catch (e: unknown) {
@@ -680,7 +686,8 @@ export function solveExtrema1D(
   expression: string,
   variable: string = "x",
   xMin: number = -20,
-  xMax: number = 20
+  xMax: number = 20,
+  settings: FormatSettings = DEFAULT_FORMAT_SETTINGS
 ): MathResult {
   try {
     assertNonEmptyExpression(expression);
@@ -743,12 +750,14 @@ export function solveExtrema1D(
       const sec = evalAt(fpp, r);
       const xR = Math.round(r * 10000) / 10000;
       const fR = Math.round(fv * 10000) / 10000;
+      const xRf = formatNumber(xR, settings);
+      const fRf = formatNumber(fR, settings);
       let kind = "saddle/inflection";
       if (sec > EPS_SEC) kind = "Local Minimum";
       else if (sec < -EPS_SEC) kind = "Local Maximum";
-      steps.push(`Critical point ${variable} = ${xR}: f''(${xR}) = ${Math.round(sec * 10000) / 10000} → ${kind}`);
-      steps.push(`  → f(${xR}) = ${fR}`);
-      labels.push(`${kind} at (${xR}, ${fR})`);
+      steps.push(`Critical point ${variable} = ${xRf}: f''(${xRf}) = ${Math.round(sec * 10000) / 10000} → ${kind}`);
+      steps.push(`  → f(${xRf}) = ${fRf}`);
+      labels.push(`${kind} at (${xRf}, ${fRf})`);
     }
 
     return { input: expression, result: labels.join("; "), steps };
@@ -762,7 +771,8 @@ export function solveExtrema2D(
   expression: string,
   varX: string = "x",
   varY: string = "y",
-  range: number = 10
+  range: number = 10,
+  settings: FormatSettings = DEFAULT_FORMAT_SETTINGS
 ): MathResult {
   try {
     assertNonEmptyExpression(expression);
@@ -861,9 +871,12 @@ export function solveExtrema2D(
       const yR = Math.round(p.y * 10000) / 10000;
       const fR = Math.round(fv * 10000) / 10000;
       const dR = Math.round(D * 10000) / 10000;
-      steps.push(`Critical point (${xR}, ${yR}): D = ${dR}, f_${varX}${varX} = ${Math.round(A * 10000) / 10000} → ${kind}`);
-      steps.push(`  → f(${xR}, ${yR}) = ${fR}`);
-      labels.push(`${kind} at (${xR}, ${yR}, ${fR})`);
+      const xRf = formatNumber(xR, settings);
+      const yRf = formatNumber(yR, settings);
+      const fRf = formatNumber(fR, settings);
+      steps.push(`Critical point (${xRf}, ${yRf}): D = ${dR}, f_${varX}${varX} = ${Math.round(A * 10000) / 10000} → ${kind}`);
+      steps.push(`  → f(${xRf}, ${yRf}) = ${fRf}`);
+      labels.push(`${kind} at (${xRf}, ${yRf}, ${fRf})`);
     }
 
     return { input: expression, result: labels.join("; "), steps };

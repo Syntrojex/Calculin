@@ -147,7 +147,7 @@ export function LimitsCalculator() {
     [expr, variable, approaching, settings]
   );
 
-  useAutoRun([expr, variable, approaching], solve, settings.autoCalculate);
+  useAutoRun([expr, variable, approaching, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);
 
   return (
     <div className="space-y-6">

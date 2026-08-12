@@ -159,7 +159,7 @@ export function MatrixCalculator() {
         const D = det(a) as number;
         const stepList: string[] = [];
         stepList.push(`System: A·x = b with ${n} unknowns`);
-        stepList.push(`Step 1: Compute D = det(A) = ${Math.round(D * 10000) / 10000}`);
+        stepList.push(`Step 1: Compute D = det(A) = ${formatNumber(Math.round(D * 10000) / 10000, settings)}`);
         if (Math.abs(D) < 1e-12) {
           stepList.push(`D = 0 → System has no unique solution (singular)`);
           setSteps(stepList);
@@ -173,8 +173,8 @@ export function MatrixCalculator() {
           const Di = det(Ai) as number;
           const xi = Di / D;
           stepList.push(`Step ${i + 2}: Replace column ${i + 1} of A with b → A${i + 1}`);
-          stepList.push(`  det(A${i + 1}) = ${Math.round(Di * 10000) / 10000}`);
-          stepList.push(`  x${i + 1} = det(A${i + 1}) / D = ${Math.round(xi * 10000) / 10000}`);
+          stepList.push(`  det(A${i + 1}) = ${formatNumber(Math.round(Di * 10000) / 10000, settings)}`);
+          stepList.push(`  x${i + 1} = det(A${i + 1}) / D = ${formatNumber(Math.round(xi * 10000) / 10000, settings)}`);
           xs.push(xi);
         }
 
@@ -196,7 +196,7 @@ export function MatrixCalculator() {
     }
   };
 
-  useAutoRun([op, matA, matB, vecB, settings.decimalPlaces], calculate, settings.autoCalculate);
+  useAutoRun([op, matA, matB, vecB, settings.decimalPlaces, settings.numberForm], calculate, settings.autoCalculate);
 
   return (
     <div className="space-y-6">

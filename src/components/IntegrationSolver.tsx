@@ -43,19 +43,20 @@ export function IntegrationSolver() {
 
   const solve = useCallback(() => {
     if (mode === "definite") {
-      setResult(solveDefiniteIntegral(expr, variable, parseFloat(lower), parseFloat(upper)));
+      setResult(solveDefiniteIntegral(expr, variable, parseFloat(lower), parseFloat(upper), 1000, settings));
     } else if (mode === "indefinite") {
       setResult(solveIndefiniteIntegral(expr, variable));
     } else {
       setResult(solveDoubleIntegral(
         expr, variable, varY,
         parseFloat(lower), parseFloat(upper),
-        parseFloat(yLower), parseFloat(yUpper)
+        parseFloat(yLower), parseFloat(yUpper),
+        100, settings
       ));
     }
-  }, [mode, expr, variable, lower, upper, varY, yLower, yUpper]);
+  }, [mode, expr, variable, lower, upper, varY, yLower, yUpper, settings]);
 
-  useAutoRun([expr, variable, lower, upper, mode, varY, yLower, yUpper], solve, settings.autoCalculate);
+  useAutoRun([expr, variable, lower, upper, mode, varY, yLower, yUpper, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);
 
   const points = showGraph && mode !== "double" ? generateGraphPoints(expr, variable, -settings.defaultGraphRange, settings.defaultGraphRange) : [];
 
