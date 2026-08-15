@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./screenshots/calculin-logo.svg" width="80" alt="Calculin logo"/>
+
 # 🧮 Calculin
 
 ### Advanced Math Solver — Step-by-Step, Interactive & Free
