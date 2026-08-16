@@ -87,7 +87,7 @@ function AboutPage() {
       <section>
         <h2>Version</h2>
         <p>
-          You're using <strong>Calculin v3.0.1</strong>. Calculin follows{" "}
+          You're using <strong>Calculin v3.2.0</strong>. Calculin follows{" "}
           <a href="https://semver.org" target="_blank" rel="noopener noreferrer">
             semantic versioning
           </a>{" "}
