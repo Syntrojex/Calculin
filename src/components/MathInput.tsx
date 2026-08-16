@@ -3,6 +3,7 @@ import { Keyboard } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { MathKeypad } from "./MathKeypad";
 import { cn } from "@/lib/utils";
+import { normalizeMathInput } from "@/lib/text-normalize";
 
 interface MathInputProps {
   value: string;
@@ -88,7 +89,7 @@ export function MathInput({
         <Input
           ref={inputRef}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(normalizeMathInput(e.target.value))}
           onKeyDown={(e) => e.key === "Enter" && onEnter?.()}
           placeholder={placeholder}
           className={cn("font-mono text-sm flex-1", className)}

@@ -15,7 +15,7 @@ import { GraphCanvas } from "./GraphCanvas";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
-import { generateGraphPoints, generateImplicitPoints2D } from "@/lib/math-solver";
+import { generateGraphPoints, generateImplicitPoints2D, parseEquationToZeroForm } from "@/lib/math-solver";
 
 const ImplicitSurface3D = lazy(() => import("./ImplicitSurface3D").then(m => ({ default: m.ImplicitSurface3D })));
 
@@ -131,17 +131,6 @@ function solveQuadraticFromEquation(equation: string, fmt: (n: number) => string
   return { ...quad, steps: [...steps, ...quad.steps] };
 }
 
-function extractVariables(equation: string): string[] {
-  const knownFns = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "log", "ln", "exp", "sqrt", "abs", "pi", "e"]);
-  const matches = equation.match(/[a-zA-Z]+/g) || [];
-  const vars = new Set<string>();
-  for (const m of matches) {
-    if (knownFns.has(m.toLowerCase())) continue;
-    if (m.length === 1) vars.add(m);
-  }
-  return Array.from(vars).sort();
-}
-
 function GraphEquationTab() {
   const settings = useSettings();
   const [equation, setEquation] = useState("x^2 + y^2 = 25");
@@ -150,26 +139,14 @@ function GraphEquationTab() {
   const [error, setError] = useState<string | null>(null);
 
   const plot = () => {
-    const parts = equation.split("=");
-    if (parts.length !== 2) {
-      setError("Use format: expression = expression, e.g. x^2 + y^2 = 25");
-      setParsed(null);
-      return;
-    }
-    const expr = `(${parts[0].trim()}) - (${parts[1].trim()})`;
-    const vars = extractVariables(expr);
-    if (vars.length === 0) {
-      setError("No variable detected — use x, y, and/or z");
-      setParsed(null);
-      return;
-    }
-    if (vars.length > 3) {
-      setError("Only up to 3 variables (x, y, z) are supported for graphing");
+    const parsedResult = parseEquationToZeroForm(equation);
+    if ("error" in parsedResult) {
+      setError(parsedResult.error);
       setParsed(null);
       return;
     }
     setError(null);
-    setParsed({ vars, expr });
+    setParsed(parsedResult);
   };
 
   const r = Math.abs(parseFloat(range)) || 10;

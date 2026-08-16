@@ -33,23 +33,7 @@ function colormap(t: number): [number, number, number] {
   return stops[stops.length - 1][1];
 }
 
-function makeAxisLabelSprite(text: string, color: string): THREE.Sprite {
-  const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext("2d")!;
-  ctx.font = "bold 40px system-ui, sans-serif";
-  ctx.fillStyle = color;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, 32, 34);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.minFilter = THREE.LinearFilter;
-  const material = new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(1, 1, 1);
-  return sprite;
-}
+import { makeAxisLabelSprite, makeAxisRod } from "./graph3d-helpers";
 
 export function Graph3D({ expression, range = 5, resolution = 80, fillParent = false }: Graph3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -80,7 +64,7 @@ export function Graph3D({ expression, range = 5, resolution = 80, fillParent = f
     camera.position.set(range * 1.6, range * 1.25, range * 1.6);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -112,24 +96,20 @@ export function Graph3D({ expression, range = 5, resolution = 80, fillParent = f
     (grid.material as THREE.Material).opacity = 0.45;
     scene.add(grid);
 
-    // Subtle colored axis indicators
+    // Bold, colored axis indicators — X = red, Y (vertical/height) = blue, Z (depth) = green.
     const axisLen = range * 1.08;
-    const xAxis = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-axisLen, 0, 0), new THREE.Vector3(axisLen, 0, 0)]),
-      new THREE.LineBasicMaterial({ color: 0xff5c6e, transparent: true, opacity: 0.55 })
-    );
-    const zAxis = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -axisLen), new THREE.Vector3(0, 0, axisLen)]),
-      new THREE.LineBasicMaterial({ color: 0x4caf6e, transparent: true, opacity: 0.55 })
-    );
-    scene.add(xAxis, zAxis);
+    const rodRadius = Math.max(range * 0.002, 0.008);
+    const xAxis = makeAxisRod(axisLen * 2, rodRadius, 0xff5c6e, "x");
+    const yAxis = makeAxisRod(axisLen * 2, rodRadius, 0x7c9bff, "y");
+    const zAxis = makeAxisRod(axisLen * 2, rodRadius, 0x4caf6e, "z");
+    scene.add(xAxis, yAxis, zAxis);
 
     const xLabel = makeAxisLabelSprite("x", "#ff5c6e");
-    xLabel.position.set(axisLen + 0.4, 0, 0);
+    xLabel.position.set(axisLen + 0.6, 0, 0);
     const yLabel = makeAxisLabelSprite("z", "#7c9bff");
-    yLabel.position.set(0, range * 0.65, 0);
+    yLabel.position.set(0, axisLen + 0.6, 0);
     const zLabel = makeAxisLabelSprite("y", "#4caf6e");
-    zLabel.position.set(0, 0, axisLen + 0.4);
+    zLabel.position.set(0, 0, axisLen + 0.6);
     scene.add(xLabel, yLabel, zLabel);
 
     const segs = resolution;

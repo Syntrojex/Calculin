@@ -10,6 +10,7 @@ import { StepsReveal } from "./StepsReveal";
 import { CheckCircle, XCircle, Copy, Check } from "lucide-react";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
+import { normalizeMathInput } from "@/lib/text-normalize";
 
 // ── Trig-aware symbolic simplification engine ────────────────────────────────
 // mathjs's default simplify() only knows algebra; these custom rules teach it
@@ -257,9 +258,9 @@ function ProveIdentity() {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <Input value={lhs} onChange={e => setLhs(e.target.value)} placeholder="LHS e.g. sin(x)^2+cos(x)^2" className="font-mono text-sm" />
+          <Input value={lhs} onChange={e => setLhs(normalizeMathInput(e.target.value))} placeholder="LHS e.g. sin(x)^2+cos(x)^2" className="font-mono text-sm" />
           <span className="text-sm font-bold text-muted-foreground">=</span>
-          <Input value={rhs} onChange={e => setRhs(e.target.value)} placeholder="RHS e.g. 1" className="font-mono text-sm" />
+          <Input value={rhs} onChange={e => setRhs(normalizeMathInput(e.target.value))} placeholder="RHS e.g. 1" className="font-mono text-sm" />
         </div>
         {!settings.autoCalculate && <Button onClick={verify} className="w-full">Prove Identity</Button>}
         {result && (
