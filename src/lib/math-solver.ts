@@ -1,5 +1,19 @@
-import { derivative, parse, simplify, evaluate, type MathNode } from "mathjs";
+import {
+  derivative, parse as _mathjsParse, simplify, evaluate as _mathjsEvaluate, type MathNode,
+} from "mathjs";
 import { toFraction, formatNumber, type FormatSettings } from "./number-format";
+import { normalizeMathInput } from "./text-normalize";
+
+// Defense-in-depth: every string a person can type/paste (x², √25, x×y,
+// sin(θ)…) is normalized to plain ASCII math before mathjs ever sees it,
+// even if it somehow bypassed the input-field-level normalization.
+function parse(expr: string): MathNode {
+  return _mathjsParse(normalizeMathInput(expr));
+}
+function evaluate(expr: string, scope?: Record<string, unknown>): unknown {
+  const normalized = normalizeMathInput(expr);
+  return scope !== undefined ? _mathjsEvaluate(normalized, scope) : _mathjsEvaluate(normalized);
+}
 
 // Default display settings used when a solver is called without explicit
 // settings (keeps existing call sites backward-compatible).
@@ -985,3 +999,43 @@ export function generateImplicitPoints2D(
   return points;
 }
 
+
+/**
+ * Pulls the single-letter variable names out of an expression (ignoring
+ * known function names like sin/cos/log/pi/e), sorted alphabetically.
+ * Shared by the equation grapher and the 3D implicit surface plotter so an
+ * equation like "x^2 + y^2 + z^2 = 25" is recognized the same way everywhere.
+ */
+export function extractVariables(equation: string): string[] {
+  const knownFns = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "log", "ln", "exp", "sqrt", "abs", "pi", "e"]);
+  const matches = equation.match(/[a-zA-Z]+/g) || [];
+  const vars = new Set<string>();
+  for (const m of matches) {
+    if (knownFns.has(m.toLowerCase())) continue;
+    if (m.length === 1) vars.add(m);
+  }
+  return Array.from(vars).sort();
+}
+
+/**
+ * Rearranges "lhs = rhs" into a single "(lhs) - (rhs)" expression (F = 0
+ * form) and reports which variables it uses. Returns an error message
+ * instead of throwing so callers can show it inline.
+ */
+export function parseEquationToZeroForm(
+  equation: string
+): { vars: string[]; expr: string } | { error: string } {
+  const parts = equation.split("=");
+  if (parts.length !== 2) {
+    return { error: "Use format: expression = expression, e.g. x^2 + y^2 + z^2 = 25" };
+  }
+  const expr = `(${parts[0].trim()}) - (${parts[1].trim()})`;
+  const vars = extractVariables(expr);
+  if (vars.length === 0) {
+    return { error: "No variable detected — use x, y, and/or z" };
+  }
+  if (vars.length > 3) {
+    return { error: "Only up to 3 variables (x, y, z) are supported for graphing" };
+  }
+  return { vars, expr };
+}
