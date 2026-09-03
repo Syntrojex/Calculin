@@ -51,7 +51,12 @@ export function DerivativeSolver() {
             Derivative Calculator
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); solve(); }
+          }}
+        >
           <div className="space-y-2">
             <Label>Function f(x)</Label>
             <MathInput

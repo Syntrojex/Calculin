@@ -9,7 +9,6 @@ import { Binary, ArrowLeftRight } from "lucide-react";
 import { StepsReveal } from "./StepsReveal";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
-
 const DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 function subscript(n: number): string {
@@ -78,36 +77,35 @@ export function NumberConversions() {
     const magnitudeStr = value.trim().toUpperCase().replace(/^-/, "");
 
     const steps: string[] = [];
-    if (isNegative) steps.push(`Note: value is negative — converting the magnitude, then re-applying the sign.`);
+    if (isNegative) steps.push(`##Note\nThe value is negative — convert the magnitude first, then re-apply the sign.`);
 
     if (fb !== 10) {
-      steps.push(`Step 1 — Convert ${magnitudeStr} (base ${fb}) to decimal:`);
       const digits = magnitudeStr.split("");
       const terms = digits.map((d, i) => {
         const power = digits.length - 1 - i;
         const digitVal = DIGITS.indexOf(d);
-        return `${digitVal}×${fb}${superscriptLike(power)}`;
+        return `${digitVal}\\times ${fb}^{${power}}`;
       });
-      steps.push(`= ${terms.join(" + ")} = ${absDecimal}₁₀${isNegative ? "  →  " + decimalValue + "₁₀" : ""}`);
+      steps.push(`##Step 1 — Convert to Decimal\nExpand each digit of $${magnitudeStr}_{${fb}}$ by its place value:\n$$${terms.join(" + ")} = ${absDecimal}_{10}${isNegative ? ` \\;\\to\\; ${decimalValue}_{10}` : ""}$$`);
     } else {
-      steps.push(`Step 1 — Value is already in decimal: ${decimalValue}`);
+      steps.push(`##Step 1 — Already in Decimal\n$$${decimalValue}_{10}$$`);
     }
 
     if (tb !== 10) {
-      steps.push(`Step 2 — Convert ${absDecimal} (decimal) to base ${tb} using repeated division:`);
+      steps.push(`##Step 2 — Convert to Base ${tb}\nRepeatedly divide by ${tb}, recording each remainder:`);
       let n = absDecimal;
       const divisionSteps: string[] = [];
-      if (n === 0) divisionSteps.push(`0 ÷ ${tb} = 0 remainder 0`);
+      if (n === 0) divisionSteps.push(`$$0 \\div ${tb} = 0 \\text{ remainder } 0$$`);
       while (n > 0) {
         const r = n % tb;
         const q = Math.floor(n / tb);
-        divisionSteps.push(`${n} ÷ ${tb} = ${q} remainder ${DIGITS[r]}`);
+        divisionSteps.push(`$$${n} \\div ${tb} = ${q} \\text{ remainder } ${DIGITS[r]}$$`);
         n = q;
       }
-      steps.push(...divisionSteps);
-      steps.push(`Reading remainders bottom-to-top: ${fromDecimal(decimalValue, tb)}${subscript(tb)}`);
+      steps.push(`##Division Steps\n${divisionSteps.join("\n\n")}`);
+      steps.push(`##Result\nReading the remainders bottom-to-top:\n$$${fromDecimal(decimalValue, tb)}_{${tb}}$$`);
     } else {
-      steps.push(`Step 2 — Target base is decimal, result = ${decimalValue}`);
+      steps.push(`##Step 2 — Target Base is Decimal\n$$${decimalValue}$$`);
     }
 
     setCustom({ decimal: decimalValue, result: fromDecimal(decimalValue, tb), steps });
@@ -125,7 +123,12 @@ export function NumberConversions() {
           </CardTitle>
           <p className="text-xs text-muted-foreground">Convert between binary, octal, decimal, hexadecimal — or any base from 2 to 36.</p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); convert(); }
+          }}
+        >
           <div className="space-y-1">
             <Label className="text-xs">Number</Label>
             <Input
@@ -215,9 +218,4 @@ export function NumberConversions() {
       )}
     </div>
   );
-}
-
-function superscriptLike(n: number): string {
-  const map: Record<string, string> = { "0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹","-":"⁻" };
-  return n.toString().split("").map(d => map[d] ?? d).join("");
 }

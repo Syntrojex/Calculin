@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { MathText } from "./MathText";
+import { MathTex } from "./MathTex";
 import { useSettings } from "@/contexts/SettingsContext";
 
 interface StepsRevealProps {
@@ -11,6 +12,83 @@ interface StepsRevealProps {
 }
 
 const SPEED_MULTIPLIER = { slow: 1.6, normal: 1, fast: 0.55 };
+
+/**
+ * A step string can use a small markup so it renders like a real textbook
+ * solution instead of a flat line of unicode:
+ *   "##Header text"   as the FIRST line -> bold sub-heading for this step
+ *   "$$ ...latex... $$"                 -> centered KaTeX display equation
+ *   "$...latex...$" inline in a sentence -> inline KaTeX
+ * Anything else is plain prose. Old plain-string steps (no $ or ## at all)
+ * render exactly as before via MathText, so nothing already using
+ * StepsReveal breaks.
+ */
+/** Splits a string into plain-text / inline-math / display-math segments. */
+function splitMathSegments(body: string): { kind: "text" | "inline" | "display"; content: string }[] {
+  const parts: { kind: "text" | "inline" | "display"; content: string }[] = [];
+  const re = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    if (m.index > last) parts.push({ kind: "text", content: body.slice(last, m.index) });
+    if (m[1] !== undefined) parts.push({ kind: "display", content: m[1].trim() });
+    else parts.push({ kind: "inline", content: (m[2] ?? "").trim() });
+    last = re.lastIndex;
+  }
+  if (last < body.length) parts.push({ kind: "text", content: body.slice(last) });
+  return parts;
+}
+
+function MathSegments({ text, display }: { text: string; display?: boolean }) {
+  return (
+    <>
+      {splitMathSegments(text).map((p, i) =>
+        p.kind === "text" ? (
+          <span key={i}>{p.content}</span>
+        ) : (
+          <MathTex key={i} latex={p.content} display={display && p.kind === "display"} />
+        )
+      )}
+    </>
+  );
+}
+
+function StepContent({ text }: { text: string }) {
+  let body = text;
+  let header: string | null = null;
+
+  if (body.startsWith("##")) {
+    const nl = body.indexOf("\n");
+    if (nl === -1) {
+      header = body.slice(2).trim();
+      body = "";
+    } else {
+      header = body.slice(2, nl).trim();
+      body = body.slice(nl + 1).trim();
+    }
+  }
+
+  if (!header && !/\$/.test(body)) {
+    // Fast path: no markup at all — behaves exactly like the old plain
+    // StepsReveal did, via the existing unicode-aware MathText formatter.
+    return <MathText text={body} />;
+  }
+
+  return (
+    <div className="space-y-1">
+      {header && (
+        <div className="font-semibold text-foreground">
+          <MathSegments text={header} />
+        </div>
+      )}
+      {body && (
+        <div className="leading-relaxed">
+          <MathSegments text={body} display />
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Renders solution steps with a sequential, left-to-right "typewriter style"
@@ -44,8 +122,8 @@ export function StepsReveal({ steps, show = true, title = "Solution Steps:", res
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-medium">
                 {i + 1}
               </span>
-              <span className="text-sm font-mono break-words">
-                <MathText text={step} />
+              <span className="text-sm break-words min-w-0 flex-1">
+                <StepContent text={step} />
               </span>
             </motion.div>
           ))}

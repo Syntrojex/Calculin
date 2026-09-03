@@ -12,6 +12,7 @@ import { StepsReveal } from "./StepsReveal";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
+import { exprToLatex } from "@/lib/latex";
 
 interface LimitResult {
   value: string;
@@ -23,6 +24,12 @@ interface LimitResult {
   numericValue?: number;
 }
 
+function approachingLatex(approaching: string): string {
+  if (["Infinity", "inf", "∞"].includes(approaching)) return "\\infty";
+  if (["-Infinity", "-inf", "-∞"].includes(approaching)) return "-\\infty";
+  return exprToLatex(approaching);
+}
+
 function computeLimit(expr: string, variable: string, approaching: string, fmt: (n: number) => string): LimitResult {
   try {
     if (!expr || !expr.trim()) {
@@ -32,7 +39,8 @@ function computeLimit(expr: string, variable: string, approaching: string, fmt: 
       return { value: "", steps: [], error: "Please enter a variable name." };
     }
     const steps: string[] = [];
-    steps.push(`Find: lim(${variable}→${approaching}) ${expr}`);
+    const limitHeaderLatex = `\\lim_{${variable}\\to ${approachingLatex(approaching)}} ${exprToLatex(expr)}`;
+    steps.push(`##Given\n$$${limitHeaderLatex}$$`);
 
     let target: number;
     if (approaching === "Infinity" || approaching === "inf" || approaching === "∞") {
@@ -61,8 +69,6 @@ function computeLimit(expr: string, variable: string, approaching: string, fmt: 
       const leftVals: number[] = [];
       const rightVals: number[] = [];
 
-      steps.push(`Numerical approach from both sides:`);
-
       for (const d of deltas) {
         scope[variable] = target - d;
         const lv = evaluate(expr, scope) as number;
@@ -73,29 +79,28 @@ function computeLimit(expr: string, variable: string, approaching: string, fmt: 
         rightVals.push(rv);
       }
 
-      steps.push(`  Left:  ${leftVals.map(v => fmt(v)).join(" → ")}`);
-      steps.push(`  Right: ${rightVals.map(v => fmt(v)).join(" → ")}`);
+      steps.push(`##Numerical Approach\nEvaluate $f(${variable})$ as $${variable}$ gets closer to $${approachingLatex(approaching)}$ from both sides:\n\nFrom the left: ${leftVals.map(v => fmt(v)).join(" → ")}\n\nFrom the right: ${rightVals.map(v => fmt(v)).join(" → ")}`);
 
       const leftLimit = leftVals[leftVals.length - 1];
       const rightLimit = rightVals[rightVals.length - 1];
 
       if (!isFinite(leftLimit) && !isFinite(rightLimit)) {
         if (leftLimit === rightLimit) {
-          steps.push(`Both sides → ${leftLimit > 0 ? "+∞" : "-∞"}`);
+          const signLatex = leftLimit > 0 ? "+\\infty" : "-\\infty";
+          steps.push(`##Conclusion\nBoth sides diverge the same way:\n$$${limitHeaderLatex} = ${signLatex}$$`);
           return { value: leftLimit > 0 ? "+∞" : "-∞", steps };
         }
-        steps.push(`Left → ${leftLimit > 0 ? "+∞" : "-∞"}, Right → ${rightLimit > 0 ? "+∞" : "-∞"}`);
+        steps.push(`##Conclusion\nThe left and right sides diverge in different directions (left → ${leftLimit > 0 ? "+∞" : "-∞"}, right → ${rightLimit > 0 ? "+∞" : "-∞"}), so the two-sided limit does not exist:\n$$${limitHeaderLatex} = \\text{DNE}$$`);
         return { value: "DNE (Does Not Exist)", steps };
       }
 
       if (Math.abs(leftLimit - rightLimit) < 0.001) {
         const avg = (leftLimit + rightLimit) / 2;
         const rounded = Math.abs(avg - Math.round(avg)) < 0.0001 ? Math.round(avg) : parseFloat(avg.toFixed(6));
-        steps.push(`Left limit ≈ Right limit ≈ ${fmt(rounded)}`);
-        steps.push(`∴ Limit exists = ${fmt(rounded)}`);
+        steps.push(`##Conclusion\nThe left limit and right limit agree — the two-sided limit exists:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
         return { value: rounded.toString(), steps, numericValue: rounded };
       } else {
-        steps.push(`Left limit (${fmt(leftLimit)}) ≠ Right limit (${fmt(rightLimit)})`);
+        steps.push(`##Conclusion\nThe left limit ($${exprToLatex(fmt(leftLimit))}$) and right limit ($${exprToLatex(fmt(rightLimit))}$) don't agree, so the two-sided limit does not exist:\n$$${limitHeaderLatex} = \\text{DNE}$$`);
         return { value: "DNE (Does Not Exist)", steps };
       }
     } else {
@@ -108,23 +113,23 @@ function computeLimit(expr: string, variable: string, approaching: string, fmt: 
         results.push(evaluate(expr, scope) as number);
       }
 
-      steps.push(`Values as ${variable} → ${approaching}:`);
-      steps.push(`  ${vals.map((v, i) => `f(${v})=${fmt(results[i])}`).join(", ")}`);
+      steps.push(`##Numerical Approach\nEvaluate $f(${variable})$ as $${variable} \\to ${approachingLatex(approaching)}$:\n\n${vals.map((v, i) => `f(${v})=${fmt(results[i])}`).join(", ")}`);
 
       const last = results[results.length - 1];
       const secondLast = results[results.length - 2];
 
       if (!isFinite(last)) {
-        return { value: last > 0 ? "+∞" : "-∞", steps: [...steps, `Limit = ${last > 0 ? "+∞" : "-∞"}`] };
+        const signLatex = last > 0 ? "+\\infty" : "-\\infty";
+        return { value: last > 0 ? "+∞" : "-∞", steps: [...steps, `##Conclusion\n$$${limitHeaderLatex} = ${signLatex}$$`] };
       }
 
       if (Math.abs(last - secondLast) < 0.01) {
         const rounded = parseFloat(last.toFixed(6));
-        steps.push(`Converges to ${fmt(rounded)}`);
+        steps.push(`##Conclusion\nThe values are converging — the limit exists:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
         return { value: rounded.toString(), steps, numericValue: rounded };
       }
 
-      steps.push(`Limit ≈ ${fmt(last)}`);
+      steps.push(`##Conclusion\n$$${limitHeaderLatex} \\approx ${exprToLatex(fmt(last))}$$`);
       return { value: last.toFixed(6), steps, numericValue: last };
     }
   } catch (e: unknown) {
@@ -158,7 +163,12 @@ export function LimitsCalculator() {
             Limits Calculator
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); solve(); }
+          }}
+        >
           <div className="space-y-1">
             <Label className="text-xs">Function f(x)</Label>
             <MathInput value={expr} onChange={setExpr} placeholder="e.g. sin(x)/x" onEnter={solve} />

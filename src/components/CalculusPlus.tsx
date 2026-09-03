@@ -56,7 +56,12 @@ export function CalculusPlus() {
             Calculus+ — Partial Derivatives & Extrema
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); solve(); }
+          }}
+        >
           <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
             <TabsList className="w-full">
               <TabsTrigger value="partial" className="flex-1">∂f/∂x</TabsTrigger>

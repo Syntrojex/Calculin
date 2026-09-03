@@ -1,4 +1,7 @@
 import { useRef, useEffect, useCallback } from "react";
+import { Camera } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { downloadCanvasPNG, slugifyForFilename } from "@/lib/canvas-export";
 
 export interface GraphSeries {
   expr: string;
@@ -21,11 +24,27 @@ interface GraphCanvasProps {
   yMax?: number;
   /** Extra highlighted points drawn on top (e.g. intersection points between compared functions). */
   markers?: { x: number; y: number }[];
+  /** Show the "download as PNG" button in the top-right corner. Default true.
+   *  Always visible on mobile too — this isn't hidden behind a "sm:" breakpoint. */
+  showDownload?: boolean;
+  /** Filename (without extension) used when downloading. Defaults to the first series' expression. */
+  downloadFilename?: string;
 }
 
 const FALLBACK_VARS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
 
-export function GraphCanvas({ series, xMin, xMax, height = 420, title, yMin: yMinProp, yMax: yMaxProp, markers }: GraphCanvasProps) {
+export function GraphCanvas({
+  series,
+  xMin,
+  xMax,
+  height = 420,
+  title,
+  yMin: yMinProp,
+  yMax: yMaxProp,
+  markers,
+  showDownload = true,
+  downloadFilename,
+}: GraphCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const draw = useCallback(() => {
@@ -216,11 +235,27 @@ export function GraphCanvas({ series, xMin, xMax, height = 420, title, yMin: yMi
   }, [draw]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="w-full rounded-xl border border-border"
-      style={{ height }}
-    />
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        className="w-full rounded-xl border border-border"
+        style={{ height }}
+      />
+      {showDownload && series.length > 0 && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="absolute top-2 right-2 h-8 w-8 bg-background/80 backdrop-blur-sm flex"
+          title="Download graph as PNG"
+          aria-label="Download graph as PNG"
+          onClick={() =>
+            downloadCanvasPNG(canvasRef, `calculin-graph-${slugifyForFilename(downloadFilename ?? series[0].expr)}`)
+          }
+        >
+          <Camera className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
   );
 }
 

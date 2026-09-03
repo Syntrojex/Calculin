@@ -69,8 +69,8 @@ export function UnitConverter() {
     const converted = to.fromBase(base);
     const baseUnitName = units[category][0].name;
     const steps = [
-      `Convert ${v} ${from.name} to ${baseUnitName}: ${v} → ${formatNumber(base, settings)} ${baseUnitName}`,
-      `Convert ${formatNumber(base, settings)} ${baseUnitName} to ${to.name}: ${formatNumber(base, settings)} → ${formatNumber(converted, settings)} ${to.name}`,
+      `##Convert to the Base Unit\n$$${v}\\text{ ${from.name}} = ${formatNumber(base, settings)}\\text{ ${baseUnitName}}$$`,
+      `##Convert to the Target Unit\n$$${formatNumber(base, settings)}\\text{ ${baseUnitName}} = ${formatNumber(converted, settings)}\\text{ ${to.name}}$$`,
     ];
     setResult({ from: from.name, to: to.name, converted, base, baseUnitName, steps });
   };
@@ -91,7 +91,12 @@ export function UnitConverter() {
             Unit Converter
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); convert(); }
+          }}
+        >
           <div className="space-y-1">
             <Label className="text-xs">Category</Label>
             <Select value={category} onValueChange={(v) => { setCategory(v as Category); setFromIdx("0"); setToIdx("1"); setResult(null); }}>

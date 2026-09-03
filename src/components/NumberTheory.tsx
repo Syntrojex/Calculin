@@ -17,15 +17,15 @@ function lcm(a: number, b: number): number { return Math.abs(a * b) / gcd(a, b);
 
 function gcdSteps(a: number, b: number): string[] {
   const steps: string[] = [];
-  steps.push(`Euclidean Algorithm: gcd(${a}, ${b})`);
+  steps.push(`##Euclidean Algorithm\nFind $\\gcd(${a}, ${b})$ by repeated division — each step divides the previous divisor by the previous remainder:`);
   let x = Math.abs(a), y = Math.abs(b);
   while (y !== 0) {
     const q = Math.floor(x / y);
     const r = x % y;
-    steps.push(`${x} = ${q} × ${y} + ${r}`);
+    steps.push(`$$${x} = ${q}\\times ${y} + ${r}$$`);
     x = y; y = r;
   }
-  steps.push(`GCD = ${x}`);
+  steps.push(`##Result\nThe GCD is the last non-zero remainder:\n$$\\gcd(${a}, ${b}) = ${x}$$`);
   return steps;
 }
 
@@ -76,7 +76,7 @@ function GcdLcm() {
     const g = gcd(Math.abs(a), Math.abs(b));
     const l = a === 0 || b === 0 ? 0 : lcm(a, b);
     const steps = gcdSteps(a, b);
-    steps.push(`LCM(${a}, ${b}) = |${a} × ${b}| / GCD = ${Math.abs(a * b)} / ${g} = ${l}`);
+    steps.push(`##LCM from the GCD\nUse the identity $\\text{lcm}(a,b) = \\dfrac{|a \\cdot b|}{\\gcd(a,b)}$:\n$$\\text{lcm}(${a}, ${b}) = \\frac{|${a}\\times ${b}|}{${g}} = \\frac{${Math.abs(a * b)}}{${g}} = ${l}$$`);
     setResult({ gcd: g, lcm: l, steps });
   };
 
@@ -85,7 +85,7 @@ function GcdLcm() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1"><Label className="text-xs">Number A</Label><Input value={aVal} onChange={e => setAVal(e.target.value)} className="font-mono" /></div>
+        <div className="space-y-1"><Label className="text-xs">Number A</Label><Input value={aVal} onChange={e => setAVal(e.target.value)} className="font-mono" onKeyDown={e => e.key === "Enter" && calculate()} /></div>
         <div className="space-y-1"><Label className="text-xs">Number B</Label><Input value={bVal} onChange={e => setBVal(e.target.value)} className="font-mono" onKeyDown={e => e.key === "Enter" && calculate()} /></div>
       </div>
       {!settings.autoCalculate && <Button onClick={calculate} className="w-full">Calculate GCD & LCM</Button>}
@@ -127,17 +127,18 @@ function PrimeFactorization() {
     const factors = primeFactors(n);
     const prime = isPrime(n);
     const steps: string[] = [];
-    steps.push(`Factorize: ${n}`);
-    if (prime) { steps.push(`${n} is prime!`); }
+    steps.push(`##Given\nFind the prime factorization of $${n}$.`);
+    if (prime) { steps.push(`##Already Prime\n$${n}$ has no divisors other than $1$ and itself — it's prime.`); }
     else {
       let cur = n;
       for (const { factor, exp } of factors) {
         for (let e = 0; e < exp; e++) {
-          steps.push(`${cur} ÷ ${factor} = ${cur / factor}`);
+          steps.push(`##Divide Out the Smallest Prime Factor\n$$${cur} \\div ${factor} = ${cur / factor}$$`);
           cur = cur / factor;
         }
       }
-      steps.push(`Prime factorization: ${factors.map(({ factor, exp }) => exp > 1 ? `${factor}^${exp}` : `${factor}`).join(" × ")}`);
+      const factLatex = factors.map(({ factor, exp }) => exp > 1 ? `${factor}^{${exp}}` : `${factor}`).join(" \\times ");
+      steps.push(`##Prime Factorization\n$$${n} = ${factLatex}$$`);
     }
 
     // Divisor count from the prime factorization: (e1+1)(e2+1)... — this is
@@ -161,7 +162,7 @@ function PrimeFactorization() {
       if (divs.length > 500) break; // safety cap, still cheap either way
     }
     divs = [...new Set(divs)].sort((a, b) => a - b);
-    steps.push(`Number of divisors: ${divisorCount}`);
+    steps.push(`##Number of Divisors\nUsing $(e_1+1)(e_2+1)\\cdots$ from each prime's exponent:\n$$\\tau(${n}) = ${divisorCount}$$`);
 
     setResult({ factors, isPrime: prime, divisors: divs.slice(0, 30), divisorCount, steps });
   };

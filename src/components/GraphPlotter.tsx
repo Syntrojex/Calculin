@@ -13,6 +13,7 @@ import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
 import { LineChart, Plus, Trash2, Box, Crosshair, Maximize2, X, Sigma, Camera } from "lucide-react";
 import { normalizeMathInput } from "@/lib/text-normalize";
+import { downloadCanvasPNG } from "@/lib/canvas-export";
 
 const Graph3D = lazy(() => import("./Graph3D").then(m => ({ default: m.Graph3D })));
 const ImplicitSurface3D = lazy(() => import("./ImplicitSurface3D").then(m => ({ default: m.ImplicitSurface3D })));
@@ -82,38 +83,7 @@ export function GraphPlotter() {
   });
   const [implicitError, setImplicitError] = useState<string | null>(null);
   const [is3dFullscreen, setIs3dFullscreen] = useState(false);
-  const chart2dRef = useRef<HTMLDivElement>(null);
   const chart3dRef = useRef<HTMLDivElement>(null);
-
-  const downloadCanvasPNG = async (containerRef: React.RefObject<HTMLDivElement | null>, filename: string) => {
-    const sourceCanvas = containerRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
-    if (!sourceCanvas) return;
-
-    // The 3D canvas renders with a transparent background (alpha:true) so it
-    // composites nicely inside the card. Exporting it as-is leaves the PNG's
-    // background transparent, which most image viewers simply show as plain
-    // white. Flatten it onto the app's actual theme background color first
-    // so the download looks like what's on screen.
-    const flattened = document.createElement("canvas");
-    flattened.width = sourceCanvas.width;
-    flattened.height = sourceCanvas.height;
-    const ctx = flattened.getContext("2d");
-    if (!ctx) return;
-    const bg = getComputedStyle(document.documentElement).getPropertyValue("--background").trim();
-    ctx.fillStyle = bg || (document.documentElement.classList.contains("dark") ? "#0a0a0f" : "#ffffff");
-    ctx.fillRect(0, 0, flattened.width, flattened.height);
-    ctx.drawImage(sourceCanvas, 0, 0);
-
-    const blob: Blob | null = await new Promise((resolve) => flattened.toBlob(resolve, "image/png"));
-    if (!blob) return;
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.download = `${filename}.png`;
-    link.href = url;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
 
   useEffect(() => {
     if (!is3dFullscreen) return;
@@ -431,7 +401,7 @@ export function GraphPlotter() {
                 variant="outline"
                 size="icon"
                 onClick={() => downloadCanvasPNG(chart3dRef, surfaceType === "explicit" ? `calculin-3d-${plotted3d.slice(0, 20)}` : "calculin-implicit-surface")}
-                className="hidden sm:flex h-8 w-8 text-primary border-primary/40 hover:bg-primary/10"
+                className="flex h-8 w-8 text-primary border-primary/40 hover:bg-primary/10"
                 aria-label="Download PNG"
                 title="Download PNG"
               >
@@ -452,8 +422,11 @@ export function GraphPlotter() {
           </div>
           <Suspense
             fallback={
-              <div className="h-[460px] rounded-xl border border-border flex items-center justify-center text-sm text-muted-foreground bg-muted/20">
-                Loading 3D engine…
+              <div className="h-[460px] rounded-xl border border-border overflow-hidden relative bg-muted/20">
+                <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-muted/40 via-muted/10 to-muted/40" />
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+                  Loading 3D engine…
+                </div>
               </div>
             }
           >
@@ -483,22 +456,13 @@ export function GraphPlotter() {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
               <Card className="shadow-lg border-border/50">
                 <CardContent className="pt-6 space-y-3">
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => downloadCanvasPNG(chart2dRef, `calculin-2d-${(plotted[0]?.expr ?? "graph").slice(0, 20)}`)}
-                      className="h-8 w-8 text-primary border-primary/40 hover:bg-primary/10"
-                      aria-label="Download PNG"
-                      title="Download PNG"
-                    >
-                      <Camera className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div ref={chart2dRef}>
-                    <GraphCanvas series={plotted} xMin={plotRange.lo} xMax={plotRange.hi} markers={intersections} />
-                  </div>
+                  <GraphCanvas
+                    series={plotted}
+                    xMin={plotRange.lo}
+                    xMax={plotRange.hi}
+                    markers={intersections}
+                    downloadFilename={plotted[0]?.expr}
+                  />
                   {intersections.length > 0 && (
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">

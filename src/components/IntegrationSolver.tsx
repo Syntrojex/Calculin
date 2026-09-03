@@ -1,4 +1,4 @@
-import { useState, useEffect , useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense, lazy } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,12 +16,33 @@ import {
 import { GraphCanvas } from "./GraphCanvas";
 import { StepsReveal } from "./StepsReveal";
 import type { MathResult } from "@/lib/math-solver";
-import { ArrowRight, Infinity as InfinityIcon } from "lucide-react";
+import { ArrowRight, Infinity as InfinityIcon, Camera } from "lucide-react";
 import { MathText } from "./MathText";
 import { LaTeXExportButton } from "./LaTeXExportButton";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
+import { downloadCanvasPNG, slugifyForFilename } from "@/lib/canvas-export";
+
+const Graph3D = lazy(() => import("./Graph3D").then((m) => ({ default: m.Graph3D })));
+
+/** Renames the user's chosen variable names to plain "x"/"y" so the shared
+ *  Graph3D component (which always evaluates with scope {x, y}) can plot a
+ *  double integral's integrand even when the user typed e.g. u, v as their
+ *  variable names. */
+function renameToXY(expr: string, varX: string, varY: string): string {
+  const px = "\u0000X\u0000", py = "\u0000Y\u0000";
+  let out = expr.replace(new RegExp(`\\b${varX}\\b`, "g"), px);
+  out = out.replace(new RegExp(`\\b${varY}\\b`, "g"), py);
+  return out.replace(new RegExp(px, "g"), "x").replace(new RegExp(py, "g"), "y");
+}
+
+/** Strips the trailing "+ C" from an indefinite-integral result so it can be
+ *  plotted as a concrete function (C = 0, i.e. one representative member of
+ *  the family of antiderivatives). */
+function stripConstantOfIntegration(result: string): string {
+  return result.replace(/\s*\+\s*C\s*$/, "").trim();
+}
 
 export function IntegrationSolver() {
   const settings = useSettings();
@@ -33,6 +54,7 @@ export function IntegrationSolver() {
   const [showGraph, setShowGraph] = useState(settings.alwaysShowGraphs);
   const [mode, setMode] = useState<"definite" | "indefinite" | "double">("definite");
   const [result, setResult] = useState<MathResult | null>(null);
+  const chart3dRef = useRef<HTMLDivElement>(null);
 
   const [varY, setVarY] = useState("y");
   const [yLower, setYLower] = useState("0");
@@ -60,6 +82,17 @@ export function IntegrationSolver() {
 
   const points = showGraph && mode !== "double" ? generateGraphPoints(expr, variable, -settings.defaultGraphRange, settings.defaultGraphRange) : [];
 
+  const antiderivativeExpr = mode === "indefinite" && result && !result.error ? stripConstantOfIntegration(result.result) : "";
+  const antiderivativePoints = showGraph && antiderivativeExpr
+    ? generateGraphPoints(antiderivativeExpr, variable, -settings.defaultGraphRange, settings.defaultGraphRange)
+    : [];
+
+  const doubleIntegralRange = Math.max(
+    Math.abs(parseFloat(lower) || 0), Math.abs(parseFloat(upper) || 0),
+    Math.abs(parseFloat(yLower) || 0), Math.abs(parseFloat(yUpper) || 0),
+    2
+  ) * 1.4;
+
   return (
     <div className="space-y-6">
       <Card className="border-border/50 shadow-lg">
@@ -69,7 +102,12 @@ export function IntegrationSolver() {
             Integration Calculator
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); solve(); }
+          }}
+        >
           <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
             <TabsList className="w-full">
               <TabsTrigger value="definite" className="flex-1">Definite ∫ₐᵇ</TabsTrigger>
@@ -147,12 +185,10 @@ export function IntegrationSolver() {
               <Switch checked={showSteps} onCheckedChange={setShowSteps} />
               Step-by-step
             </label>
-            {mode !== "double" && (
-              <label className="flex items-center gap-2 text-sm">
-                <Switch checked={showGraph} onCheckedChange={setShowGraph} />
-                Show Graph
-              </label>
-            )}
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={showGraph} onCheckedChange={setShowGraph} />
+              Show Graph
+            </label>
           </div>
 
           {!settings.autoCalculate && (
@@ -197,13 +233,67 @@ export function IntegrationSolver() {
       )}
 
       {showGraph && mode !== "double" && points.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
           <Card className="shadow-lg border-border/50">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Graph of f(x)</CardTitle>
+              <CardTitle className="text-sm text-muted-foreground">Graph of f({variable})</CardTitle>
             </CardHeader>
             <CardContent>
               <GraphCanvas series={[{ expr, points }]} xMin={-settings.defaultGraphRange} xMax={settings.defaultGraphRange} />
+            </CardContent>
+          </Card>
+
+          {mode === "indefinite" && antiderivativePoints.length > 0 && (
+            <Card className="shadow-lg border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Graph of Antiderivative F({variable}) (with C = 0)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <GraphCanvas
+                  series={[{ expr: antiderivativeExpr, points: antiderivativePoints }]}
+                  xMin={-settings.defaultGraphRange}
+                  xMax={settings.defaultGraphRange}
+                />
+              </CardContent>
+            </Card>
+          )}
+        </motion.div>
+      )}
+
+      {showGraph && mode === "double" && result && !result.error && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+          <Card className="shadow-lg border-border/50">
+            <CardHeader className="pb-2 flex-row items-center justify-between">
+              <CardTitle className="text-sm text-muted-foreground">
+                3D Surface: f({variable}, {varY}) over [{lower}, {upper}] × [{yLower}, {yUpper}]
+              </CardTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => downloadCanvasPNG(chart3dRef, `calculin-double-integral-${slugifyForFilename(expr)}`)}
+                className="h-8 w-8 text-primary border-primary/40 hover:bg-primary/10 shrink-0"
+                aria-label="Download PNG"
+                title="Download PNG"
+              >
+                <Camera className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <Suspense
+                fallback={
+                  <div className="h-[420px] rounded-xl border border-border overflow-hidden relative bg-muted/20">
+                    <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-muted/40 via-muted/10 to-muted/40" />
+                    <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+                      Loading 3D engine…
+                    </div>
+                  </div>
+                }
+              >
+                <div ref={chart3dRef}>
+                  <Graph3D expression={renameToXY(expr, variable, varY)} range={doubleIntegralRange} />
+                </div>
+              </Suspense>
             </CardContent>
           </Card>
         </motion.div>

@@ -22,7 +22,7 @@ const ROWS: Key[][] = [
     { label: "asin", insert: "asin(", category: "fn" },
     { label: "acos", insert: "acos(", category: "fn" },
     { label: "atan", insert: "atan(", category: "fn" },
-    { label: "abs",  insert: "abs(",  category: "fn" },
+    { label: "|x|",  insert: "abs(",  category: "fn" },
     { label: "x²",  insert: "^2",    category: "op" },
     { label: "xⁿ",  insert: "^",     category: "op" },
   ],
@@ -62,6 +62,7 @@ const ROWS: Key[][] = [
     { label: "0", insert: "0",  category: "num" },
     { label: "00", insert: "00", category: "num" },
     { label: "±", insert: "-",  category: "op"  },
+    { label: "1/x", insert: "^(-1)", category: "op" },
     { label: "space", insert: " ", category: "op" },
   ],
 ];
@@ -108,7 +109,7 @@ export function MathKeypad({ onInput, onBackspace, onClear, onEnter }: MathKeypa
           <div className="flex gap-1.5 ml-auto">
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">fn</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-500 border border-violet-500/20">const</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground border border-border">num / op</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground border border-border">numbers & operators</span>
           </div>
         </div>
 
@@ -123,7 +124,7 @@ export function MathKeypad({ onInput, onBackspace, onClear, onEnter }: MathKeypa
 
           {/* Enter — full width */}
           <button
-            className="w-full h-9 rounded-lg border flex items-center justify-center gap-2 text-sm font-semibold transition-all bg-primary text-primary-foreground border-primary hover:bg-primary/90 active:scale-[0.98]"
+            className="w-full h-10 rounded-lg border flex items-center justify-center gap-2 text-sm font-semibold transition-all bg-primary text-primary-foreground border-primary hover:bg-primary/90 active:scale-[0.98]"
             onPointerDown={(e) => { e.preventDefault(); handleKey(ENTER_KEY); }}
           >
             <CornerDownLeft className="h-4 w-4" />
@@ -139,7 +140,7 @@ function KeyButton({ k, onPress }: { k: Key; onPress: () => void }) {
   const isBackspace = k.action === "backspace";
   const isClear     = k.action === "clear";
 
-  const base = "flex-1 h-9 min-w-0 rounded-lg border text-xs transition-all active:scale-[0.93] flex items-center justify-center";
+  const base = "flex-1 h-10 min-w-0 rounded-lg border text-xs transition-all active:scale-[0.93] flex items-center justify-center";
 
   const style = isBackspace
     ? "bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20 active:bg-rose-500/30"

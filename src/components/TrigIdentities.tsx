@@ -11,6 +11,7 @@ import { CheckCircle, XCircle, Copy, Check } from "lucide-react";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { normalizeMathInput } from "@/lib/text-normalize";
+import { exprToLatex } from "@/lib/latex";
 
 // ── Trig-aware symbolic simplification engine ────────────────────────────────
 // mathjs's default simplify() only knows algebra; these custom rules teach it
@@ -239,15 +240,15 @@ function ProveIdentity() {
   useAutoRun([lhs, rhs], verify, settings.autoCalculate);
 
   const steps: string[] = result ? [
-    `LHS: ${lhs}`,
-    ...result.lhsTrace.map((t, i) => `→ Simplify step ${i + 1}: ${t}`),
-    `RHS: ${rhs}`,
-    ...result.rhsTrace.map((t, i) => `→ Simplify step ${i + 1}: ${t}`),
+    `##Left-Hand Side\n$$${exprToLatex(lhs)}$$`,
+    ...result.lhsTrace.map((t, i) => `##Simplify LHS — Step ${i + 1}\n$$${exprToLatex(t)}$$`),
+    `##Right-Hand Side\n$$${exprToLatex(rhs)}$$`,
+    ...result.rhsTrace.map((t, i) => `##Simplify RHS — Step ${i + 1}\n$$${exprToLatex(t)}$$`),
     result.converged
-      ? `Both sides reduce to the same expression: ${result.lhsFinal} → Identity proved ✓`
+      ? `##Conclusion\nBoth sides reduce to the same expression:\n$$${exprToLatex(result.lhsFinal)}$$\n✓ Identity proved.`
       : result.match
-        ? `Both sides verified numerically equal across all test angles, though automatic simplification couldn't fully converge symbolically — this identity likely needs an extra algebraic step (e.g. cross-multiplying) beyond automatic rewriting.`
-        : `LHS and RHS do not match — this is not an identity.`,
+        ? `##Conclusion\nBoth sides are numerically equal across every test angle, though automatic simplification couldn't fully converge symbolically — this identity likely needs an extra algebraic step (e.g. cross-multiplying) beyond automatic rewriting.`
+        : `##Conclusion\nThe left-hand side and right-hand side do not match — this is **not** an identity.`,
   ] : [];
 
   return (
@@ -256,7 +257,12 @@ function ProveIdentity() {
         <CardTitle className="text-base">Prove Identity</CardTitle>
         <p className="text-xs text-muted-foreground">Enter both sides using x as the angle variable — get a step-by-step proof using trig identities.</p>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent
+        className="space-y-3"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); verify(); }
+        }}
+      >
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
           <Input value={lhs} onChange={e => setLhs(normalizeMathInput(e.target.value))} placeholder="LHS e.g. sin(x)^2+cos(x)^2" className="font-mono text-sm" />
           <span className="text-sm font-bold text-muted-foreground">=</span>

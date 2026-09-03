@@ -39,8 +39,26 @@ function collapseRemainingMultiplication(text: string): string {
   return text.replace(/\s*\*\s*/g, "·");
 }
 
+// This app's solvers only ever call mathjs's single-argument log(...), which
+// IS the natural logarithm (mathjs has no separate "ln" function — see
+// text-normalize.ts). So for display purposes "log(" always means "ln(" here;
+// showing the raw "log(" to a person reads as base-10 log and is confusing.
+function logToLn(text: string): string {
+  return text.replace(/\blog\(/g, "ln(");
+}
+
+// abs(EXPR) -> |EXPR| — standard absolute-value bar notation, easier to read
+// than a bare function call. Only rewrites the simple, non-nested-parens case
+// (the only shape this app's solvers ever produce, e.g. abs(x), abs(2*x+1));
+// anything with nested parentheses is left as abs(...) rather than risk a
+// mismatched bar from a naive regex.
+function absToBars(text: string): string {
+  return text.replace(/\babs\(([^()]*)\)/g, "|$1|");
+}
+
 export function formatMath(text: string): string {
-  let result = text;
+  let result = logToLn(text);
+  result = absToBars(result);
 
   result = collapseImplicitMultiplication(result);
 
@@ -73,6 +91,9 @@ export function formatMathHTML(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+
+  result = logToLn(result);
+  result = absToBars(result);
 
   result = collapseImplicitMultiplication(result);
 

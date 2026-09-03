@@ -26,6 +26,15 @@ export function normalizeMathInput(input: string): string {
   if (!input) return input;
   let s = input;
 
+  // mathjs has no built-in "ln" function — its single-argument log(x) IS the
+  // natural logarithm. Without this rewrite, typing "ln(x)" anywhere (derivative,
+  // integral, graphing, keypad) throws "Cannot process function ln" the moment
+  // mathjs tries to differentiate/evaluate it, even though it parses fine at
+  // first glance. Rewriting ln(...) -> log(...) up front means every solver,
+  // not just one, gets natural-log support for free. The UI still *displays*
+  // "log" as "ln" (see formatMath/formatMathHTML) so nothing user-facing changes.
+  s = s.replace(/\bln\s*\(/gi, "log(");
+
   // Multiplication / division / minus symbols people paste from Word/PDF.
   s = s.replace(/[×·]/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
 

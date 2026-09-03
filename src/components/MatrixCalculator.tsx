@@ -14,6 +14,13 @@ import { formatNumber } from "@/lib/number-format";
 
 type Op = "add" | "subtract" | "multiply" | "determinant" | "inverse" | "transpose" | "cramer" | "rank" | "ref";
 
+/** Renders a plain 2D numeric matrix as a LaTeX bmatrix, e.g. for
+ *  "$$A = \begin{bmatrix}1&2\\3&4\end{bmatrix}$$" style display steps. */
+function matrixLatex(m: number[][]): string {
+  const rows = m.map((row) => row.map((v) => (Number.isInteger(v) ? v.toString() : parseFloat(v.toFixed(4)).toString())).join(" & "));
+  return `\\begin{bmatrix}${rows.join("\\\\")}\\end{bmatrix}`;
+}
+
 function parseMatrix(text: string): number[][] {
   if (!text || !text.trim()) {
     throw new Error("Please enter matrix values.");
@@ -55,7 +62,7 @@ function gaussianElim(matrix: number[][]): { ref: number[][]; steps: string[]; r
   const cols = matrix[0].length;
   const m = matrix.map(r => [...r]); // deep copy
   const steps: string[] = [];
-  steps.push("Start: Row Echelon Form using Gaussian Elimination");
+  steps.push(`##Start\nReduce to Row Echelon Form using Gaussian Elimination:\n$$${matrixLatex(matrix)}$$`);
   let pivotRow = 0;
 
   for (let col = 0; col < cols && pivotRow < rows; col++) {
@@ -68,7 +75,7 @@ function gaussianElim(matrix: number[][]): { ref: number[][]; steps: string[]; r
 
     if (maxRow !== pivotRow) {
       [m[pivotRow], m[maxRow]] = [m[maxRow], m[pivotRow]];
-      steps.push(`R${pivotRow + 1} ↔ R${maxRow + 1}  (partial pivoting)`);
+      steps.push(`##Partial Pivoting\n$R_{${pivotRow + 1}} \\leftrightarrow R_{${maxRow + 1}}$ (swap to put the largest entry in the pivot position):\n$$${matrixLatex(m)}$$`);
     }
 
     // Scale pivot row
@@ -76,7 +83,7 @@ function gaussianElim(matrix: number[][]): { ref: number[][]; steps: string[]; r
     if (Math.abs(pivot - 1) > 1e-10) {
       const factor = 1 / pivot;
       m[pivotRow] = m[pivotRow].map(v => v * factor);
-      steps.push(`R${pivotRow + 1} → (1/${parseFloat(pivot.toFixed(4))}) × R${pivotRow + 1}`);
+      steps.push(`##Scale Pivot Row\n$$R_{${pivotRow + 1}} \\to \\frac{1}{${parseFloat(pivot.toFixed(4))}} R_{${pivotRow + 1}}$$\n$$${matrixLatex(m)}$$`);
     }
 
     // Eliminate below
@@ -85,7 +92,7 @@ function gaussianElim(matrix: number[][]): { ref: number[][]; steps: string[]; r
       if (Math.abs(factor) > 1e-10) {
         m[r] = m[r].map((v, c) => v - factor * m[pivotRow][c]);
         const fStr = parseFloat(factor.toFixed(4));
-        steps.push(`R${r + 1} → R${r + 1} - (${fStr})×R${pivotRow + 1}`);
+        steps.push(`##Eliminate Below the Pivot\n$$R_{${r + 1}} \\to R_{${r + 1}} - (${fStr})\\,R_{${pivotRow + 1}}$$\n$$${matrixLatex(m)}$$`);
       }
     }
     pivotRow++;
@@ -93,7 +100,7 @@ function gaussianElim(matrix: number[][]): { ref: number[][]; steps: string[]; r
 
   // Count non-zero rows for rank
   const rank = m.filter(row => row.some(v => Math.abs(v) > 1e-10)).length;
-  steps.push(`Rank = number of non-zero rows = ${rank}`);
+  steps.push(`##Rank\nThe rank is the number of non-zero rows remaining:\n$$\\text{rank} = ${rank}$$`);
 
   // Clean near-zeros
   const ref = m.map(row => row.map(v => Math.abs(v) < 1e-10 ? 0 : parseFloat(v.toFixed(6))));
@@ -125,16 +132,19 @@ export function MatrixCalculator() {
       if (op === "determinant") {
         const d = det(a) as number;
         const snapped = Math.abs(d) < 1e-10 ? 0 : d;
+        setSteps([`##Given\n$$A = ${matrixLatex(a)}$$`, `##Determinant\n$$\\det(A) = ${formatNumber(snapped, settings)}$$`]);
         setResult(`Determinant = ${formatNumber(snapped, settings)}`);
         return;
       }
       if (op === "inverse") {
         const r = inv(a) as number[][];
+        setSteps([`##Given\n$$A = ${matrixLatex(a)}$$`, `##Inverse\n$$A^{-1} = ${matrixLatex(r)}$$`]);
         setResult(formatMatrix(r, settings));
         return;
       }
       if (op === "transpose") {
         const r = transpose(a) as number[][];
+        setSteps([`##Given\n$$A = ${matrixLatex(a)}$$`, `##Transpose\nFlip rows and columns:\n$$A^T = ${matrixLatex(r)}$$`]);
         setResult(formatMatrix(r, settings));
         return;
       }
@@ -158,10 +168,10 @@ export function MatrixCalculator() {
 
         const D = det(a) as number;
         const stepList: string[] = [];
-        stepList.push(`System: A·x = b with ${n} unknowns`);
-        stepList.push(`Step 1: Compute D = det(A) = ${formatNumber(Math.round(D * 10000) / 10000, settings)}`);
+        stepList.push(`##System\n$$A\\vec{x} = \\vec{b}, \\qquad ${n} \\text{ unknowns}$$`);
+        stepList.push(`##Step 1 — Determinant of A\n$$D = \\det(A) = ${formatNumber(Math.round(D * 10000) / 10000, settings)}$$`);
         if (Math.abs(D) < 1e-12) {
-          stepList.push(`D = 0 → System has no unique solution (singular)`);
+          stepList.push(`##Singular System\n$D = 0$ — the system has no unique solution.`);
           setSteps(stepList);
           setResult("No unique solution");
           return;
@@ -172,9 +182,7 @@ export function MatrixCalculator() {
           const Ai = a.map((row, r) => row.map((v, c) => (c === i ? bv[r] : v)));
           const Di = det(Ai) as number;
           const xi = Di / D;
-          stepList.push(`Step ${i + 2}: Replace column ${i + 1} of A with b → A${i + 1}`);
-          stepList.push(`  det(A${i + 1}) = ${formatNumber(Math.round(Di * 10000) / 10000, settings)}`);
-          stepList.push(`  x${i + 1} = det(A${i + 1}) / D = ${formatNumber(Math.round(xi * 10000) / 10000, settings)}`);
+          stepList.push(`##Step ${i + 2} — Solve for $x_{${i + 1}}$\nReplace column ${i + 1} of $A$ with $\\vec{b}$ to form $A_{${i + 1}}$:\n$$${matrixLatex(Ai)}$$\n$$\\det(A_{${i + 1}}) = ${formatNumber(Math.round(Di * 10000) / 10000, settings)}, \\qquad x_{${i + 1}} = \\frac{\\det(A_{${i + 1}})}{D} = ${formatNumber(Math.round(xi * 10000) / 10000, settings)}$$`);
           xs.push(xi);
         }
 
@@ -185,10 +193,12 @@ export function MatrixCalculator() {
 
       const b = parseMatrix(matB);
       let r: number[][] | Matrix;
+      const opSymbol = op === "add" ? "+" : op === "subtract" ? "-" : "\\times";
       if (op === "add") r = add(a, b) as number[][];
       else if (op === "subtract") r = subtract(a, b) as number[][];
       else r = multiply(a, b);
 
+      setSteps([`##Given\n$$A = ${matrixLatex(a)}, \\qquad B = ${matrixLatex(b)}$$`, `##Result\n$$A ${opSymbol} B = ${matrixLatex(r as number[][])}$$`]);
       setResult(formatMatrix(r as number[][] | Matrix, settings));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Invalid matrix");
@@ -207,7 +217,12 @@ export function MatrixCalculator() {
             Matrix Calculator
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); calculate(); }
+          }}
+        >
           <div className="space-y-1">
             <Label className="text-xs">Operation</Label>
             <Select value={op} onValueChange={(v) => setOp(v as Op)}>
@@ -261,12 +276,10 @@ export function MatrixCalculator() {
             </div>
           )}
 
-          {(op === "rank" || op === "ref" || op === "cramer") && (
-            <label className="flex items-center gap-2 text-sm">
-              <Switch checked={showSteps} onCheckedChange={setShowSteps} />
-              Step-by-step
-            </label>
-          )}
+          <label className="flex items-center gap-2 text-sm">
+            <Switch checked={showSteps} onCheckedChange={setShowSteps} />
+            Step-by-step
+          </label>
 
           {!settings.autoCalculate && (
             <Button onClick={calculate} className="w-full gap-2">

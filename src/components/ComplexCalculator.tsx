@@ -32,6 +32,15 @@ function fmtComplex(c: Complex, s: Settings): string {
   return `${fmt(c.re, s)}${sign}${fmt(Math.abs(c.im), s)}i`;
 }
 
+/** Same as fmtComplex but with the sign-splitting done for LaTeX embedding
+ *  (avoids "3 + -4i" when the imaginary part is negative). */
+function czLatex(c: Complex, s: Settings): string {
+  if (Math.abs(c.im) < 1e-10) return fmt(c.re, s);
+  if (Math.abs(c.re) < 1e-10) return `${fmt(c.im, s)}i`;
+  const sign = c.im < 0 ? "-" : "+";
+  return `${fmt(c.re, s)} ${sign} ${fmt(Math.abs(c.im), s)}i`;
+}
+
 function fmtAngle(rad: number, s: Settings): string {
   const deg = rad * (180 / Math.PI);
   return s.useRadians ? `${fmt(rad, s)} rad (${fmt(deg, s)}°)` : `${fmt(deg, s)}° (${fmt(rad, s)} rad)`;
@@ -77,55 +86,55 @@ function parseComplex(re: string, im: string): Complex {
 
 function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings): { result: string; steps: string[] } {
   const steps: string[] = [];
-  steps.push(`z₁ = ${fmtComplex(a, s)}`);
+  const givenParts = [`z_1 = ${czLatex(a, s)}`];
   if (!["sqrt", "polar", "conjugate", "modulus", "demoivre"].includes(op)) {
-    steps.push(`z₂ = ${fmtComplex(b, s)}`);
+    givenParts.push(`z_2 = ${czLatex(b, s)}`);
   }
+  steps.push(`##Given\n$$${givenParts.join(", \\quad ")}$$`);
 
   switch (op) {
     case "add": {
       const r = add(a, b);
-      steps.push(`z₁ + z₂ = (${fmt(a.re, s)} + ${fmt(b.re, s)}) + (${fmt(a.im, s)} + ${fmt(b.im, s)})i`);
+      steps.push(`##Add Real and Imaginary Parts Separately\n$$z_1 + z_2 = (${fmt(a.re, s)} + ${fmt(b.re, s)}) + (${fmt(a.im, s)} + ${fmt(b.im, s)})i = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
     case "subtract": {
       const r = sub(a, b);
-      steps.push(`z₁ - z₂ = (${fmt(a.re, s)} - ${fmt(b.re, s)}) + (${fmt(a.im, s)} - ${fmt(b.im, s)})i`);
+      steps.push(`##Subtract Real and Imaginary Parts Separately\n$$z_1 - z_2 = (${fmt(a.re, s)} - ${fmt(b.re, s)}) + (${fmt(a.im, s)} - ${fmt(b.im, s)})i = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
     case "multiply": {
       const r = mul(a, b);
-      steps.push(`(a+bi)(c+di) = (ac-bd) + (ad+bc)i`);
-      steps.push(`= (${fmt(a.re, s)}·${fmt(b.re, s)} - ${fmt(a.im, s)}·${fmt(b.im, s)}) + (${fmt(a.re, s)}·${fmt(b.im, s)} + ${fmt(a.im, s)}·${fmt(b.re, s)})i`);
+      steps.push(`##FOIL, Using $i^2 = -1$\n$$(a+bi)(c+di) = (ac-bd) + (ad+bc)i$$`);
+      steps.push(`##Substitute the Values\n$$z_1 z_2 = (${fmt(a.re, s)}\\cdot ${fmt(b.re, s)} - ${fmt(a.im, s)}\\cdot ${fmt(b.im, s)}) + (${fmt(a.re, s)}\\cdot ${fmt(b.im, s)} + ${fmt(a.im, s)}\\cdot ${fmt(b.re, s)})i = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
     case "divide": {
       const r = div(a, b);
       const denom = b.re * b.re + b.im * b.im;
-      steps.push(`Multiply by conjugate of z₂: ${fmtComplex(conjugate(b), s)}`);
-      steps.push(`Denominator: |z₂|² = ${fmt(denom, s)}`);
+      steps.push(`##Multiply by the Conjugate\nMultiply numerator and denominator by the conjugate of $z_2$, $\\overline{z_2} = ${czLatex(conjugate(b), s)}$, to clear the imaginary part from the denominator:\n$$|z_2|^2 = ${fmt(denom, s)}$$`);
+      steps.push(`##Result\n$$\\frac{z_1}{z_2} = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
     case "power": {
       const r = power(a, n);
       const mod = modulus(a);
       const arg = argument(a);
-      steps.push(`|z₁| = ${fmt(mod, s)},  arg(z₁) = ${fmtAngle(arg, s)}`);
-      steps.push(`z₁^n = |z₁|^n · (cos(n·θ) + i·sin(n·θ))`);
-      steps.push(`= ${fmt(mod, s)}^${n} · (cos(${fmt(n * arg, s)}) + i·sin(${fmt(n * arg, s)}))`);
+      steps.push(`##Convert to Polar Form\n$$|z_1| = ${fmt(mod, s)}, \\qquad \\arg(z_1) = ${fmtAngle(arg, s)}$$`);
+      steps.push(`##Apply $z^n = |z|^n(\\cos(n\\theta) + i\\sin(n\\theta))$\n$$z_1^{${n}} = ${fmt(mod, s)}^{${n}}\\left(\\cos(${fmt(n * arg, s)}) + i\\sin(${fmt(n * arg, s)})\\right) = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
     case "sqrt": {
       const r = sqrtComplex(a);
-      steps.push(`√z = √((|z|+Re(z))/2) + i·sign(Im)·√((|z|-Re(z))/2)`);
-      steps.push(`|z₁| = ${fmt(modulus(a), s)}`);
+      steps.push(`##Principal Square Root Formula\n$$\\sqrt{z} = \\sqrt{\\frac{|z|+\\operatorname{Re}(z)}{2}} + i\\cdot\\operatorname{sign}(\\operatorname{Im}(z))\\sqrt{\\frac{|z|-\\operatorname{Re}(z)}{2}}$$`);
+      steps.push(`##Substitute\n$|z_1| = ${fmt(modulus(a), s)}$:\n$$\\sqrt{z_1} = ${czLatex(r, s)}$$`);
       return { result: `${fmtComplex(r, s)}  (principal root)`, steps };
     }
     case "polar": {
       const r = modulus(a);
       const theta = argument(a);
-      steps.push(`r = √(${fmt(a.re, s)}² + ${fmt(a.im, s)}²) = ${fmt(r, s)}`);
-      steps.push(`θ = atan2(${fmt(a.im, s)}, ${fmt(a.re, s)}) = ${fmtAngle(theta, s)}`);
+      steps.push(`##Modulus\n$$r = \\sqrt{(${fmt(a.re, s)})^2 + (${fmt(a.im, s)})^2} = ${fmt(r, s)}$$`);
+      steps.push(`##Argument\n$$\\theta = \\operatorname{atan2}(${fmt(a.im, s)}, ${fmt(a.re, s)}) = ${fmtAngle(theta, s)}$$`);
       return { result: `r = ${fmt(r, s)},  θ = ${fmtAngle(theta, s)}`, steps };
     }
     case "rect": {
@@ -133,20 +142,18 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
       const theta = b.im * (Math.PI / 180);
       const re = r * Math.cos(theta);
       const im = r * Math.sin(theta);
-      steps.push(`Input: r = ${fmt(r, s)}, θ = ${fmt(b.im, s)}°`);
-      steps.push(`Re = r·cos(θ) = ${fmt(r, s)}·${fmt(Math.cos(theta), s)} = ${fmt(re, s)}`);
-      steps.push(`Im = r·sin(θ) = ${fmt(r, s)}·${fmt(Math.sin(theta), s)} = ${fmt(im, s)}`);
+      steps.push(`##Given (Polar Form)\n$$r = ${fmt(r, s)}, \\qquad \\theta = ${fmt(b.im, s)}°$$`);
+      steps.push(`##Convert Using $x = r\\cos\\theta$, $y = r\\sin\\theta$\n$$\\operatorname{Re} = ${fmt(r, s)}\\cdot\\cos(\\theta) = ${fmt(re, s)}$$\n$$\\operatorname{Im} = ${fmt(r, s)}\\cdot\\sin(\\theta) = ${fmt(im, s)}$$`);
       return { result: fmtComplex({ re, im }, s), steps };
     }
     case "conjugate": {
-      steps.push(`Conjugate: flip sign of imaginary part`);
+      steps.push(`##Flip the Sign of the Imaginary Part\n$$\\overline{z_1} = ${czLatex(conjugate(a), s)}$$`);
       return { result: fmtComplex(conjugate(a), s), steps };
     }
     case "modulus": {
       const r = modulus(a);
-      steps.push(`|z| = √(${fmt(a.re, s)}² + ${fmt(a.im, s)}²)`);
-      steps.push(`    = √(${fmt(a.re * a.re, s)} + ${fmt(a.im * a.im, s)})`);
-      steps.push(`    = √${fmt(a.re * a.re + a.im * a.im, s)}`);
+      steps.push(`##Modulus Formula\n$$|z| = \\sqrt{\\operatorname{Re}(z)^2 + \\operatorname{Im}(z)^2}$$`);
+      steps.push(`##Substitute\n$$|z_1| = \\sqrt{(${fmt(a.re, s)})^2 + (${fmt(a.im, s)})^2} = \\sqrt{${fmt(a.re * a.re, s)} + ${fmt(a.im * a.im, s)}} = ${fmt(r, s)}$$`);
       return { result: `|z₁| = ${fmt(r, s)}`, steps };
     }
     case "demoivre": {
@@ -154,9 +161,10 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
       const arg = argument(a);
       const nArg = n * arg;
       const r = power(a, n);
-      steps.push(`De Moivre: [r(cosθ + i·sinθ)]^n = r^n · (cos(nθ) + i·sin(nθ))`);
-      steps.push(`r = ${fmt(mod, s)},  θ = ${fmtAngle(arg, s)}`);
-      steps.push(`r^${n} = ${fmt(Math.pow(mod, n), s)},  nθ = ${n}×${fmtAngle(arg, s)} = ${fmtAngle(nArg, s)}`);
+      steps.push(`##De Moivre's Theorem\n$$\\left[r(\\cos\\theta + i\\sin\\theta)\\right]^n = r^n\\left(\\cos(n\\theta) + i\\sin(n\\theta)\\right)$$`);
+      steps.push(`##Convert to Polar Form\n$$r = ${fmt(mod, s)}, \\qquad \\theta = ${fmtAngle(arg, s)}$$`);
+      steps.push(`##Raise to the $n$th Power\n$$r^{${n}} = ${fmt(Math.pow(mod, n), s)}, \\qquad n\\theta = ${n}\\times ${fmtAngle(arg, s)} = ${fmtAngle(nArg, s)}$$`);
+      steps.push(`##Result\n$$z_1^{${n}} = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
     default:
@@ -219,7 +227,12 @@ export function ComplexCalculator() {
             Complex Number Calculator
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); calculate(); }
+          }}
+        >
           <div className="space-y-1">
             <Label className="text-xs">Operation</Label>
             <Select value={op} onValueChange={v => { setOp(v as ComplexOp); setResult(null); }}>

@@ -15,6 +15,7 @@ import { GraphCanvas } from "./GraphCanvas";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
+import { exprToLatex } from "@/lib/latex";
 import { generateGraphPoints, generateImplicitPoints2D, parseEquationToZeroForm } from "@/lib/math-solver";
 
 const ImplicitSurface3D = lazy(() => import("./ImplicitSurface3D").then(m => ({ default: m.ImplicitSurface3D })));
@@ -32,24 +33,23 @@ function solveLinear(equation: string, fmt: (n: number) => string): SolveResult 
     const parts = equation.split("=");
     if (parts.length !== 2) return { roots: [], steps: [], error: "Use format: ax + b = c" };
 
-    steps.push(`Given: ${equation}`);
+    steps.push(`##Given\n$$${exprToLatex(parts[0].trim())} = ${exprToLatex(parts[1].trim())}$$`);
 
     const expr = `(${parts[0].trim()}) - (${parts[1].trim()})`;
-    steps.push(`Rearrange: ${expr} = 0`);
+    steps.push(`##Rearrange to Standard Form\nMove everything to one side so the equation equals $0$:\n$$${exprToLatex(expr)} = 0$$`);
 
     const f0 = evaluate(expr, { x: 0 }) as number;
     const f1 = evaluate(expr, { x: 1 }) as number;
     const slope = f1 - f0;
 
     if (Math.abs(slope) < 1e-10) {
-      if (Math.abs(f0) < 1e-10) return { roots: ["All real numbers"], steps: [...steps, "Identity: true for all x"] };
-      return { roots: [], steps: [...steps, "No solution (contradiction)"], error: "No solution" };
+      if (Math.abs(f0) < 1e-10) return { roots: ["All real numbers"], steps: [...steps, "##Identity\nThis holds true for every value of $x$ — every real number is a solution."] };
+      return { roots: [], steps: [...steps, "##Contradiction\nThis simplifies to a false statement (e.g. $5 = 0$) — there is no solution."], error: "No solution" };
     }
 
     const root = -f0 / slope;
-    steps.push(`Slope (coefficient of x) = ${formatNum(slope)}`);
-    steps.push(`Intercept = ${formatNum(f0)}`);
-    steps.push(`x = -${formatNum(f0)} / ${formatNum(slope)} = ${fmt(root)}`);
+    steps.push(`##Identify Slope and Intercept\nThe rearranged expression is linear: $${exprToLatex(fmtNum2(slope))}x + ${exprToLatex(fmtNum2(f0))} = 0$.`);
+    steps.push(`##Solve for x\n$$x = \\frac{-(${exprToLatex(fmtNum2(f0))})}{${exprToLatex(fmtNum2(slope))}} = ${fmt(root)}$$`);
 
     return { roots: [root.toString()], steps, numericRoots: [root] };
   } catch (e: unknown) {
@@ -57,37 +57,33 @@ function solveLinear(equation: string, fmt: (n: number) => string): SolveResult 
   }
 }
 
-function formatNum(n: number): string {
+function fmtNum2(n: number): string {
   const r = Math.round(n * 1e8) / 1e8;
   return r.toString();
 }
 
 function solveQuadratic(a: number, b: number, c: number, fmt: (n: number) => string): SolveResult {
   const steps: string[] = [];
-  steps.push(`Standard form: ${formatNum(a)}x² + ${formatNum(b)}x + ${formatNum(c)} = 0`);
-  steps.push(`Using quadratic formula: x = (-b ± √(b²-4ac)) / 2a`);
+  const aL = fmtNum2(a), bL = fmtNum2(b), cL = fmtNum2(c);
+  steps.push(`##Standard Form\n$$${aL}x^2 + ${bL}x + ${cL} = 0$$`);
+  steps.push(`##Quadratic Formula\n$$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$`);
 
   const discriminant = b * b - 4 * a * c;
-  steps.push(`Discriminant: D = b² - 4ac = (${formatNum(b)})² - 4(${formatNum(a)})(${formatNum(c)}) = ${formatNum(discriminant)}`);
+  steps.push(`##Discriminant\n$$D = b^2-4ac = (${bL})^2 - 4(${aL})(${cL}) = ${fmtNum2(discriminant)}$$`);
 
   if (discriminant > 0) {
     const x1 = (-b + Math.sqrt(discriminant)) / (2 * a);
     const x2 = (-b - Math.sqrt(discriminant)) / (2 * a);
-    steps.push(`D > 0 → Two real roots`);
-    steps.push(`x₁ = (-(${formatNum(b)}) + √${formatNum(discriminant)}) / ${formatNum(2 * a)} = ${fmt(x1)}`);
-    steps.push(`x₂ = (-(${formatNum(b)}) - √${formatNum(discriminant)}) / ${formatNum(2 * a)} = ${fmt(x2)}`);
+    steps.push(`##Two Real Roots\n$D > 0$, so there are two distinct real solutions:\n$$x_1 = \\frac{-(${bL}) + \\sqrt{${fmtNum2(discriminant)}}}{${fmtNum2(2 * a)}} = ${fmt(x1)}$$\n$$x_2 = \\frac{-(${bL}) - \\sqrt{${fmtNum2(discriminant)}}}{${fmtNum2(2 * a)}} = ${fmt(x2)}$$`);
     return { roots: [x1.toFixed(6), x2.toFixed(6)], steps, numericRoots: [x1, x2] };
   } else if (Math.abs(discriminant) < 1e-9) {
     const x = -b / (2 * a);
-    steps.push(`D = 0 → One repeated root`);
-    steps.push(`x = -(${formatNum(b)}) / ${formatNum(2 * a)} = ${fmt(x)}`);
+    steps.push(`##One Repeated Root\n$D = 0$, so there's exactly one (repeated) solution:\n$$x = \\frac{-(${bL})}{${fmtNum2(2 * a)}} = ${fmt(x)}$$`);
     return { roots: [x.toFixed(6)], steps, numericRoots: [x] };
   } else {
     const real = fmt(-b / (2 * a));
     const imag = fmt(Math.sqrt(-discriminant) / (2 * a));
-    steps.push(`D < 0 → Two complex conjugate roots`);
-    steps.push(`x₁ = ${real} + ${imag}i`);
-    steps.push(`x₂ = ${real} - ${imag}i`);
+    steps.push(`##Two Complex Conjugate Roots\n$D < 0$, so the square root is imaginary — the two solutions are complex conjugates:\n$$x_1 = ${real} + ${imag}i, \\qquad x_2 = ${real} - ${imag}i$$`);
     return { roots: [`${real} + ${imag}i`, `${real} - ${imag}i`], steps };
   }
 }
@@ -99,7 +95,10 @@ function solveQuadraticFromEquation(equation: string, fmt: (n: number) => string
   if (parts.length !== 2) return { roots: [], steps: [], error: "Use format: ax² + bx + c = 0 (any quadratic equation)" };
 
   const expr = `(${parts[0].trim()}) - (${parts[1].trim()})`;
-  const steps: string[] = [`Given: ${equation}`, `Rearrange to standard form: ${expr} = 0`];
+  const steps: string[] = [
+    `##Given\n$$${exprToLatex(parts[0].trim())} = ${exprToLatex(parts[1].trim())}$$`,
+    `##Rearrange to Standard Form\n$$${exprToLatex(expr)} = 0$$`,
+  ];
 
   let f0: number, f1: number, fm1: number, f2: number;
   try {
@@ -126,7 +125,7 @@ function solveQuadraticFromEquation(equation: string, fmt: (n: number) => string
     return { roots: [], steps: [], error: "Coefficient of x² is 0 — this is linear, not quadratic. Use the Linear tab." };
   }
 
-  steps.push(`Extracted coefficients by sampling: a = ${formatNum(a)}, b = ${formatNum(b)}, c = ${formatNum(c)}`);
+  steps.push(`##Extract Coefficients\nSample the rearranged expression at a few points to identify $a$, $b$, $c$:\n$$a = ${fmtNum2(a)}, \\quad b = ${fmtNum2(b)}, \\quad c = ${fmtNum2(c)}$$`);
   const quad = solveQuadratic(a, b, c, fmt);
   return { ...quad, steps: [...steps, ...quad.steps] };
 }
@@ -266,7 +265,12 @@ export function EquationSolver() {
             Equation Solver
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); solve(); }
+          }}
+        >
           <Tabs value={mode} onValueChange={setMode}>
             <TabsList className="w-full">
               <TabsTrigger value="linear" className="flex-1">Linear</TabsTrigger>
