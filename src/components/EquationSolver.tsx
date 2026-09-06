@@ -20,14 +20,14 @@ import { generateGraphPoints, generateImplicitPoints2D, parseEquationToZeroForm 
 
 const ImplicitSurface3D = lazy(() => import("./ImplicitSurface3D").then(m => ({ default: m.ImplicitSurface3D })));
 
-interface SolveResult {
+export interface SolveResult {
   roots: string[];
   steps: string[];
   error?: string;
   numericRoots?: number[];
 }
 
-function solveLinear(equation: string, fmt: (n: number) => string): SolveResult {
+export function solveLinear(equation: string, fmt: (n: number) => string): SolveResult {
   try {
     const steps: string[] = [];
     const parts = equation.split("=");
@@ -62,7 +62,7 @@ function fmtNum2(n: number): string {
   return r.toString();
 }
 
-function solveQuadratic(a: number, b: number, c: number, fmt: (n: number) => string): SolveResult {
+export function solveQuadratic(a: number, b: number, c: number, fmt: (n: number) => string): SolveResult {
   const steps: string[] = [];
   const aL = fmtNum2(a), bL = fmtNum2(b), cL = fmtNum2(c);
   steps.push(`##Standard Form\n$$${aL}x^2 + ${bL}x + ${cL} = 0$$`);
@@ -90,7 +90,7 @@ function solveQuadratic(a: number, b: number, c: number, fmt: (n: number) => str
 
 // Extracts a, b, c for any quadratic-in-x equation (terms can be on both sides,
 // e.g. "2x^2 + 3x = x^2 - 5") using finite differences — no manual coefficient entry needed.
-function solveQuadraticFromEquation(equation: string, fmt: (n: number) => string): SolveResult {
+export function solveQuadraticFromEquation(equation: string, fmt: (n: number) => string): SolveResult {
   const parts = equation.split("=");
   if (parts.length !== 2) return { roots: [], steps: [], error: "Use format: ax² + bx + c = 0 (any quadratic equation)" };
 

@@ -550,6 +550,30 @@ function narrateDerivativeTop(node: MathNode, variable: string, steps: string[],
   steps.push(`##Combine the Results\nAdd all the term derivatives together:\n$$${wholeLatex} = ${finalLatex}$$`);
 }
 
+/** Scans already-generated steps for their "##Header" names and returns the
+ *  unique rule names actually used (skipping structural/bookkeeping headers
+ *  like "Given" or "Final Answer") — used to build a one-line "Approach"
+ *  overview before diving into the step-by-step work, the way a textbook
+ *  solution names which rules it's about to use before applying them. */
+function extractRuleNames(steps: string[]): string[] {
+  const skip = new Set([
+    "Given", "Goal", "Final Answer", "Combine the Results", "Combine Everything",
+    "Add the Constant of Integration", "Verify", "Method: Simpson's Rule", "Result",
+    "Separate the Terms", "Beyond This Solver", "No Critical Points", "Step 1 — Find Critical Points",
+  ]);
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const s of steps) {
+    if (!s.startsWith("##")) continue;
+    const nl = s.indexOf("\n");
+    const header = (nl === -1 ? s.slice(2) : s.slice(2, nl)).trim();
+    if (skip.has(header) || header.length > 60 || seen.has(header)) continue;
+    seen.add(header);
+    names.push(header);
+  }
+  return names;
+}
+
 export function solveDerivative(
   expression: string,
   variable: string = "x"
@@ -558,11 +582,18 @@ export function solveDerivative(
     assertNonEmptyExpression(expression);
     const node = parse(expression);
     const steps: string[] = [];
+    const bodySteps: string[] = [];
 
     steps.push(`##Given\n$$f(${variable}) = ${exprToLatex(node.toString())}$$`);
     steps.push(`##Goal\nFind $f'(${variable})$ by differentiating with respect to $${variable}$.`);
 
-    narrateDerivativeTop(node, variable, steps);
+    narrateDerivativeTop(node, variable, bodySteps);
+
+    const ruleNames = extractRuleNames(bodySteps);
+    if (ruleNames.length > 0) {
+      steps.push(`##Approach\nThis will use: **${ruleNames.join("**, **")}**.`);
+    }
+    steps.push(...bodySteps);
 
     const deriv = derivative(node, variable);
     const simplified = simplify(deriv);
@@ -1000,13 +1031,15 @@ export function solveIndefiniteIntegral(
   try {
     assertNonEmptyExpression(expression);
     const steps: string[] = [];
+    const bodySteps: string[] = [];
     steps.push(`##Given\n$$${integralLatex(expression, variable)}$$`);
     steps.push(`##Goal\nFind a function $F(${variable})$ whose derivative is the integrand, i.e. $F'(${variable}) = ${exprToLatex(expression)}$.`);
 
     const node = simplify(parse(expression));
-    const piece = integrateNode(node, variable, steps);
+    const piece = integrateNode(node, variable, bodySteps);
 
     if (!piece) {
+      steps.push(...bodySteps);
       steps.push(`##Beyond This Solver\nThis integral needs advanced techniques (e.g. integration by parts, partial fractions, or trig substitution) not covered here.\n\nTip: use Definite Integration for a numerical answer instead.`);
       return {
         input: expression,
@@ -1015,6 +1048,12 @@ export function solveIndefiniteIntegral(
         error: undefined,
       };
     }
+
+    const ruleNames = extractRuleNames(bodySteps);
+    if (ruleNames.length > 0) {
+      steps.push(`##Approach\nThis will use: **${ruleNames.join("**, **")}**.`);
+    }
+    steps.push(...bodySteps);
 
     // Clean, textbook-ordered display (pulls literal coefficients out front,
     // sorts polynomial terms by descending degree) instead of raw mathjs

@@ -39,12 +39,29 @@ function splitMathSegments(body: string): { kind: "text" | "inline" | "display";
   return parts;
 }
 
+/** Renders **bold** markdown within a plain-text segment (used e.g. for the
+ *  "Approach" step, which bolds the rule names it's about to use). */
+function TextWithBold({ text }: { text: string }) {
+  const pieces = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {pieces.map((p, i) =>
+        p.startsWith("**") && p.endsWith("**") ? (
+          <strong key={i} className="font-semibold text-foreground">{p.slice(2, -2)}</strong>
+        ) : (
+          <span key={i}>{p}</span>
+        )
+      )}
+    </>
+  );
+}
+
 function MathSegments({ text, display }: { text: string; display?: boolean }) {
   return (
     <>
       {splitMathSegments(text).map((p, i) =>
         p.kind === "text" ? (
-          <span key={i}>{p.content}</span>
+          <TextWithBold key={i} text={p.content} />
         ) : (
           <MathTex key={i} latex={p.content} display={display && p.kind === "display"} />
         )

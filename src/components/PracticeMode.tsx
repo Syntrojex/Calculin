@@ -9,6 +9,9 @@ import { MathText } from "./MathText";
 import { StepsReveal } from "./StepsReveal";
 import { useSettings } from "@/contexts/SettingsContext";
 import { GraduationCap, CheckCircle2, XCircle, RefreshCw, Eye, Trophy } from "lucide-react";
+import { solveDerivative, solveIndefiniteIntegral } from "@/lib/math-solver";
+import { solveLinear, solveQuadratic } from "./EquationSolver";
+import { exprToLatex } from "@/lib/latex";
 
 type Category = "derivative" | "integral" | "linear" | "quadratic" | "word";
 type Difficulty = "easy" | "medium" | "hard";
@@ -47,8 +50,25 @@ function numericallyClose(a: number, b: number, tol = 1e-2): boolean {
   return Math.abs(a - b) <= Math.max(tol, Math.abs(b) * tol);
 }
 
+/** Plain number formatter for Practice Mode's generated steps — these run
+ *  outside the component tree (in module-level generator functions), so
+ *  they can't read the user's Decimal/Fraction/Scientific display setting
+ *  the way the calculators do; a simple fixed-point string is fine here
+ *  since these are throwaway practice numbers, not a persisted result. */
+function plainFmt(n: number): string {
+  const r = Math.round(n * 1e6) / 1e6;
+  return Number.isInteger(r) ? r.toString() : r.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 function signed(n: number): string {
   return n >= 0 ? `+ ${n}` : `- ${Math.abs(n)}`;
+}
+
+/** Wraps a word-problem reasoning step in the same rich "##Header + LaTeX
+ *  equation" format used everywhere else in the app, so Practice Mode's
+ *  "Show Answer" steps look and feel identical to the calculators. */
+function wordStep(header: string, latex: string): string {
+  return `##${header}\n$$${latex}$$`;
 }
 
 // ── Derivative problems ───────────────────────────────────────────────────────
@@ -66,14 +86,7 @@ function genDerivativePoly(diff: Difficulty): Problem {
     prompt: `Find f'(x) for f(x) = ${cleanExpr}`,
     correctAnswer: derivative(cleanExpr.replace(/\s/g, ""), "x").toString(),
     hint: "Use the power rule on each term: d/dx[xⁿ] = n·xⁿ⁻¹",
-    steps: [
-      `f(x) = ${cleanExpr}`,
-      `Apply the power rule to each term: d/dx[k·xⁿ] = k·n·xⁿ⁻¹`,
-      `d/dx[${a}x^${n1}] = ${a * n1}x^${n1 - 1}`,
-      `d/dx[${b}x] = ${b}`,
-      c !== 0 ? `d/dx[${c}] = 0  (constant term)` : `(no constant term)`,
-      `f'(x) = ${derivative(cleanExpr.replace(/\s/g, ""), "x").toString()}`,
-    ],
+    steps: solveDerivative(cleanExpr.replace(/\s/g, ""), "x").steps,
     check: (input: string) => {
       try {
         const trueFn = derivative(cleanExpr.replace(/\s/g, ""), "x").compile();
@@ -104,12 +117,7 @@ function genDerivativeTrig(diff: Difficulty): Problem {
     prompt: `Find f'(x) for f(x) = ${exprStr.replace("*", "·")}`,
     correctAnswer: trueAnswer,
     hint: fn === "sin" ? "d/dx[sin(u)] = cos(u)·u'  (chain rule)" : "d/dx[cos(u)] = -sin(u)·u'  (chain rule)",
-    steps: [
-      `f(x) = ${a}·${fn}(${inner})`,
-      `Chain rule: d/dx[${fn}(${inner})] = ${fn === "sin" ? "cos" : "-sin"}(${inner}) · ${b}`,
-      `f'(x) = ${a} · ${b} · ${fn === "sin" ? "cos" : "-sin"}(${inner})`,
-      `f'(x) = ${trueAnswer}`,
-    ],
+    steps: solveDerivative(exprStr, "x").steps,
     check: (input: string) => {
       try {
         const trueFn = derivative(exprStr, "x").compile();
@@ -139,12 +147,7 @@ function genDerivativeExp(diff: Difficulty): Problem {
     prompt: `Find f'(x) for f(x) = ${a}·e^(${inner})`,
     correctAnswer: trueAnswer,
     hint: "d/dx[e^u] = e^u · u'  (chain rule)",
-    steps: [
-      `f(x) = ${a}·e^(${inner})`,
-      `Chain rule: d/dx[e^u] = e^u · u'`,
-      `f'(x) = ${a} · ${b} · e^(${inner})`,
-      `f'(x) = ${trueAnswer}`,
-    ],
+    steps: solveDerivative(exprStr, "x").steps,
     check: (input: string) => {
       try {
         const trueFn = derivative(exprStr, "x").compile();
@@ -181,12 +184,7 @@ function genIntegralPower(diff: Difficulty): Problem {
     prompt: `Find ∫ (${a}x^${n1}) dx  (any constant C is fine)`,
     correctAnswer: `${antideriv} + C`,
     hint: "Power rule: ∫xⁿdx = xⁿ⁺¹/(n+1)",
-    steps: [
-      `∫ ${a}x^${n1} dx`,
-      `Power Rule: ∫k·xⁿ dx = k·xⁿ⁺¹/(n+1)`,
-      `= ${a}·x^${n1 + 1}/${n1 + 1} + C`,
-      `= ${antideriv} + C`,
-    ],
+    steps: solveIndefiniteIntegral(exprStr, "x").steps,
     check: (input: string) => {
       try {
         const fFn = parse(exprStr).compile();
@@ -218,12 +216,7 @@ function genIntegralTrig(diff: Difficulty): Problem {
     prompt: `Find ∫ (${a}·${fn}(${inner})) dx  (any constant C is fine)`,
     correctAnswer: `${antideriv} + C`,
     hint: fn === "sin" ? "∫sin(u)du = -cos(u)/u'" : "∫cos(u)du = sin(u)/u'",
-    steps: [
-      `∫ ${a}·${fn}(${inner}) dx,  let u = ${inner}, du = ${b} dx`,
-      fn === "sin" ? `∫sin(u) du = -cos(u)` : `∫cos(u) du = sin(u)`,
-      `Divide by ${b} for the substitution: ${antideriv}`,
-      `Result = ${antideriv} + C`,
-    ],
+    steps: solveIndefiniteIntegral(exprStr, "x").steps,
     check: (input: string) => {
       try {
         const fFn = parse(exprStr).compile();
@@ -254,12 +247,7 @@ function genIntegralExp(diff: Difficulty): Problem {
     prompt: `Find ∫ (${a}·e^(${inner})) dx  (any constant C is fine)`,
     correctAnswer: `${antideriv} + C`,
     hint: "∫e^u du = e^u / u'",
-    steps: [
-      `∫ ${a}·e^(${inner}) dx,  let u = ${inner}, du = ${b} dx`,
-      `∫e^u du = e^u`,
-      `Divide by ${b}: ${antideriv}`,
-      `Result = ${antideriv} + C`,
-    ],
+    steps: solveIndefiniteIntegral(exprStr, "x").steps,
     check: (input: string) => {
       try {
         const fFn = parse(exprStr).compile();
@@ -291,13 +279,7 @@ function genIntegralPolySum(diff: Difficulty): Problem {
     prompt: `Find ∫ (${exprStr}) dx  (any constant C is fine)`,
     correctAnswer: `${antideriv} + C`,
     hint: "Integrate term by term using the power rule (sum rule).",
-    steps: [
-      `∫ (${exprStr}) dx`,
-      `Sum Rule: integrate each term separately`,
-      `∫ ${a}x^${n1} dx = ${a}x^${n1 + 1}/${n1 + 1}`,
-      `∫ ${b}x dx = ${b}x²/2`,
-      `Result = ${antideriv} + C`,
-    ],
+    steps: solveIndefiniteIntegral(exprStr, "x").steps,
     check: (input: string) => {
       try {
         const fFn = parse(exprStr).compile();
@@ -340,18 +322,7 @@ function genLinear(diff: Difficulty): Problem {
     prompt: `Solve for x: ${lhs} = ${rhs}`,
     correctAnswer: x0.toString(),
     hint: "Collect x-terms on one side, constants on the other.",
-    steps: rhsHasX ? [
-      `${lhs} = ${rhs}`,
-      `Move x-terms to one side: ${a - d}x = ${signed(c - d * x0 - b)}`.replace("= +", "="),
-      `${a}x - ${d}x = ${c - d * x0} - ${b}`,
-      `${a - d}x = ${c - d * x0 - b}`,
-      `x = ${c - d * x0 - b} / ${a - d} = ${x0}`,
-    ] : [
-      `${lhs} = ${rhs}`,
-      `Subtract ${b} from both sides: ${a}x = ${c - b}`,
-      `Divide both sides by ${a}: x = ${c - b}/${a}`,
-      `x = ${x0}`,
-    ],
+    steps: solveLinear(`${lhs}=${rhs}`.replace(/\s+/g, ""), plainFmt).steps,
     check: (input: string) => {
       const v = parseNumberAnswer(input);
       return v !== null && numericallyClose(v, x0, 1e-4);
@@ -375,13 +346,7 @@ function genQuadratic(diff: Difficulty): Problem {
     prompt: `Solve: ${eq}`,
     correctAnswer: `x = ${p}, x = ${q}`,
     hint: leading === 1 ? "Try factoring into (x - p)(x - q) = 0." : "Use the quadratic formula: x = (-b ± √(b²-4ac)) / 2a",
-    steps: [
-      `${eq}`,
-      `a = ${leading}, b = ${b}, c = ${c}`,
-      `Discriminant: D = b² - 4ac = ${b * b - 4 * leading * c}`,
-      `x = (-(${b}) ± √${b * b - 4 * leading * c}) / ${2 * leading}`,
-      `x = ${p}  or  x = ${q}`,
-    ],
+    steps: solveQuadratic(leading, b, c, plainFmt).steps,
     check: (input: string) => {
       const nums = input
         .split(/[,;\s]+/)
@@ -406,7 +371,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `A rectangular garden is ${l} m long and ${w} m wide. What is its area in square meters?`,
       correctAnswer: `${l * w}`,
       hint: "Area of a rectangle = length × width",
-      steps: [`Area = length × width`, `Area = ${l} × ${w}`, `Area = ${l * w} m²`],
+      steps: [wordStep("Formula", "A = l\\times w"), wordStep("Substitute", `A = ${l}\\times ${w} = ${l * w}\\text{ m}^2`)],
       check: (input) => { const v = parseNumberAnswer(input); return v !== null && numericallyClose(v, l * w, 1e-3); },
     };
   },
@@ -418,7 +383,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `A car travels at a constant speed of ${v} km/h for ${t} hours. How far does it travel, in km?`,
       correctAnswer: `${v * t}`,
       hint: "Distance = speed × time",
-      steps: [`Distance = speed × time`, `Distance = ${v} × ${t}`, `Distance = ${v * t} km`],
+      steps: [wordStep("Formula", "d = v\\times t"), wordStep("Substitute", `d = ${v}\\times ${t} = ${v * t}\\text{ km}`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, v * t, 1e-3); },
     };
   },
@@ -431,7 +396,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `The sum of two numbers is ${s} and their difference is ${d}. What is the larger number?`,
       correctAnswer: `${larger}`,
       hint: "larger = (sum + difference) / 2",
-      steps: [`Let the numbers be a and b, with a + b = ${s} and a - b = ${d}`, `Adding both equations: 2a = ${s + d}`, `a = ${larger}`],
+      steps: [wordStep("Set Up the System", `a+b=${s}, \\quad a-b=${d}`), wordStep("Add the Two Equations", `2a = ${s + d}`), wordStep("Solve for the Larger Number", `a = ${larger}`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, larger, 1e-3); },
     };
   },
@@ -445,7 +410,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `You invest $${p} at a simple interest rate of ${r}% per year. How much interest do you earn after ${t} years (in $)?`,
       correctAnswer: `${interest}`,
       hint: "Simple Interest = Principal × Rate × Time / 100",
-      steps: [`SI = P × R × T / 100`, `SI = ${p} × ${r} × ${t} / 100`, `SI = $${interest}`],
+      steps: [wordStep("Formula", "SI = \\frac{P\\times R\\times T}{100}"), wordStep("Substitute", `SI = \\frac{${p}\\times ${r}\\times ${t}}{100} = \\$${interest}`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, interest, 1e-2); },
     };
   },
@@ -458,7 +423,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `A triangular flag has a base of ${base} cm and a height of ${height} cm. What is its area in cm²?`,
       correctAnswer: `${area}`,
       hint: "Area of a triangle = ½ × base × height",
-      steps: [`Area = ½ × base × height`, `Area = ½ × ${base} × ${height}`, `Area = ${area} cm²`],
+      steps: [wordStep("Formula", "A = \\frac{1}{2}\\times b\\times h"), wordStep("Substitute", `A = \\frac{1}{2}\\times ${base}\\times ${height} = ${area}\\text{ cm}^2`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, area, 1e-3); },
     };
   },
@@ -471,7 +436,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `A jacket originally costs $${price}. It's on sale with a ${discount}% discount. What is the sale price (in $)?`,
       correctAnswer: `${final}`,
       hint: "Sale price = price − (price × discount%)",
-      steps: [`Discount amount = ${price} × ${discount}/100 = ${(price * discount) / 100}`, `Sale price = ${price} - ${(price * discount) / 100}`, `Sale price = $${final}`],
+      steps: [wordStep("Discount Amount", `${price}\\times \\frac{${discount}}{100} = ${(price * discount) / 100}`), wordStep("Sale Price", `${price} - ${(price * discount) / 100} = \\$${final}`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, final, 1e-2); },
     };
   },
@@ -484,7 +449,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `A water tank is filled at a rate of ${rate} liters per minute for ${hours} minutes. How many liters are in the tank?`,
       correctAnswer: `${total}`,
       hint: "Total = rate × time",
-      steps: [`Total volume = rate × time`, `Total = ${rate} × ${hours}`, `Total = ${total} liters`],
+      steps: [wordStep("Formula", "V = \\text{rate}\\times \\text{time}"), wordStep("Substitute", `V = ${rate}\\times ${hours} = ${total}\\text{ liters}`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, total, 1e-3); },
     };
   },
@@ -496,7 +461,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `A circular pool has a radius of ${r} m. What is its area in m² (use π ≈ 3.1416, round to 2 decimals)?`,
       correctAnswer: `${area}`,
       hint: "Area of a circle = π × r²",
-      steps: [`Area = π × r²`, `Area = π × ${r}²`, `Area ≈ ${area} m²`],
+      steps: [wordStep("Formula", "A = \\pi r^2"), wordStep("Substitute", `A = \\pi(${r})^2 \\approx ${area}\\text{ m}^2`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, area, 1e-1); },
     };
   },
@@ -513,9 +478,9 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       correctAnswer: `${childNow}`,
       hint: "Set up: (parent's age then) = ratio × (child's age then), then add the years back.",
       steps: [
-        `Parent's age ${yearsAgo} years ago = ${parentNow - yearsAgo}`,
-        `Child's age then = (${parentNow - yearsAgo}) / ${ratio} = ${(parentNow - yearsAgo) / ratio}`,
-        `Child's age now = ${(parentNow - yearsAgo) / ratio} + ${yearsAgo} = ${childNow}`,
+        wordStep("Parent's Age Then", `${parentNow} - ${yearsAgo} = ${parentNow - yearsAgo}`),
+        wordStep("Child's Age Then", `\\frac{${parentNow - yearsAgo}}{${ratio}} = ${(parentNow - yearsAgo) / ratio}`),
+        wordStep("Child's Age Now", `${(parentNow - yearsAgo) / ratio} + ${yearsAgo} = ${childNow}`),
       ],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, childNow, 0.6); },
     };
@@ -530,9 +495,9 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       correctAnswer: `${combined}`,
       hint: "Combined rate = 1/A + 1/B per hour; time = 1 / combined rate",
       steps: [
-        `Rate of A = 1/${rateA} tank/hour, Rate of B = 1/${rateB} tank/hour`,
-        `Combined rate = 1/${rateA} + 1/${rateB}`,
-        `Time together = 1 / combined rate ≈ ${combined} hours`,
+        wordStep("Individual Rates", `\\text{Rate}_A = \\frac{1}{${rateA}}, \\quad \\text{Rate}_B = \\frac{1}{${rateB}}\\text{ (tank/hour)}`),
+        wordStep("Combined Rate", `\\frac{1}{${rateA}} + \\frac{1}{${rateB}}`),
+        wordStep("Time Together", `\\frac{1}{\\text{combined rate}} \\approx ${combined}\\text{ hours}`),
       ],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, combined, 0.05); },
     };
@@ -548,9 +513,9 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       correctAnswer: `${partA}`,
       hint: "First share = total × (ratioA / (ratioA + ratioB))",
       steps: [
-        `Total parts = ${ratioA} + ${ratioB} = ${ratioA + ratioB}`,
-        `Value per part = ${total} / ${ratioA + ratioB}`,
-        `First friend's share = ${ratioA} × (${total}/${ratioA + ratioB}) ≈ ${partA}`,
+        wordStep("Total Parts", `${ratioA} + ${ratioB} = ${ratioA + ratioB}`),
+        wordStep("Value per Part", `\\frac{${total}}{${ratioA + ratioB}}`),
+        wordStep("First Friend's Share", `${ratioA}\\times \\frac{${total}}{${ratioA + ratioB}} \\approx ${partA}`),
       ],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, partA, 1); },
     };
@@ -565,7 +530,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `Two cars start from the same point and drive in opposite directions, one at ${speed1} km/h and the other at ${speed2} km/h. How far apart are they after ${time} hours?`,
       correctAnswer: `${dist}`,
       hint: "Combined speed × time (opposite directions add speeds)",
-      steps: [`Combined speed = ${speed1} + ${speed2} = ${speed1 + speed2} km/h`, `Distance apart = ${speed1 + speed2} × ${time}`, `Distance = ${dist} km`],
+      steps: [wordStep("Combined Speed", `${speed1} + ${speed2} = ${speed1 + speed2}\\text{ km/h}`), wordStep("Distance Apart", `${speed1 + speed2}\\times ${time} = ${dist}\\text{ km}`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, dist, 1e-2); },
     };
   },
@@ -581,9 +546,9 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       correctAnswer: `${mixedConc}`,
       hint: "Total acid / total volume × 100",
       steps: [
-        `Acid from solution 1 = ${liquidA} × ${concA}/100 = ${(liquidA * concA) / 100} L`,
-        `Acid from solution 2 = ${liquidB} × ${concB}/100 = ${(liquidB * concB) / 100} L`,
-        `Mixture concentration = (total acid / total volume) × 100 ≈ ${mixedConc}%`,
+        wordStep("Acid from Solution 1", `${liquidA}\\times \\frac{${concA}}{100} = ${(liquidA * concA) / 100}\\text{ L}`),
+        wordStep("Acid from Solution 2", `${liquidB}\\times \\frac{${concB}}{100} = ${(liquidB * concB) / 100}\\text{ L}`),
+        wordStep("Mixture Concentration", `\\frac{\\text{total acid}}{\\text{total volume}}\\times 100 \\approx ${mixedConc}\\%`),
       ],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, mixedConc, 0.1); },
     };
@@ -598,7 +563,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `$${principal} is invested at ${rate}% annual compound interest for ${years} years. What is the total amount (round to 2 decimals)?`,
       correctAnswer: `${amount}`,
       hint: "A = P(1 + r/100)^t",
-      steps: [`A = P(1 + r/100)^t`, `A = ${principal}(1 + ${rate}/100)^${years}`, `A ≈ $${amount}`],
+      steps: [wordStep("Formula", "A = P\\left(1+\\frac{r}{100}\\right)^t"), wordStep("Substitute", `A = ${principal}\\left(1+\\frac{${rate}}{100}\\right)^{${years}} \\approx \\$${amount}`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, amount, 0.5); },
     };
   },
@@ -612,7 +577,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `A rectangular box has length ${l} cm, width ${w} cm, and height ${h} cm. What is its volume in cm³?`,
       correctAnswer: `${vol}`,
       hint: "Volume = length × width × height",
-      steps: [`Volume = l × w × h`, `Volume = ${l} × ${w} × ${h}`, `Volume = ${vol} cm³`],
+      steps: [wordStep("Formula", "V = l\\times w\\times h"), wordStep("Substitute", `V = ${l}\\times ${w}\\times ${h} = ${vol}\\text{ cm}^3`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, vol, 1e-3); },
     };
   },
@@ -634,7 +599,7 @@ const WORD_TEMPLATES: ((diff: Difficulty) => Problem)[] = [
       prompt: `A student scored ${score1}, ${score2}, and ${score3} on three tests. What score is needed on the 4th test for an average of ${needed}?`,
       correctAnswer: `${score4}`,
       hint: "average × number of tests − sum of known scores",
-      steps: [`Required total = ${needed} × 4 = ${total4}`, `Sum of known scores = ${score1} + ${score2} + ${score3} = ${score1 + score2 + score3}`, `Score needed = ${total4} - ${score1 + score2 + score3} = ${score4}`],
+      steps: [wordStep("Required Total", `${needed}\\times 4 = ${total4}`), wordStep("Sum of Known Scores", `${score1} + ${score2} + ${score3} = ${score1 + score2 + score3}`), wordStep("Score Needed", `${total4} - ${score1 + score2 + score3} = ${score4}`)],
       check: (input) => { const x = parseNumberAnswer(input); return x !== null && numericallyClose(x, score4, 1e-2); },
     };
   },
