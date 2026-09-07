@@ -1,15 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, Suspense, lazy } from "react";
 import { motion } from "framer-motion";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import {
   Infinity as InfinityIcon, LineChart, Calculator, Grid3X3,
   ArrowRight, ArrowLeftRight, Pentagon, TrendingUp,
-  Zap, Hash, GraduationCap, Menu, Binary,
+  Zap, Hash, GraduationCap, Menu, Binary, BookOpen,
   Github, Linkedin, ArrowUp,
 } from "lucide-react";
+import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
 
 const DerivativeSolver = lazy(() => import("@/components/DerivativeSolver").then(m => ({ default: m.DerivativeSolver })));
 const IntegrationSolver = lazy(() => import("@/components/IntegrationSolver").then(m => ({ default: m.IntegrationSolver })));
@@ -25,6 +26,7 @@ const UnitConverter = lazy(() => import("@/components/UnitConverter").then(m => 
 const NumberConversions = lazy(() => import("@/components/NumberConversions").then(m => ({ default: m.NumberConversions })));
 const GraphPlotter = lazy(() => import("@/components/GraphPlotter").then(m => ({ default: m.GraphPlotter })));
 const PracticeMode = lazy(() => import("@/components/PracticeMode").then(m => ({ default: m.PracticeMode })));
+const FormulaSheet = lazy(() => import("@/components/FormulaSheet").then(m => ({ default: m.FormulaSheet })));
 
 export const Route = createFileRoute("/")({  
   component: Index,
@@ -57,7 +59,41 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
   { value: "numconv", label: "Num Systems", shortLabel: "0b1", icon: <Binary className="h-3.5 w-3.5" />, component: <NumberConversions /> },
   { value: "graph", label: "Graph", shortLabel: "📈", icon: <LineChart className="h-3.5 w-3.5" />, component: <GraphPlotter /> },
   { value: "practice", label: "Practice", shortLabel: "✏︎", icon: <GraduationCap className="h-3.5 w-3.5" />, component: <PracticeMode /> },
+  // One tab per formula-sheet topic — generated from the same data used to
+  // render each sheet, so adding a topic to formula-sheet-data.ts is enough
+  // to make it navigable from both the desktop header and the mobile menu.
+  ...FORMULA_TOPICS.map((topic) => ({
+    value: `formula-${topic.key}`,
+    label: topic.navLabel,
+    shortLabel: topic.navLabel,
+    icon: <BookOpen className="h-3.5 w-3.5" />,
+    component: <FormulaSheet topicKey={topic.key} />,
+  })),
 ];
+
+function tabByValue(value: string) {
+  return TABS.find((t) => t.value === value)!;
+}
+
+// Desktop-only grouping: the header shows this row of categories, and clicking
+// one that holds more than one tool opens a second row underneath listing
+// just that category's tools. "Graph" and "Practice" are single-tool
+// categories, so clicking them jumps straight to that tool with no sub-row.
+// Mobile is untouched — it still uses the hamburger Sheet with the flat
+// TABS list above, regardless of this grouping.
+const CATEGORIES: { key: string; label: string; icon: React.ReactNode; tools: string[] }[] = [
+  { key: "calculus", label: "Calculus", icon: <span className="text-xs font-bold">d/dx</span>, tools: ["derivative", "integration", "calcplus", "limits"] },
+  { key: "algebra", label: "Algebra", icon: <Calculator className="h-3.5 w-3.5" />, tools: ["equation", "matrix", "complex"] },
+  { key: "geometry", label: "Geometry", icon: <span className="text-xs font-bold">θ</span>, tools: ["trig", "shapes"] },
+  { key: "numbers", label: "Numbers", icon: <Hash className="h-3.5 w-3.5" />, tools: ["numtheory", "numconv", "converter"] },
+  { key: "graph", label: "Graph", icon: <LineChart className="h-3.5 w-3.5" />, tools: ["graph"] },
+  { key: "practice", label: "Practice", icon: <GraduationCap className="h-3.5 w-3.5" />, tools: ["practice"] },
+  { key: "formulasheet", label: "Formula Sheet", icon: <BookOpen className="h-3.5 w-3.5" />, tools: FORMULA_TOPICS.map((t) => `formula-${t.key}`) },
+];
+
+function categoryOf(tabValue: string) {
+  return CATEGORIES.find((c) => c.tools.includes(tabValue)) ?? CATEGORIES[0];
+}
 
 function Index() {
   const [tab, setTab] = useState("derivative");
@@ -68,11 +104,21 @@ function Index() {
     setMobileMenuOpen(false);
   };
 
+  const selectCategory = (key: string) => {
+    const cat = CATEGORIES.find((c) => c.key === key)!;
+    // Single-tool categories (Graph, Practice) jump straight there; multi-tool
+    // categories switch to their first tool (unless the current tab is
+    // already inside this category) and reveal the sub-row.
+    if (!cat.tools.includes(tab)) selectTab(cat.tools[0]);
+  };
+
+  const activeCategory = categoryOf(tab);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-lg">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-3 sm:px-4 py-3">
-          <div className="flex items-center gap-2">
+        <div className="mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4 py-3">
+          <div className="flex items-center gap-2 lg:gap-6">
             <button
               className="sm:hidden mr-1 p-1.5 -ml-1.5 rounded-md hover:bg-muted/60 text-foreground"
               onClick={() => setMobileMenuOpen(true)}
@@ -80,12 +126,53 @@ function Index() {
             >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-primary-foreground font-bold text-lg shadow-sm">
-              ∫
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-primary-foreground font-bold text-lg shadow-sm">
+                ∫
+              </div>
+              <h1 className="text-lg font-bold tracking-tight text-foreground">Calculin</h1>
             </div>
-            <h1 className="text-lg font-bold tracking-tight text-foreground">Calculin</h1>
+
+            {/* Desktop category row — mobile keeps the hamburger Sheet below instead */}
+            <nav className="hidden sm:flex items-center gap-1 flex-1 overflow-x-auto">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat.key}
+                  onClick={() => selectCategory(cat.key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                    activeCategory.key === cat.key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  }`}
+                >
+                  {cat.icon}
+                  {cat.label}
+                </button>
+              ))}
+            </nav>
+
+            <div className="ml-auto sm:ml-0">
+              <SettingsPanel />
+            </div>
           </div>
-          <SettingsPanel />
+
+          {/* Sub-row: only the active category's specific tools, when it has more than one */}
+          {activeCategory.tools.length > 1 && (
+            <div className="hidden sm:flex items-center gap-1 mt-2 pt-2 border-t border-dashed border-border/60 overflow-x-auto">
+              {activeCategory.tools.map((value) => {
+                const t = tabByValue(value);
+                return (
+                  <button
+                    key={value}
+                    onClick={() => selectTab(value)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
+                      tab === value ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </header>
 
@@ -95,18 +182,30 @@ function Index() {
           <SheetHeader>
             <SheetTitle>Tools</SheetTitle>
           </SheetHeader>
-          <nav className="px-2 pb-6 space-y-1 mt-2">
-            {TABS.map((t) => (
-              <button
-                key={t.value}
-                onClick={() => selectTab(t.value)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  tab === t.value ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
-                }`}
-              >
-                <span className="w-5 flex items-center justify-center">{t.icon}</span>
-                {t.label}
-              </button>
+          <nav className="px-2 pb-6 mt-2 space-y-4">
+            {CATEGORIES.map((cat) => (
+              <div key={cat.key}>
+                <div className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {cat.label}
+                </div>
+                <div className="space-y-1">
+                  {cat.tools.map((value) => {
+                    const t = tabByValue(value);
+                    return (
+                      <button
+                        key={value}
+                        onClick={() => selectTab(value)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                          tab === value ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        <span className="w-5 flex items-center justify-center">{t.icon}</span>
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </nav>
         </SheetContent>
@@ -135,18 +234,8 @@ function Index() {
         </motion.section>
       </div>
 
-      <main className="mx-auto max-w-4xl px-3 sm:px-4 pb-16 flex-1 w-full">
+      <main className="mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4 pb-16 flex-1 w-full">
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="w-full mb-6 hidden sm:flex flex-wrap h-auto gap-1 p-1">
-            {TABS.map((t) => (
-              <TabsTrigger key={t.value} value={t.value} className="flex-1 gap-1 text-xs min-w-[58px] sm:min-w-[68px]">
-                {t.icon}
-                <span className="hidden lg:inline">{t.label}</span>
-                <span className="lg:hidden">{t.shortLabel}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
           {/* Current tool name shown on mobile, since the tab bar is hidden in favor of the hamburger menu */}
           <div className="sm:hidden mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
             <span className="text-primary">{TABS.find((t) => t.value === tab)?.icon}</span>

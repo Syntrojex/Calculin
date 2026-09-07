@@ -51,7 +51,6 @@ export function IntegrationSolver() {
   const [lower, setLower] = useState("0");
   const [upper, setUpper] = useState("1");
   const [showSteps, setShowSteps] = useState(settings.showSteps);
-  const [showGraph, setShowGraph] = useState(settings.alwaysShowGraphs);
   const [mode, setMode] = useState<"definite" | "indefinite" | "double">("definite");
   const [result, setResult] = useState<MathResult | null>(null);
   const chart3dRef = useRef<HTMLDivElement>(null);
@@ -61,7 +60,6 @@ export function IntegrationSolver() {
   const [yUpper, setYUpper] = useState("1");
 
   useEffect(() => setShowSteps(settings.showSteps), [settings.showSteps]);
-  useEffect(() => setShowGraph(settings.alwaysShowGraphs), [settings.alwaysShowGraphs]);
 
   const solve = useCallback(() => {
     if (mode === "definite") {
@@ -80,10 +78,13 @@ export function IntegrationSolver() {
 
   useAutoRun([expr, variable, lower, upper, mode, varY, yLower, yUpper, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);
 
-  const points = showGraph && mode !== "double" ? generateGraphPoints(expr, variable, -settings.defaultGraphRange, settings.defaultGraphRange) : [];
+  // Graphs are no longer behind a toggle — they're generated automatically
+  // whenever the expression (and result, for the antiderivative graph) can
+  // actually be plotted.
+  const points = mode !== "double" ? generateGraphPoints(expr, variable, -settings.defaultGraphRange, settings.defaultGraphRange) : [];
 
   const antiderivativeExpr = mode === "indefinite" && result && !result.error ? stripConstantOfIntegration(result.result) : "";
-  const antiderivativePoints = showGraph && antiderivativeExpr
+  const antiderivativePoints = antiderivativeExpr
     ? generateGraphPoints(antiderivativeExpr, variable, -settings.defaultGraphRange, settings.defaultGraphRange)
     : [];
 
@@ -94,8 +95,9 @@ export function IntegrationSolver() {
   ) * 1.4;
 
   return (
-    <div className="space-y-6">
-      <Card className="border-border/50 shadow-lg">
+    <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
+      <div className="space-y-6 min-w-0">
+        <Card className="border-border/50 shadow-lg">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <InfinityIcon className="h-5 w-5 text-primary" />
@@ -185,10 +187,6 @@ export function IntegrationSolver() {
               <Switch checked={showSteps} onCheckedChange={setShowSteps} />
               Step-by-step
             </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Switch checked={showGraph} onCheckedChange={setShowGraph} />
-              Show Graph
-            </label>
           </div>
 
           {!settings.autoCalculate && (
@@ -198,106 +196,109 @@ export function IntegrationSolver() {
             </Button>
           )}
         </CardContent>
-      </Card>
+        </Card>
 
-      {result && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <Card className="border-primary/20 shadow-lg">
-            <CardContent className="pt-6 space-y-4">
-              {result.error ? (
-                <div className="p-4 rounded-lg bg-destructive/10 text-destructive text-sm">
-                  {result.error}
-                </div>
-              ) : (
-                <>
-                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="text-sm text-muted-foreground">Result:</div>
-                      <LaTeXExportButton text={result.result} />
-                    </div>
-                    <div className="text-xl font-mono font-semibold text-foreground">
-                      {mode === "definite"
-                        ? <MathText text={`∫ from ${lower} to ${upper} = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
-                        : mode === "double"
-                        ? <MathText text={`∬ = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
-                        : <MathText text={`∫ f(x) dx = ${result.result}`} />}
-                    </div>
+        {result && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <Card className="border-primary/20 shadow-lg">
+              <CardContent className="pt-6 space-y-4">
+                {result.error ? (
+                  <div className="p-4 rounded-lg bg-destructive/10 text-destructive text-sm">
+                    {result.error}
                   </div>
+                ) : (
+                  <>
+                    <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-sm text-muted-foreground">Result:</div>
+                        <LaTeXExportButton text={result.result} />
+                      </div>
+                      <div className="text-xl font-mono font-semibold text-foreground">
+                        {mode === "definite"
+                          ? <MathText text={`∫ from ${lower} to ${upper} = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
+                          : mode === "double"
+                          ? <MathText text={`∬ = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
+                          : <MathText text={`∫ f(x) dx = ${result.result}`} />}
+                      </div>
+                    </div>
 
-                  <StepsReveal steps={result.steps} show={showSteps} resetKey={result.result} />
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
-
-      {showGraph && mode !== "double" && points.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
-          <Card className="shadow-lg border-border/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Graph of f({variable})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <GraphCanvas series={[{ expr, points }]} xMin={-settings.defaultGraphRange} xMax={settings.defaultGraphRange} />
-            </CardContent>
-          </Card>
-
-          {mode === "indefinite" && antiderivativePoints.length > 0 && (
-            <Card className="shadow-lg border-border/50">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Graph of Antiderivative F({variable}) (with C = 0)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <GraphCanvas
-                  series={[{ expr: antiderivativeExpr, points: antiderivativePoints }]}
-                  xMin={-settings.defaultGraphRange}
-                  xMax={settings.defaultGraphRange}
-                />
+                    <StepsReveal steps={result.steps} show={showSteps} resetKey={result.result} />
+                  </>
+                )}
               </CardContent>
             </Card>
-          )}
-        </motion.div>
-      )}
+          </motion.div>
+        )}
+      </div>
 
-      {showGraph && mode === "double" && result && !result.error && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <Card className="shadow-lg border-border/50">
-            <CardHeader className="pb-2 flex-row items-center justify-between">
-              <CardTitle className="text-sm text-muted-foreground">
-                3D Surface: f({variable}, {varY}) over [{lower}, {upper}] × [{yLower}, {yUpper}]
-              </CardTitle>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => downloadCanvasPNG(chart3dRef, `calculin-double-integral-${slugifyForFilename(expr)}`)}
-                className="h-8 w-8 text-primary border-primary/40 hover:bg-primary/10 shrink-0"
-                aria-label="Download PNG"
-                title="Download PNG"
-              >
-                <Camera className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <Suspense
-                fallback={
-                  <div className="h-[420px] rounded-xl border border-border overflow-hidden relative bg-muted/20">
-                    <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-muted/40 via-muted/10 to-muted/40" />
-                    <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-                      Loading 3D engine…
+      <div className="space-y-4 lg:sticky lg:top-4 min-w-0">
+        {mode !== "double" && points.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+            <Card className="shadow-lg border-border/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Graph of f({variable})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <GraphCanvas series={[{ expr, points }]} xMin={-settings.defaultGraphRange} xMax={settings.defaultGraphRange} />
+              </CardContent>
+            </Card>
+
+            {mode === "indefinite" && antiderivativePoints.length > 0 && (
+              <Card className="shadow-lg border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Graph of Antiderivative F({variable}) (with C = 0)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <GraphCanvas
+                    series={[{ expr: antiderivativeExpr, points: antiderivativePoints }]}
+                    xMin={-settings.defaultGraphRange}
+                    xMax={settings.defaultGraphRange}
+                  />
+                </CardContent>
+              </Card>
+            )}
+          </motion.div>
+        )}
+
+        {mode === "double" && result && !result.error && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <Card className="shadow-lg border-border/50">
+              <CardHeader className="pb-2 flex-row items-center justify-between">
+                <CardTitle className="text-sm text-muted-foreground">
+                  3D Surface: f({variable}, {varY}) over [{lower}, {upper}] × [{yLower}, {yUpper}]
+                </CardTitle>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => downloadCanvasPNG(chart3dRef, `calculin-double-integral-${slugifyForFilename(expr)}`)}
+                  className="h-8 w-8 text-primary border-primary/40 hover:bg-primary/10 shrink-0"
+                  aria-label="Download PNG"
+                  title="Download PNG"
+                >
+                  <Camera className="h-4 w-4" />
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <Suspense
+                  fallback={
+                    <div className="h-[420px] rounded-xl border border-border overflow-hidden relative bg-muted/20">
+                      <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-muted/40 via-muted/10 to-muted/40" />
+                      <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+                        Loading 3D engine…
+                      </div>
                     </div>
+                  }
+                >
+                  <div ref={chart3dRef}>
+                    <Graph3D expression={renameToXY(expr, variable, varY)} range={doubleIntegralRange} />
                   </div>
-                }
-              >
-                <div ref={chart3dRef}>
-                  <Graph3D expression={renameToXY(expr, variable, varY)} range={doubleIntegralRange} />
-                </div>
-              </Suspense>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+                </Suspense>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </div>
     </div>
   );
 }

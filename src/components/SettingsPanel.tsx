@@ -205,12 +205,6 @@ export function SettingsPanel() {
               checked={s.useRadians}
               onChange={(v) => s.update("useRadians", v)}
             />
-            <SettingRow
-              label="Always Show Graphs"
-              description="Plot a graph automatically where available"
-              checked={s.alwaysShowGraphs}
-              onChange={(v) => s.update("alwaysShowGraphs", v)}
-            />
           </motion.div>
 
           <Separator />

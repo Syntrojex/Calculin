@@ -22,11 +22,9 @@ export function DerivativeSolver() {
   const [variable, setVariable] = useState("x");
   const [order, setOrder] = useState(1);
   const [showSteps, setShowSteps] = useState(settings.showSteps);
-  const [showGraph, setShowGraph] = useState(settings.alwaysShowGraphs);
   const [result, setResult] = useState<MathResult | null>(null);
 
   useEffect(() => setShowSteps(settings.showSteps), [settings.showSteps]);
-  useEffect(() => setShowGraph(settings.alwaysShowGraphs), [settings.alwaysShowGraphs]);
 
   const solve = useCallback(() => {
     const res = order === 1
@@ -37,111 +35,112 @@ export function DerivativeSolver() {
 
   useAutoRun([expr, variable, order], solve, settings.autoCalculate);
 
-  const originalPoints = showGraph ? generateGraphPoints(expr, variable, -settings.defaultGraphRange, settings.defaultGraphRange) : [];
-  const derivPoints = showGraph && result && !result.error
+  // The graph is no longer behind a toggle — it's generated automatically
+  // whenever the function (and its derivative, once solved) can actually be
+  // plotted, same as everywhere else in the app.
+  const originalPoints = generateGraphPoints(expr, variable, -settings.defaultGraphRange, settings.defaultGraphRange);
+  const derivPoints = result && !result.error
     ? generateGraphPoints(result.result, variable, -settings.defaultGraphRange, settings.defaultGraphRange)
     : [];
 
   return (
-    <div className="space-y-6">
-      <Card className="border-border/50 shadow-lg">
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Sparkles className="h-5 w-5 text-primary" />
-            Derivative Calculator
-          </CardTitle>
-        </CardHeader>
-        <CardContent
-          className="space-y-4"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); solve(); }
-          }}
-        >
-          <div className="space-y-2">
-            <Label>Function f(x)</Label>
-            <MathInput
-              value={expr}
-              onChange={setExpr}
-              placeholder="e.g. x^3 + 2*x^2 - 5*x + 3"
-              onEnter={solve}
-            />
-          </div>
-
-          <div className="flex gap-4">
-            <div className="space-y-2 w-24">
-              <Label>Variable</Label>
-              <Input
-                value={variable}
-                onChange={(e) => setVariable(e.target.value)}
-                className="font-mono text-center"
+    <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
+      <div className="space-y-6 min-w-0">
+        <Card className="border-border/50 shadow-lg">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Derivative Calculator
+            </CardTitle>
+          </CardHeader>
+          <CardContent
+            className="space-y-4"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); solve(); }
+            }}
+          >
+            <div className="space-y-2">
+              <Label>Function f(x)</Label>
+              <MathInput
+                value={expr}
+                onChange={setExpr}
+                placeholder="e.g. x^3 + 2*x^2 - 5*x + 3"
+                onEnter={solve}
               />
             </div>
-            <div className="space-y-2 w-24">
-              <Label>Order</Label>
-              <Input
-                type="number"
-                min={1}
-                max={10}
-                value={order}
-                onChange={(e) => setOrder(parseInt(e.target.value) || 1)}
-                className="text-center"
-              />
+
+            <div className="flex gap-4">
+              <div className="space-y-2 w-24">
+                <Label>Variable</Label>
+                <Input
+                  value={variable}
+                  onChange={(e) => setVariable(e.target.value)}
+                  className="font-mono text-center"
+                />
+              </div>
+              <div className="space-y-2 w-24">
+                <Label>Order</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={order}
+                  onChange={(e) => setOrder(parseInt(e.target.value) || 1)}
+                  className="text-center"
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-6 flex-wrap">
-            <label className="flex items-center gap-2 text-sm">
-              <Switch checked={showSteps} onCheckedChange={setShowSteps} />
-              Step-by-step
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Switch checked={showGraph} onCheckedChange={setShowGraph} />
-              Show Graph
-            </label>
-            {settings.autoCalculate && (
-              <span className="text-xs text-muted-foreground italic">Auto-calculating as you type…</span>
-            )}
-          </div>
-
-          {!settings.autoCalculate && (
-            <Button onClick={solve} className="w-full gap-2">
-              <ArrowRight className="h-4 w-4" />
-              Solve Derivative
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      {result && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <Card className="border-primary/20 shadow-lg">
-            <CardContent className="pt-6 space-y-4">
-              {result.error ? (
-                <div className="p-4 rounded-lg bg-destructive/10 text-destructive text-sm">
-                  {result.error}
-                </div>
-              ) : (
-                <>
-                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="text-sm text-muted-foreground">Result:</div>
-                      <LaTeXExportButton text={result.result} />
-                    </div>
-                    <div className="text-xl font-mono font-semibold text-foreground">
-                      f{"'".repeat(order)}({variable}) = <MathText text={result.result} />
-                    </div>
-                  </div>
-
-                  <StepsReveal steps={result.steps} show={showSteps} resetKey={result.result} />
-                </>
+            <div className="flex items-center gap-6 flex-wrap">
+              <label className="flex items-center gap-2 text-sm">
+                <Switch checked={showSteps} onCheckedChange={setShowSteps} />
+                Step-by-step
+              </label>
+              {settings.autoCalculate && (
+                <span className="text-xs text-muted-foreground italic">Auto-calculating as you type…</span>
               )}
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+            </div>
 
-      {showGraph && originalPoints.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+            {!settings.autoCalculate && (
+              <Button onClick={solve} className="w-full gap-2">
+                <ArrowRight className="h-4 w-4" />
+                Solve Derivative
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {result && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <Card className="border-primary/20 shadow-lg">
+              <CardContent className="pt-6 space-y-4">
+                {result.error ? (
+                  <div className="p-4 rounded-lg bg-destructive/10 text-destructive text-sm">
+                    {result.error}
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-sm text-muted-foreground">Result:</div>
+                        <LaTeXExportButton text={result.result} />
+                      </div>
+                      <div className="text-xl font-mono font-semibold text-foreground">
+                        f{"'".repeat(order)}({variable}) = <MathText text={result.result} />
+                      </div>
+                    </div>
+
+                    <StepsReveal steps={result.steps} show={showSteps} resetKey={result.result} />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </div>
+
+      {originalPoints.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4 lg:sticky lg:top-4 min-w-0">
           <Card className="shadow-lg border-border/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-muted-foreground">Original Function</CardTitle>

@@ -13,7 +13,6 @@ export interface Settings {
   showSteps: boolean;
   autoCalculate: boolean;
   useRadians: boolean;
-  alwaysShowGraphs: boolean;
   animationSpeed: AnimationSpeed;
   defaultGraphRange: number;
 }
@@ -26,7 +25,6 @@ export const DEFAULT_SETTINGS: Settings = {
   showSteps: true,
   autoCalculate: false,
   useRadians: true,
-  alwaysShowGraphs: false,
   animationSpeed: "normal",
   defaultGraphRange: 10,
 };

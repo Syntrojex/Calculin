@@ -232,10 +232,8 @@ export function EquationSolver() {
   const [quadEq, setQuadEq] = useState("x^2 - 5x + 6 = 0");
   const [result, setResult] = useState<SolveResult | null>(null);
   const [showSteps, setShowSteps] = useState(settings.showSteps);
-  const [showGraph, setShowGraph] = useState(settings.alwaysShowGraphs);
 
   useEffect(() => setShowSteps(settings.showSteps), [settings.showSteps]);
-  useEffect(() => setShowGraph(settings.alwaysShowGraphs), [settings.alwaysShowGraphs]);
 
   const fmt = (n: number) => formatNumber(n, settings);
 
@@ -256,8 +254,11 @@ export function EquationSolver() {
     return `(${parts[0].trim()}) - (${parts[1].trim()})`;
   }, [mode, linearEq, quadEq]);
 
+  const splitLayout = mode !== "graph";
+
   return (
-    <div className="space-y-6">
+    <div className={splitLayout ? "lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0" : "space-y-6"}>
+      <div className={splitLayout ? "space-y-6 min-w-0" : "space-y-6"}>
       <Card className="border-border/50 shadow-lg">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -314,10 +315,6 @@ export function EquationSolver() {
                   <Switch checked={showSteps} onCheckedChange={setShowSteps} />
                   Step-by-step
                 </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <Switch checked={showGraph} onCheckedChange={setShowGraph} />
-                  Show Graph
-                </label>
               </div>
 
               {!settings.autoCalculate && (
@@ -352,15 +349,18 @@ export function EquationSolver() {
         </Card>
         </motion.div>
       )}
+      </div>
 
-      {mode !== "graph" && showGraph && activeExpr && !result?.error && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <Card className="shadow-lg border-border/50">
-            <CardContent className="pt-6">
-              <RootGraph expr={activeExpr} />
-            </CardContent>
-          </Card>
-        </motion.div>
+      {splitLayout && activeExpr && !result?.error && (
+        <div className="lg:sticky lg:top-4 min-w-0">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <Card className="shadow-lg border-border/50">
+              <CardContent className="pt-6">
+                <RootGraph expr={activeExpr} />
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
       )}
     </div>
   );
