@@ -31,7 +31,16 @@ interface GraphCanvasProps {
   downloadFilename?: string;
 }
 
-const FALLBACK_VARS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
+// Fixed, hardcoded hex palette — deliberately NOT read from the app's live
+// CSS variables (--chart-1, --chart-2, ...), which are oklch() colors.
+// Canvas 2D's strokeStyle/fillStyle setters silently ignore any color
+// string they can't parse and just keep whatever the PREVIOUS value was
+// (per spec) rather than erroring — so on a browser/engine that doesn't
+// parse oklch() in a canvas context, every series after the first one
+// quietly inherited the first series' color instead of getting its own,
+// making a second/third plotted function look identical to (and so
+// invisible on top of) the first. Plain hex is universally supported.
+const FALLBACK_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"];
 
 export function GraphCanvas({
   series,
@@ -67,8 +76,6 @@ export function GraphCanvas({
     const legendPad = series.length > 1 ? 28 : 0;
 
     const isDark = document.documentElement.classList.contains("dark");
-    const computed = getComputedStyle(document.documentElement);
-    const resolveVar = (v: string) => computed.getPropertyValue(v).trim();
 
     // Compute combined y range across all series (unless explicitly overridden)
     const allYs = series.flatMap((s) => s.points.map((p) => p.y));
@@ -137,7 +144,7 @@ export function GraphCanvas({
 
     // Plot each series
     series.forEach((s, idx) => {
-      const color = s.color || resolveVar(FALLBACK_VARS[idx % FALLBACK_VARS.length]) || "#6d4aff";
+      const color = s.color || FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
 
       if (s.mode === "scatter") {
         ctx.fillStyle = color;
@@ -215,7 +222,7 @@ export function GraphCanvas({
       ctx.font = "12px system-ui";
       ctx.textAlign = "left";
       series.forEach((s, idx) => {
-        const color = s.color || resolveVar(FALLBACK_VARS[idx % FALLBACK_VARS.length]) || "#6d4aff";
+        const color = s.color || FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.roundRect(lx, ly - 7, 14, 8, 3);

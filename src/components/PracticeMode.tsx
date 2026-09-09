@@ -636,7 +636,7 @@ export function PracticeMode() {
     return GENERATORS[cat]("easy");
   });
   const [answer, setAnswer] = useState("");
-  const [feedback, setFeedback] = useState<"correct" | "incorrect" | null>(null);
+  const [feedback, setFeedback] = useState<"correct" | "incorrect" | "empty" | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [problemKey, setProblemKey] = useState(0);
@@ -652,7 +652,11 @@ export function PracticeMode() {
   }, []);
 
   const checkAnswer = () => {
-    if (!problem || !answer.trim()) return;
+    if (!problem) return;
+    if (!answer.trim()) {
+      setFeedback("empty");
+      return;
+    }
     const ok = problem.check(answer);
     setFeedback(ok ? "correct" : "incorrect");
     setScore((s) => ({ correct: s.correct + (ok ? 1 : 0), total: s.total + 1 }));
@@ -730,7 +734,7 @@ export function PracticeMode() {
                 <div className="flex gap-2">
                   <Input
                     value={answer}
-                    onChange={(e) => setAnswer(e.target.value)}
+                    onChange={(e) => { setAnswer(e.target.value); if (feedback) setFeedback(null); }}
                     placeholder="Your answer"
                     className="font-mono"
                     onKeyDown={(e) => e.key === "Enter" && checkAnswer()}
@@ -748,12 +752,18 @@ export function PracticeMode() {
                       className={`flex items-center gap-2 p-3 rounded-lg ${
                         feedback === "correct"
                           ? "bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-300"
+                          : feedback === "empty"
+                          ? "bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300"
                           : "bg-destructive/10 border border-destructive/20 text-destructive"
                       }`}
                     >
                       {feedback === "correct" ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <XCircle className="h-4 w-4 flex-shrink-0" />}
                       <span className="text-sm font-medium">
-                        {feedback === "correct" ? "Correct! Well done." : "Not quite — try again or reveal the answer."}
+                        {feedback === "correct"
+                          ? "Correct! Well done."
+                          : feedback === "empty"
+                          ? "Please enter an answer first."
+                          : "Not quite — try again or reveal the answer."}
                       </span>
                     </motion.div>
                   )}

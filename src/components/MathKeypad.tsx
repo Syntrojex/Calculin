@@ -63,6 +63,7 @@ const ROWS: Key[][] = [
     { label: "00", insert: "00", category: "num" },
     { label: "±", insert: "-",  category: "op"  },
     { label: "1/x", insert: "^(-1)", category: "op" },
+    { label: "θ", insert: "theta", category: "const" },
     { label: "space", insert: " ", category: "op" },
   ],
 ];
@@ -128,7 +129,7 @@ export function MathKeypad({ onInput, onBackspace, onClear, onEnter }: MathKeypa
             onPointerDown={(e) => { e.preventDefault(); handleKey(ENTER_KEY); }}
           >
             <CornerDownLeft className="h-4 w-4" />
-            Enter / Solve
+            Enter
           </button>
         </div>
       </motion.div>

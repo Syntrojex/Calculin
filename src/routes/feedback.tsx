@@ -10,7 +10,7 @@ export const Route = createFileRoute("/feedback")({
 
 function FeedbackPage() {
   return (
-    <LegalPageLayout title="Feedback" lastUpdated="August 2026">
+    <LegalPageLayout title="Feedback" lastUpdated="September 2026">
       <section>
         <h2>We'd Love to Hear From You</h2>
         <p>

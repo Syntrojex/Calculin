@@ -8,7 +8,7 @@ export const Route = createFileRoute("/about")({
 
 function AboutPage() {
   return (
-    <LegalPageLayout title="About Calculin" lastUpdated="August 2026">
+    <LegalPageLayout title="About Calculin" lastUpdated="September 2026">
       <section>
         <h2>What is Calculin?</h2>
         <p>
@@ -38,19 +38,6 @@ function AboutPage() {
           known as <strong>Syntrojex</strong>, which is his GitHub handle as well.
           He is a BS Software Engineering student at FAST National University,
           Lahore.
-        </p>
-        <p>
-          He specializes in Flutter and Dart development, with a strong command of
-          state management and a solid foundation in C++. He also has hands-on
-          experience in game development. He enjoys building modern, scalable, and
-          user-friendly applications, and is continuously sharpening his skills
-          across software engineering, mobile app & game development, and
-          problem-solving. Calculin is an independent, continually evolving
-          project — new tools and improvements are added regularly.
-        </p>
-        <p>
-          <strong>Tech Stack:</strong> Flutter • Dart • State Management • Firebase •
-          C++ • Git &amp; GitHub
         </p>
       </section>
 

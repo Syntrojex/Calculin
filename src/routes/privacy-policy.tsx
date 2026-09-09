@@ -8,7 +8,7 @@ export const Route = createFileRoute("/privacy-policy")({
 
 function PrivacyPolicyPage() {
   return (
-    <LegalPageLayout title="Privacy Policy" lastUpdated="August 2026">
+    <LegalPageLayout title="Privacy Policy" lastUpdated="September 2026">
       <section>
         <h2>Our Approach to Privacy</h2>
         <p>
