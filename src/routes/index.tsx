@@ -7,10 +7,11 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import {
   Infinity as InfinityIcon, LineChart, Calculator, Grid3X3,
   ArrowRight, ArrowLeftRight, Pentagon, TrendingUp,
-  Zap, Hash, GraduationCap, Menu, Binary, BookOpen,
+  Zap, Hash, GraduationCap, Menu, Binary, BookOpen, Library, ChevronDown,
   Github, Linkedin, ArrowUp,
 } from "lucide-react";
 import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
+import { DEFINITION_TOPICS } from "@/lib/definitions-data";
 
 const DerivativeSolver = lazy(() => import("@/components/DerivativeSolver").then(m => ({ default: m.DerivativeSolver })));
 const IntegrationSolver = lazy(() => import("@/components/IntegrationSolver").then(m => ({ default: m.IntegrationSolver })));
@@ -27,6 +28,7 @@ const NumberConversions = lazy(() => import("@/components/NumberConversions").th
 const GraphPlotter = lazy(() => import("@/components/GraphPlotter").then(m => ({ default: m.GraphPlotter })));
 const PracticeMode = lazy(() => import("@/components/PracticeMode").then(m => ({ default: m.PracticeMode })));
 const FormulaSheet = lazy(() => import("@/components/FormulaSheet").then(m => ({ default: m.FormulaSheet })));
+const Definitions = lazy(() => import("@/components/Definitions").then(m => ({ default: m.Definitions })));
 
 export const Route = createFileRoute("/")({  
   component: Index,
@@ -69,6 +71,14 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
     icon: <BookOpen className="h-3.5 w-3.5" />,
     component: <FormulaSheet topicKey={topic.key} />,
   })),
+  // Same pattern for Definitions topics.
+  ...DEFINITION_TOPICS.map((topic) => ({
+    value: `definitions-${topic.key}`,
+    label: topic.navLabel,
+    shortLabel: topic.navLabel,
+    icon: <Library className="h-3.5 w-3.5" />,
+    component: <Definitions topicKey={topic.key} />,
+  })),
 ];
 
 function tabByValue(value: string) {
@@ -88,6 +98,7 @@ const CATEGORIES: { key: string; label: string; icon: React.ReactNode; tools: st
   { key: "numbers", label: "Numbers", icon: <Hash className="h-3.5 w-3.5" />, tools: ["numtheory", "numconv", "converter"] },
   { key: "graph", label: "Graph", icon: <LineChart className="h-3.5 w-3.5" />, tools: ["graph"] },
   { key: "practice", label: "Practice", icon: <GraduationCap className="h-3.5 w-3.5" />, tools: ["practice"] },
+  { key: "definitions", label: "Definitions", icon: <Library className="h-3.5 w-3.5" />, tools: DEFINITION_TOPICS.map((t) => `definitions-${t.key}`) },
   { key: "formulasheet", label: "Formula Sheet", icon: <BookOpen className="h-3.5 w-3.5" />, tools: FORMULA_TOPICS.map((t) => `formula-${t.key}`) },
 ];
 
@@ -98,6 +109,14 @@ function categoryOf(tabValue: string) {
 function Index() {
   const [tab, setTab] = useState("derivative");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [expandedMobileCategories, setExpandedMobileCategories] = useState<Set<string>>(new Set());
+  const toggleMobileCategory = (key: string) => {
+    setExpandedMobileCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   const selectTab = (value: string) => {
     setTab(value);
@@ -117,8 +136,8 @@ function Index() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-lg">
-        <div className="mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4 py-3">
-          <div className="flex items-center gap-2 lg:gap-6">
+        <div className="mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4">
+          <div className="flex items-center gap-2 lg:gap-6 py-3">
             <button
               className="sm:hidden mr-1 p-1.5 -ml-1.5 rounded-md hover:bg-muted/60 text-foreground"
               onClick={() => setMobileMenuOpen(true)}
@@ -154,19 +173,27 @@ function Index() {
             </div>
           </div>
 
-          {/* Sub-row: only the active category's specific tools, when it has more than one */}
+          {/* Sub-row: a tinted toolbar strip of pill chips for the active
+              category's specific tools, when it has more than one — bleeds
+              to the header's full width (negative margin) rather than
+              sitting inside the same padding as the row above it, so it
+              reads as its own distinct "toolbar" band. */}
           {activeCategory.tools.length > 1 && (
-            <div className="hidden sm:flex items-center gap-1 mt-2 pt-2 border-t border-dashed border-border/60 overflow-x-auto">
+            <div className="hidden sm:flex items-center gap-1.5 py-2 px-3 sm:px-4 -mx-3 sm:-mx-4 bg-primary/5 border-t border-border/50 overflow-x-auto">
               {activeCategory.tools.map((value) => {
                 const t = tabByValue(value);
+                const active = tab === value;
                 return (
                   <button
                     key={value}
                     onClick={() => selectTab(value)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
-                      tab === value ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
+                      active
+                        ? "bg-background border-primary/40 text-primary shadow-sm"
+                        : "border-transparent text-muted-foreground hover:bg-background/60 hover:text-foreground"
                     }`}
                   >
+                    <span className="[&_svg]:h-3.5 [&_svg]:w-3.5">{t.icon}</span>
                     {t.label}
                   </button>
                 );
@@ -183,30 +210,51 @@ function Index() {
             <SheetTitle>Tools</SheetTitle>
           </SheetHeader>
           <nav className="px-2 pb-6 mt-2 space-y-4">
-            {CATEGORIES.map((cat) => (
-              <div key={cat.key}>
-                <div className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {cat.label}
+            {CATEGORIES.map((cat) => {
+              // Small categories (Calculus, Algebra, ...) list their tools
+              // inline right away, same as before. Large reference
+              // categories (Definitions, Formula Sheet — 10 topics each)
+              // collapse into a dropdown instead, so the menu doesn't turn
+              // into one long undifferentiated scroll of 24+ items.
+              const isLarge = cat.tools.length > 4;
+              const isOpen = !isLarge || expandedMobileCategories.has(cat.key) || activeCategory.key === cat.key;
+              return (
+                <div key={cat.key}>
+                  {isLarge ? (
+                    <button
+                      onClick={() => toggleMobileCategory(cat.key)}
+                      className="w-full flex items-center justify-between px-3 mb-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                    >
+                      <span className="flex items-center gap-1.5">{cat.icon} {cat.label}</span>
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                    </button>
+                  ) : (
+                    <div className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {cat.label}
+                    </div>
+                  )}
+                  {isOpen && (
+                    <div className="space-y-1">
+                      {cat.tools.map((value) => {
+                        const t = tabByValue(value);
+                        return (
+                          <button
+                            key={value}
+                            onClick={() => selectTab(value)}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              tab === value ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
+                            }`}
+                          >
+                            <span className="w-5 flex items-center justify-center">{t.icon}</span>
+                            {t.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-1">
-                  {cat.tools.map((value) => {
-                    const t = tabByValue(value);
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => selectTab(value)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          tab === value ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
-                        }`}
-                      >
-                        <span className="w-5 flex items-center justify-center">{t.icon}</span>
-                        {t.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </nav>
         </SheetContent>
       </Sheet>
@@ -242,8 +290,8 @@ function Index() {
             {TABS.find((t) => t.value === tab)?.label}
           </div>
 
-          {TABS.map((t) => (
-            <TabsContent key={t.value} value={t.value}>
+          {TABS.filter((t) => t.value === tab).map((t) => (
+            <TabsContent key={t.value} value={t.value} forceMount>
               <motion.div
                 key={tab}
                 initial={{ opacity: 0, y: 10 }}

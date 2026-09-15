@@ -252,7 +252,7 @@ function ProveIdentity() {
   ] : [];
 
   return (
-    <Card className="border-border/50 shadow-lg">
+    <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Prove Identity</CardTitle>
         <p className="text-xs text-muted-foreground">Enter both sides using x as the angle variable — get a step-by-step proof using trig identities.</p>
@@ -317,7 +317,7 @@ export function TrigIdentities() {
         </TabsList>
 
         <TabsContent value="identities">
-          <Card className="border-border/50 shadow-lg">
+          <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <span className="text-primary text-xl">sin cos tan</span>

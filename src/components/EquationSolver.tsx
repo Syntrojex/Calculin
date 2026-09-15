@@ -259,7 +259,7 @@ export function EquationSolver() {
   return (
     <div className={splitLayout ? "lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0" : "space-y-6"}>
       <div className={splitLayout ? "space-y-6 min-w-0" : "space-y-6"}>
-      <Card className="border-border/50 shadow-lg">
+      <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Calculator className="h-5 w-5 text-primary" />

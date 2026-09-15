@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -58,11 +58,13 @@ export function UnitConverter() {
   const [fromIdx, setFromIdx] = useState("0");
   const [toIdx, setToIdx] = useState("1");
   const [value, setValue] = useState("1");
+  const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ from: string; to: string; converted: number; base: number; baseUnitName: string; steps: string[] } | string | null>(null);
 
   const convert = () => {
     const v = parseFloat(value);
     if (isNaN(v)) { setResult("Enter a valid number"); return; }
+
     const from = units[category][parseInt(fromIdx)];
     const to = units[category][parseInt(toIdx)];
     const base = from.toBase(v);
@@ -84,7 +86,7 @@ export function UnitConverter() {
 
   return (
     <div className="space-y-6">
-      <Card className="border-border/50 shadow-lg">
+      <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <ArrowLeftRight className="h-5 w-5 text-primary" />
@@ -152,24 +154,32 @@ export function UnitConverter() {
         </CardContent>
       </Card>
 
-      {result && (
-        <motion.div key={typeof result === "string" ? result : result.converted} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-          <Card className="shadow-lg border-border/50">
-            <CardContent className="pt-6">
-              {typeof result === "string" ? (
-                <p className="text-center text-destructive font-medium">{result}</p>
-              ) : (
-                <>
-                  <p className="text-center text-lg font-mono font-semibold">
-                    {value} {result.from} = <span className="text-primary">{formatNumber(result.converted, settings)}</span> {result.to}
-                  </p>
-                  <StepsReveal steps={result.steps} show={settings.showSteps} resetKey={result.converted} />
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
+      {error && (
+        <Card className="border-destructive/20">
+          <CardContent className="pt-4 text-destructive text-sm">{error}</CardContent>
+        </Card>
       )}
+
+      <AnimatePresence mode="wait">
+        {result && (
+          <motion.div key={typeof result === "string" ? result : result.converted} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+            <Card className="shadow-lg border-border/50">
+              <CardContent className="pt-6">
+                {typeof result === "string" ? (
+                  <p className="text-center text-destructive font-medium">{result}</p>
+                ) : (
+                  <>
+                    <p className="text-center text-lg font-mono font-semibold">
+                      {value} {result.from} = <span className="text-primary">{formatNumber(result.converted, settings)}</span> {result.to}
+                    </p>
+                    <StepsReveal steps={result.steps} show={settings.showSteps} resetKey={result.converted} />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

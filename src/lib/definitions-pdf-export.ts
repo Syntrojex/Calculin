@@ -1,13 +1,12 @@
-import type { FormulaTopic } from "./formula-sheet-data";
+import type { DefinitionTopic } from "./definitions-data";
 import { latexToPlainText, sanitizeAsciiForPdf } from "./latex-to-text";
 
-// A deliberately fixed palette (not the app's live oklch-based theme
-// variables) so the PDF always looks the same regardless of which
-// dark/light/accent theme is active on screen — colors as [R, G, B] 0-255
-// triples, since jsPDF's setFillColor/setTextColor take plain RGB.
+// Same fixed, hardcoded palette as pdf-export.ts (formula sheets) — kept
+// consistent across both PDF exports rather than reading the app's live
+// oklch-based theme variables.
 const COLORS = {
-  headerFrom: [79, 70, 229] as [number, number, number], // indigo-600
-  headerTo: [124, 58, 237] as [number, number, number], // violet-600
+  headerFrom: [79, 70, 229] as [number, number, number],
+  headerTo: [124, 58, 237] as [number, number, number],
   headerText: [255, 255, 255] as [number, number, number],
   headerSubtext: [224, 217, 251] as [number, number, number],
   text: [30, 27, 46] as [number, number, number],
@@ -22,24 +21,30 @@ function formatGeneratedDate(): string {
   return new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 }
 
+/** Converts a definition/example string that may contain inline `$...$`
+ *  math segments into fully plain text, for jsPDF's text API — and
+ *  sanitizes the surrounding prose too (not just the math parts), since
+ *  plain English text can just as easily contain a stray em-dash, curly
+ *  quote, or degree sign that jsPDF's built-in fonts can't render. */
+function plainize(text: string): string {
+  const withMathConverted = text.replace(/\$([^$]+)\$/g, (_m, inner: string) => latexToPlainText(inner));
+  return sanitizeAsciiForPdf(withMathConverted);
+}
+
 /**
- * Draws a formula topic straight to jsPDF using its native text/shape API —
- * no DOM screenshot at all. The previous html2canvas-based approach tried
- * to rasterize dozens of fully-rendered KaTeX formulas (each one hundreds
- * of nested DOM nodes) in a single pass, which could hang the tab for a
- * long time (or indefinitely) on slower devices. This is slower to author
- * but fast and reliable to run: pure vector/text drawing, nothing to wait
- * on, nothing that can freeze the page.
+ * Draws a definitions topic straight to jsPDF using its native text/shape
+ * API — the same reliable, no-DOM-screenshot approach as pdf-export.ts
+ * (formula sheets), single-column since definitions run longer than
+ * formulas and read better at full width.
  */
-export async function exportFormulaSheetPDF(topic: FormulaTopic): Promise<void> {
+export async function exportDefinitionsPDF(topic: DefinitionTopic): Promise<void> {
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF("p", "pt", "a4");
 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margin = 40;
-  const gutter = 16;
-  const colWidth = (pageWidth - margin * 2 - gutter) / 2;
+  const contentWidth = pageWidth - margin * 2;
   const footerHeight = 34;
   const contentBottom = pageHeight - footerHeight - 16;
 
@@ -57,8 +62,6 @@ export async function exportFormulaSheetPDF(topic: FormulaTopic): Promise<void> 
 
   const drawHeaderBand = (compact: boolean): number => {
     const bandHeight = compact ? 56 : 128;
-    // Fake a gradient with a handful of horizontal color-interpolated
-    // strips — jsPDF has no native linear-gradient fill.
     const steps = 24;
     for (let i = 0; i < steps; i++) {
       const t = i / (steps - 1);
@@ -111,67 +114,52 @@ export async function exportFormulaSheetPDF(topic: FormulaTopic): Promise<void> 
   let y = drawHeaderBand(false) + 30;
   drawFooter();
 
-  let leftColHeight = 0;
+  topic.definitions.forEach((d) => {
+    const defText = plainize(d.definition);
+    const exText = d.example ? plainize(d.example) : "";
 
-  topic.formulas.forEach((f, i) => {
-    const col = i % 2;
-    const x = margin + col * (colWidth + gutter);
-
-    const plain = latexToPlainText(f.latex);
-    pdf.setFont("courier", "normal");
-    pdf.setFontSize(10.5);
-    const formulaLines: string[] = pdf.splitTextToSize(plain, colWidth - 24);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(10);
+    const defLines: string[] = pdf.splitTextToSize(defText, contentWidth - 24);
 
     pdf.setFont("helvetica", "italic");
-    pdf.setFontSize(8);
-    const noteLines: string[] = f.note ? pdf.splitTextToSize(latexToPlainText(f.note), colWidth - 24) : [];
+    pdf.setFontSize(9);
+    const exLines: string[] = exText ? pdf.splitTextToSize(`Example: ${exText}`, contentWidth - 24) : [];
 
-    const nameHeight = 16;
-    const formulaHeight = formulaLines.length * 13;
-    const noteHeight = noteLines.length ? noteLines.length * 10 + 6 : 0;
-    const cardHeight = nameHeight + formulaHeight + noteHeight + 18;
+    const termHeight = 17;
+    const defHeight = defLines.length * 13;
+    const exHeight = exLines.length ? exLines.length * 12 + 8 : 0;
+    const cardHeight = termHeight + defHeight + exHeight + 16;
 
-    // Only ever break pages at the start of a left column, so a page
-    // always ends on a clean row boundary rather than mid-row.
-    if (col === 0 && y + cardHeight > contentBottom) {
+    if (y + cardHeight > contentBottom) {
       y = startNewPage();
     }
 
     pdf.setFillColor(...COLORS.cardBg);
     pdf.setDrawColor(...COLORS.cardBorder);
-    pdf.roundedRect(x, y, colWidth, cardHeight, 4, 4, "FD");
+    pdf.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, "FD");
     pdf.setFillColor(...COLORS.accentBar);
-    pdf.rect(x, y, 3, cardHeight, "F");
+    pdf.rect(margin, y, 3, cardHeight, "F");
 
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(9.5);
+    pdf.setFontSize(11);
     pdf.setTextColor(...COLORS.text);
-    pdf.text(sanitizeAsciiForPdf(f.name), x + 12, y + 15);
+    pdf.text(sanitizeAsciiForPdf(d.term), margin + 14, y + 17);
 
-    pdf.setFont("courier", "normal");
-    pdf.setFontSize(10.5);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(10);
     pdf.setTextColor(...COLORS.text);
-    pdf.text(formulaLines, x + 12, y + 15 + 15);
+    pdf.text(defLines, margin + 14, y + 17 + 15);
 
-    if (noteLines.length) {
+    if (exLines.length) {
       pdf.setFont("helvetica", "italic");
-      pdf.setFontSize(8);
+      pdf.setFontSize(9);
       pdf.setTextColor(...COLORS.muted);
-      pdf.text(noteLines, x + 12, y + 15 + formulaHeight + 16);
+      pdf.text(exLines, margin + 14, y + 17 + defHeight + 18);
     }
 
-    if (col === 0) {
-      leftColHeight = cardHeight;
-    }
-    // Advance y once per row (after the right column, or after a lone
-    // last left-column card), using the taller of the pair so rows never
-    // overlap.
-    const isLastFormula = i === topic.formulas.length - 1;
-    if (col === 1 || isLastFormula) {
-      const rowHeight = col === 1 ? Math.max(leftColHeight, cardHeight) : cardHeight;
-      y += rowHeight + 12;
-    }
+    y += cardHeight + 10;
   });
 
-  pdf.save(`Calculin-${topic.key}-formula-sheet.pdf`);
+  pdf.save(`Calculin-${topic.key}-definitions.pdf`);
 }

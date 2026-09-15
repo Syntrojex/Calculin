@@ -1,4 +1,30 @@
 /**
+ * Converts common Unicode punctuation to plain ASCII, then strips anything
+ * still non-ASCII as a last resort. Used on every string this app draws
+ * into a PDF via jsPDF's built-in fonts (formula/definition names, terms,
+ * and any prose that doesn't go through latexToPlainText at all) — the
+ * built-in fonts only support WinAnsi/Latin-1, so anything outside that
+ * range risks silently rendering as the wrong glyph rather than erroring.
+ */
+export function sanitizeAsciiForPdf(text: string): string {
+  return text
+    .replace(/[–—]/g, "-")
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/°/g, " deg")
+    .replace(/×/g, "x")
+    .replace(/÷/g, "/")
+    .replace(/…/g, "...")
+    .replace(/•/g, "-")
+    .replace(/→/g, "->")
+    .replace(/←/g, "<-")
+    .replace(/↔/g, "<->")
+    .replace(/[^\x00-\x7F]/g, "")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+/**
  * Converts a LaTeX string (as authored in formula-sheet-data.ts) into a
  * clean, readable plain-text approximation, for drawing directly with
  * jsPDF's text API — no DOM screenshot involved. This trades true typeset
@@ -28,12 +54,12 @@ export function latexToPlainText(input: string): string {
   // inner one has already been flattened to plain parens/text.
   for (let i = 0; i < 8; i++) {
     const before = s;
-    s = s.replace(/\\lim_\{([^{}]*)\}/g, (_m, sub: string) => `lim(${sub.replace(/\\to/g, "→")})`);
+    s = s.replace(/\\lim_\{([^{}]*)\}/g, (_m, sub: string) => `lim(${sub.replace(/\\to/g, "->")})`);
     s = s.replace(/\\text\{([^{}]*)\}/g, "$1");
     s = s.replace(/\\operatorname\{([^{}]*)\}/g, "$1");
     s = s.replace(/\\overline\{([^{}]*)\}/g, "conj($1)");
-    s = s.replace(/\\sqrt\[([^\]]+)\]\{([^{}]*)\}/g, "$1√($2)");
-    s = s.replace(/\\sqrt\{([^{}]*)\}/g, "√($1)");
+    s = s.replace(/\\sqrt\[([^\]]+)\]\{([^{}]*)\}/g, "$1-root($2)");
+    s = s.replace(/\\sqrt\{([^{}]*)\}/g, "sqrt($1)");
     // Superscript/subscript brace groups also need resolving inside this
     // same loop (not just once afterward) — e.g. \frac{x^{n+1}}{n+1}'s
     // numerator "x^{n+1}" still contains braces from the exponent until
@@ -68,13 +94,23 @@ export function latexToPlainText(input: string): string {
   // separator — stripping it without adding a space back would glue them
   // into "sec xtan x". A final whitespace-collapse below cleans up any
   // resulting doubled spaces.
+  //
+  // Every replacement here is deliberately plain ASCII, never a Unicode
+  // math symbol (√, π, ≠, ...): jsPDF's built-in fonts (Helvetica, Courier —
+  // the old "standard 14" PDF fonts) only support the WinAnsi/Latin-1
+  // character set. A Unicode codepoint outside that range doesn't cleanly
+  // error — jsPDF/the PDF viewer maps it to whatever WinAnsi position falls
+  // out of that codepoint's low byte, silently rendering the wrong glyph
+  // (this is what produced stray quote-mark characters in place of "1" and
+  // other digits/symbols in exported formula sheets). ASCII text always
+  // renders exactly as written, on every PDF viewer, with these fonts.
   const SYMBOLS: [RegExp, string][] = [
     [/\\cdots|\\ldots|\\dots/g, "..."],
-    [/\\pm/g, "±"], [/\\mp/g, "∓"], [/\\times/g, "×"], [/\\cdot/g, "·"],
-    [/\\div/g, "÷"], [/\\neq/g, "≠"], [/\\le(?![a-zA-Z])/g, "≤"], [/\\ge(?![a-zA-Z])/g, "≥"],
-    [/\\approx/g, "≈"], [/\\infty/g, "∞"], [/\\pi(?![a-zA-Z])/g, "π"], [/\\theta(?![a-zA-Z])/g, "θ"],
-    [/\\Rightarrow/g, "⇒"], [/\\iff(?![a-zA-Z])/g, "⟺"], [/\\in(?![a-zA-Z])/g, "∈"], [/\\mid(?![a-zA-Z])/g, "|"],
-    [/\\bmod(?![a-zA-Z])/g, " mod "], [/\\int(?![a-zA-Z])/g, "∫"], [/\\sum(?![a-zA-Z])/g, "Σ"],
+    [/\\pm/g, "+/-"], [/\\mp/g, "-/+"], [/\\times/g, "*"], [/\\cdot/g, "*"],
+    [/\\div/g, "/"], [/\\neq/g, "!="], [/\\le(?![a-zA-Z])/g, "<="], [/\\ge(?![a-zA-Z])/g, ">="],
+    [/\\approx/g, "~="], [/\\infty/g, "infinity"], [/\\pi(?![a-zA-Z])/g, "pi"], [/\\theta(?![a-zA-Z])/g, "theta"],
+    [/\\Rightarrow/g, "=>"], [/\\iff(?![a-zA-Z])/g, "<=>"], [/\\in(?![a-zA-Z])/g, " in "], [/\\mid(?![a-zA-Z])/g, "|"],
+    [/\\bmod(?![a-zA-Z])/g, " mod "], [/\\int(?![a-zA-Z])/g, "integral of "], [/\\sum(?![a-zA-Z])/g, "sum of "],
     [/\\dfrac/g, ""], [/\\!|\\,|\\;|\\ /g, " "],
     [/\\arcsin(?![a-zA-Z])/g, "arcsin"], [/\\arccos(?![a-zA-Z])/g, "arccos"], [/\\arctan(?![a-zA-Z])/g, "arctan"],
     [/\\sin(?![a-zA-Z])/g, " sin"], [/\\cos(?![a-zA-Z])/g, " cos"], [/\\tan(?![a-zA-Z])/g, " tan"], [/\\cot(?![a-zA-Z])/g, " cot"],
@@ -83,8 +119,10 @@ export function latexToPlainText(input: string): string {
   ];
   for (const [re, rep] of SYMBOLS) s = s.replace(re, rep);
 
-  // Cleanup: leftover braces, backslashes, double spaces
-  s = s.replace(/[{}]/g, "").replace(/\\/g, "").replace(/[ \t]+/g, " ").trim();
-
-  return s;
+  // Cleanup: leftover braces, backslashes, then run through the shared
+  // ASCII sanitizer to catch any other stray non-ASCII character that
+  // slipped through from the raw LaTeX source itself (e.g. a literal °,
+  // ×, or em-dash typed directly rather than via a \command).
+  s = s.replace(/[{}]/g, "").replace(/\\/g, "");
+  return sanitizeAsciiForPdf(s);
 }

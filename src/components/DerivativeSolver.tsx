@@ -46,7 +46,7 @@ export function DerivativeSolver() {
   return (
     <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
       <div className="space-y-6 min-w-0">
-        <Card className="border-border/50 shadow-lg">
+        <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Sparkles className="h-5 w-5 text-primary" />

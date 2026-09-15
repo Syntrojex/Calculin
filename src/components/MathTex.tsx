@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import katex from "katex";
 
 interface MathTexProps {
@@ -11,8 +11,15 @@ interface MathTexProps {
 /** Renders a LaTeX string with KaTeX. Falls back to the raw LaTeX source as
  *  plain text if it fails to parse — this app builds LaTeX programmatically
  *  from its own solvers, so failures should be rare, but a broken render
- *  must never crash the whole steps panel. */
-export function MathTex({ latex, display = false, className }: MathTexProps) {
+ *  must never crash the whole steps panel.
+ *
+ *  Wrapped in memo(): Formula Sheet / Definitions pages render dozens of
+ *  these at once (up to ~40 on the Trigonometry sheet) — without memo, ANY
+ *  re-render of an ancestor (switching theme, switching tabs, any unrelated
+ *  state change bubbling down) re-renders every single one of them even
+ *  though their own props never changed, which is what made switching
+ *  themes or calculators feel sluggish on pages with lots of formulas. */
+export const MathTex = memo(function MathTex({ latex, display = false, className }: MathTexProps) {
   const html = useMemo(() => {
     try {
       return katex.renderToString(latex, {
@@ -39,4 +46,4 @@ export function MathTex({ latex, display = false, className }: MathTexProps) {
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
-}
+});
