@@ -1,6 +1,6 @@
 {
   "name": "calculin",
-  "version": "3.8.0",
+  "version": "3.8.2",
   "private": true,
   "sideEffects": false,
   "type": "module",
