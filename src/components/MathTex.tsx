@@ -42,7 +42,7 @@ export const MathTex = memo(function MathTex({ latex, display = false, className
   const Tag = display ? "div" : "span";
   return (
     <Tag
-      className={`${display ? "my-1.5 overflow-x-auto" : ""} ${className ?? ""}`}
+      className={`${display ? "my-1.5 overflow-x-auto no-scrollbar max-w-full" : ""} ${className ?? ""}`}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

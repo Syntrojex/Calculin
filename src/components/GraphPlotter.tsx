@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { generateGraphPoints, extractVariables } from "@/lib/math-solver";
+import { validateGraphExpression, generateGraphPoints, extractVariables } from "@/lib/math-solver";
 import { GraphCanvas, type GraphSeries } from "./GraphCanvas";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
@@ -161,6 +161,9 @@ export function GraphPlotter() {
   };
 
   const [plotRange, setPlotRange] = useState<{ lo: number; hi: number }>({ lo: -settings.defaultGraphRange, hi: settings.defaultGraphRange });
+  // Per-function error text, keyed by graph id, so a typo in one function
+  // explains itself instead of silently drawing nothing.
+  const [graphErrors, setGraphErrors] = useState<Record<number, string>>({});
 
   const plot = () => {
     const lo = Math.min(xMin, xMax);
@@ -168,12 +171,22 @@ export function GraphPlotter() {
     const effLo = hi - lo < 1e-9 ? lo - 10 : lo;
     const effHi = hi - lo < 1e-9 ? hi + 10 : hi;
     setPlotRange({ lo: effLo, hi: effHi });
+    // Fewer samples on small screens: the curve is visually identical but the
+    // evaluation cost (and memory) drops by more than half.
+    const samplePoints = typeof window !== "undefined" && window.innerWidth < 640 ? 360 : 800;
+    const errors: Record<number, string> = {};
     const results = graphs
       .filter((g) => g.expr.trim())
-      .map((g) => ({
-        expr: g.expr,
-        points: generateGraphPoints(g.expr, "x", effLo, effHi),
-      }));
+      .map((g) => {
+        const problem = validateGraphExpression(g.expr, "x", effLo, effHi);
+        if (problem) {
+          errors[g.id] = problem;
+          return { expr: g.expr, points: [] as { x: number; y: number }[] };
+        }
+        return { expr: g.expr, points: generateGraphPoints(g.expr, "x", effLo, effHi, samplePoints) };
+      })
+      .filter((r) => r.points.length > 0);
+    setGraphErrors(errors);
     setPlotted(results);
   };
 
@@ -227,7 +240,11 @@ export function GraphPlotter() {
                       placeholder="e.g. x^2, sin(x), log(x)"
                       className="font-mono text-sm"
                       onKeyDown={(e) => e.key === "Enter" && plot()}
+                      aria-invalid={Boolean(graphErrors[g.id])}
                     />
+                    {graphErrors[g.id] && (
+                      <p className="text-xs text-destructive leading-snug">{graphErrors[g.id]}</p>
+                    )}
                   </div>
                   {graphs.length > 1 && (
                     <Button
@@ -338,7 +355,7 @@ export function GraphPlotter() {
                   <Button onClick={() => setPlotted3d(expr3d)} className="w-full gap-2">
                     <Box className="h-4 w-4" /> Plot 3D Surface
                   </Button>
-                  <p className="text-xs text-muted-foreground">drag to rotate · scroll to zoom · z = f(x, y) over [−{settings.defaultGraphRange}, {settings.defaultGraphRange}]²</p>
+                  <p className="text-xs text-muted-foreground"><span className="sm:hidden">one-finger drag to rotate · pinch in/out to zoom</span><span className="hidden sm:inline">drag to rotate · scroll to zoom</span> · z = f(x, y) over [−{settings.defaultGraphRange}, {settings.defaultGraphRange}]²</p>
                 </>
               ) : (
                 <>
@@ -372,7 +389,7 @@ export function GraphPlotter() {
                     <Sigma className="h-4 w-4" /> Plot Implicit Surface
                   </Button>
                   {implicitError && <p className="text-xs text-destructive">{implicitError}</p>}
-                  <p className="text-xs text-muted-foreground">drag to rotate · scroll to zoom · surface where the equation equals zero, over [−{settings.defaultGraphRange}, {settings.defaultGraphRange}]³</p>
+                  <p className="text-xs text-muted-foreground"><span className="sm:hidden">one-finger drag to rotate · pinch in/out to zoom</span><span className="hidden sm:inline">drag to rotate · scroll to zoom</span> · surface where the equation equals zero, over [−{settings.defaultGraphRange}, {settings.defaultGraphRange}]³</p>
                 </>
               )}
             </div>

@@ -6,6 +6,7 @@ import { Library, FileDown, Loader2 } from "lucide-react";
 import { MathTex } from "./MathTex";
 import { DEFINITION_TOPICS } from "@/lib/definitions-data";
 import { exportDefinitionsPDF } from "@/lib/definitions-pdf-export";
+import { ShapeDiagram } from "./ShapeDiagram";
 
 interface DefinitionsProps {
   topicKey: string;
@@ -76,6 +77,7 @@ export function Definitions({ topicKey }: DefinitionsProps) {
             <CardContent className="pt-4 pb-4 space-y-1.5">
               <div className="text-sm font-semibold text-foreground">{d.term}</div>
               <div className="text-sm text-foreground/90 leading-relaxed"><RichText text={d.definition} /></div>
+              {d.diagram && <ShapeDiagram name={d.diagram} />}
               {d.example && (
                 <div className="text-xs text-muted-foreground mt-1.5 pt-1.5 border-t border-border/40">
                   <span className="font-medium">Example: </span>

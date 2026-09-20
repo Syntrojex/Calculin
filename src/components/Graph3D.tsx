@@ -104,11 +104,13 @@ export function Graph3D({ expression, range = 5, resolution = 80, fillParent = f
     const zAxis = makeAxisRod(axisLen * 2, rodRadius, 0x4caf6e, "z");
     scene.add(xAxis, yAxis, zAxis);
 
-    const xLabel = makeAxisLabelSprite("x", "#ff5c6e");
+    // x and y (the two input axes, horizontal) were noticeably oversized;
+    // z (the vertical output axis) only needed a small trim.
+    const xLabel = makeAxisLabelSprite("x", "#ff5c6e", 0.75);
     xLabel.position.set(axisLen + 0.6, 0, 0);
-    const yLabel = makeAxisLabelSprite("z", "#7c9bff");
+    const yLabel = makeAxisLabelSprite("z", "#7c9bff", 0.95);
     yLabel.position.set(0, axisLen + 0.6, 0);
-    const zLabel = makeAxisLabelSprite("y", "#4caf6e");
+    const zLabel = makeAxisLabelSprite("y", "#4caf6e", 0.75);
     zLabel.position.set(0, 0, axisLen + 0.6);
     scene.add(xLabel, yLabel, zLabel);
 
@@ -282,7 +284,7 @@ export function Graph3D({ expression, range = 5, resolution = 80, fillParent = f
         <p className="text-xs text-muted-foreground">
           <span className="text-[#ff5c6e] font-semibold">x</span> ·{" "}
           <span className="text-[#4caf6e] font-semibold">y</span> ·{" "}
-          <span className="text-[#7c9bff] font-semibold">z = f(x,y)</span> · drag to rotate · scroll to zoom
+          <span className="text-[#7c9bff] font-semibold">z = f(x,y)</span> · <span className="sm:hidden">one-finger drag to rotate · pinch in/out to zoom</span><span className="hidden sm:inline">drag to rotate · scroll to zoom</span>
         </p>
       )}
     </div>

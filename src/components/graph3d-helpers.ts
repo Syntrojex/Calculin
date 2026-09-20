@@ -1,7 +1,9 @@
 import * as THREE from "three";
 
-/** A crisp, bold, camera-facing text label (billboard sprite) for a 3D axis. */
-export function makeAxisLabelSprite(text: string, color: string): THREE.Sprite {
+/** A crisp, bold, camera-facing text label (billboard sprite) for a 3D axis.
+ *  `scale` controls the on-screen size — defaults to 1.1 (existing size) so
+ *  every caller keeps its current look unless it opts into something else. */
+export function makeAxisLabelSprite(text: string, color: string, scale: number = 1.1): THREE.Sprite {
   const canvas = document.createElement("canvas");
   canvas.width = 128;
   canvas.height = 128;
@@ -19,7 +21,7 @@ export function makeAxisLabelSprite(text: string, color: string): THREE.Sprite {
   texture.minFilter = THREE.LinearFilter;
   const material = new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(1.1, 1.1, 1.1);
+  sprite.scale.set(scale, scale, scale);
   return sprite;
 }
 

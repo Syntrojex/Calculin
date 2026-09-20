@@ -15,6 +15,7 @@ import {
 import type { MathResult } from "@/lib/math-solver";
 import { TrendingUp, ArrowRight } from "lucide-react";
 import { MathText } from "./MathText";
+import { ResultMath } from "./ResultMath";
 import { StepsReveal } from "./StepsReveal";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
@@ -152,9 +153,17 @@ export function CalculusPlus() {
               <>
                 <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
                   <div className="text-sm text-muted-foreground mb-1">Result:</div>
-                  <div className="text-lg font-mono font-semibold text-foreground">
-                    <MathText text={result.result} />
-                  </div>
+                  {mode === "partial" ? (
+                    <ResultMath
+                      prefix={`\\frac{\\partial f}{\\partial ${wrt}}`}
+                      expr={result.result}
+                      className="text-lg font-semibold text-foreground"
+                    />
+                  ) : (
+                    <div className="text-lg font-mono font-semibold text-foreground">
+                      <MathText text={result.result} />
+                    </div>
+                  )}
                 </div>
 
                 <StepsReveal steps={result.steps} show={showSteps} resetKey={result.result} />

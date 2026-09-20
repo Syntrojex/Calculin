@@ -11,7 +11,7 @@ import { GraphCanvas } from "./GraphCanvas";
 import { StepsReveal } from "./StepsReveal";
 import type { MathResult } from "@/lib/math-solver";
 import { ArrowRight, Sparkles } from "lucide-react";
-import { MathText } from "./MathText";
+import { ResultMath } from "./ResultMath";
 import { LaTeXExportButton } from "./LaTeXExportButton";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
@@ -125,9 +125,11 @@ export function DerivativeSolver() {
                         <div className="text-sm text-muted-foreground">Result:</div>
                         <LaTeXExportButton text={result.result} />
                       </div>
-                      <div className="text-xl font-mono font-semibold text-foreground">
-                        f{"'".repeat(order)}({variable}) = <MathText text={result.result} />
-                      </div>
+                      <ResultMath
+                        prefix={`f${"'".repeat(order)}(${variable})`}
+                        expr={result.result}
+                        className="text-xl font-semibold text-foreground"
+                      />
                     </div>
 
                     <StepsReveal steps={result.steps} show={showSteps} resetKey={result.result} />

@@ -421,7 +421,7 @@ export function ImplicitSurface3D({
         )}
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {!error && !isComputing && <p className="text-xs text-muted-foreground">{vertexCount.toLocaleString()} surface vertices · drag to rotate · scroll to zoom</p>}
+      {!error && !isComputing && <p className="text-xs text-muted-foreground">{vertexCount.toLocaleString()} surface vertices · <span className="sm:hidden">one-finger drag to rotate · pinch in/out to zoom</span><span className="hidden sm:inline">drag to rotate · scroll to zoom</span></p>}
     </div>
   );
 }

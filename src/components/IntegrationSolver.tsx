@@ -18,10 +18,12 @@ import { StepsReveal } from "./StepsReveal";
 import type { MathResult } from "@/lib/math-solver";
 import { ArrowRight, Infinity as InfinityIcon, Camera } from "lucide-react";
 import { MathText } from "./MathText";
+import { ResultMath } from "./ResultMath";
 import { LaTeXExportButton } from "./LaTeXExportButton";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
+import { exprToLatex } from "@/lib/latex";
 import { downloadCanvasPNG, slugifyForFilename } from "@/lib/canvas-export";
 
 const Graph3D = lazy(() => import("./Graph3D").then((m) => ({ default: m.Graph3D })));
@@ -213,13 +215,19 @@ export function IntegrationSolver() {
                         <div className="text-sm text-muted-foreground">Result:</div>
                         <LaTeXExportButton text={result.result} />
                       </div>
-                      <div className="text-xl font-mono font-semibold text-foreground">
-                        {mode === "definite"
-                          ? <MathText text={`∫ from ${lower} to ${upper} = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
-                          : mode === "double"
-                          ? <MathText text={`∬ = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
-                          : <MathText text={`∫ f(x) dx = ${result.result}`} />}
-                      </div>
+                      {mode === "indefinite" ? (
+                        <ResultMath
+                          prefix={`\\int ${exprToLatex(expr)}\\,d${variable}`}
+                          expr={result.result}
+                          className="text-xl font-semibold text-foreground"
+                        />
+                      ) : (
+                        <div className="text-xl font-mono font-semibold text-foreground">
+                          {mode === "definite"
+                            ? <MathText text={`∫ from ${lower} to ${upper} = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
+                            : <MathText text={`∬ = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />}
+                        </div>
+                      )}
                     </div>
 
                     <StepsReveal steps={result.steps} show={showSteps} resetKey={result.result} />

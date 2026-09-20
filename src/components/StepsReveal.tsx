@@ -99,7 +99,7 @@ function StepContent({ text }: { text: string }) {
         </div>
       )}
       {body && (
-        <div className="leading-relaxed">
+        <div className="leading-relaxed min-w-0 break-words">
           <MathSegments text={body} display />
         </div>
       )}

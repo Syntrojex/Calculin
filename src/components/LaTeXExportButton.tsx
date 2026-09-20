@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Sigma } from "lucide-react";
 import { formatMath } from "@/lib/math-format";
+import { exprToLatex } from "@/lib/latex";
 
 interface LaTeXExportProps {
   /** The raw math text (e.g. "x^2 + 3*x - 5") */
@@ -11,42 +12,18 @@ interface LaTeXExportProps {
   className?: string;
 }
 
-/** Convert simple math text to decent LaTeX */
+/**
+ * Converts a result string to LaTeX for the "copy as LaTeX" button. Every
+ * caller passes a plain mathjs-syntax result string (e.g. "x^2" or
+ * "sin(x) - x*cos(x) + C"), which exprToLatex — mathjs's own
+ * MathNode.toTex(), run through the same fraction/sign cleanup as every
+ * Result box — handles correctly. A hand-written regex converter used to do
+ * this instead and mangled things like "2^x/log(2)" into a broken
+ * half-matched \frac{}. If the text isn't a valid expression at all,
+ * exprToLatex's own fallback returns it unchanged.
+ */
 function toLatex(text: string): string {
-  let s = text;
-
-  // Powers first — mathjs's computed results always write "x ^ 2" with
-  // spaces around the caret (not "x^2"), so these tolerate whitespace on
-  // both sides. This must run BEFORE the fraction regex below: converting
-  // exponents first stops a numeral like the "3" in "x ^ 3 / 3" from being
-  // swept into the wrong \frac{...}{...} grouping.
-  s = s.replace(/\s*\^\s*\(([^)]+)\)/g, "^{$1}");
-  s = s.replace(/\s*\^\s*([0-9]+)/g, "^{$1}");
-  s = s.replace(/\s*\^\s*([a-zA-Z])/g, "^{$1}");
-
-  // sqrt → \sqrt, abs(...) → | ... |
-  s = s.replace(/sqrt\(([^)]+)\)/g, "\\sqrt{$1}");
-  s = s.replace(/\babs\(([^()]*)\)/g, "|$1|");
-  // trig / log — this app's solvers only ever produce single-arg "log(...)",
-  // which is always the natural log (see text-normalize.ts), so it maps to
-  // \ln in LaTeX, not \log (which conventionally means base 10).
-  s = s.replace(/\blog\b/g, "ln");
-  s = s.replace(/\b(sin|cos|tan|cot|sec|csc|ln|exp)\b/g, "\\$1");
-  // pi, infinity
-  s = s.replace(/\bpi\b/gi, "\\pi");
-  s = s.replace(/∞/g, "\\infty");
-  s = s.replace(/∫/g, "\\int");
-  s = s.replace(/∬/g, "\\iint");
-
-  // fractions: a/b → \frac{a}{b}  (simple single-char / digit numerator+denominator)
-  s = s.replace(/(\w+)\s*\/\s*(\w+)/g, "\\frac{$1}{$2}");
-
-  // multiplication dot
-  s = s.replace(/·/g, "\\cdot");
-  s = s.replace(/\*/g, "\\cdot");
-  // subscripts: x_2
-  s = s.replace(/_([0-9])/g, "_{$1}");
-  return s;
+  return exprToLatex(text);
 }
 
 /**

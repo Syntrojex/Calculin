@@ -159,7 +159,7 @@ function inverseWithSteps(a: number[][], settings: Settings, steps: string[]): n
   }
   steps.push(`##Method: Gauss-Jordan Elimination\nSince $\\det(A)\\neq0$, an inverse exists. Augment $A$ with the identity matrix, then row-reduce the left half to the identity — whatever happens to the right half along the way IS $A^{-1}$.`);
 
-  let aug = a.map((row, i) => [...row, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
+  const aug = a.map((row, i) => [...row, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
   steps.push(`##Augment with the Identity Matrix\n$$${augmentedLatex(aug, n)}$$`);
 
   for (let col = 0; col < n; col++) {
@@ -581,7 +581,7 @@ export function MatrixCalculator() {
             ) : (
               <>
                 {resultMatrix ? (
-                  <div className="flex justify-center overflow-x-auto bg-muted/50 rounded-lg p-4">
+                  <div className="flex justify-center overflow-x-auto no-scrollbar bg-muted/50 rounded-lg p-4 max-w-full">
                     <MathTex latex={matrixLatex(resultMatrix)} display />
                   </div>
                 ) : (
