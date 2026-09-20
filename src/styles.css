@@ -332,3 +332,16 @@ button:active, [role="tab"]:active {
   background-color: var(--color-primary);
   background-clip: content-box;
 }
+
+/* Nav strips that scroll sideways (header category row, sub-category pill row)
+   hide their scrollbar entirely — the thin accent bar read as a stray line
+   under the pills. Wheel / trackpad / touch scrolling still works. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}

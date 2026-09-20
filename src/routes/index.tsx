@@ -81,6 +81,16 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
   })),
 ];
 
+/** WhatsApp glyph — lucide has no brand icon for it, so this is the official
+ *  mark drawn as a path that inherits the surrounding text color. */
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 1.67c2.2 0 4.27.86 5.83 2.42a8.2 8.2 0 0 1 2.41 5.82c0 4.54-3.7 8.24-8.25 8.24a8.23 8.23 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24Zm-4.5 4.4c-.18 0-.47.07-.72.34-.25.27-.95.93-.95 2.26s.98 2.62 1.11 2.8c.14.18 1.9 2.9 4.62 3.96.65.25 1.15.4 1.54.51.65.21 1.24.18 1.71.11.52-.08 1.6-.65 1.83-1.29.23-.63.23-1.18.16-1.29-.07-.11-.25-.18-.52-.31-.27-.14-1.6-.79-1.85-.88-.25-.09-.43-.14-.61.14-.18.27-.7.88-.86 1.06-.16.18-.32.2-.59.07-.27-.14-1.14-.42-2.18-1.34-.8-.72-1.35-1.6-1.5-1.87-.16-.27-.02-.42.12-.55.12-.12.27-.32.4-.48.14-.16.18-.27.27-.45.09-.18.05-.34-.02-.48-.07-.14-.6-1.47-.83-2.01-.22-.53-.44-.46-.6-.47h-.53Z" />
+    </svg>
+  );
+}
+
 function tabByValue(value: string) {
   return TABS.find((t) => t.value === value)!;
 }
@@ -153,7 +163,7 @@ function Index() {
             </div>
 
             {/* Desktop category row — mobile keeps the hamburger Sheet below instead */}
-            <nav className="hidden sm:flex items-center gap-1 flex-1 overflow-x-auto">
+            <nav className="hidden sm:flex items-center gap-1 flex-1 overflow-x-auto no-scrollbar">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat.key}
@@ -179,7 +189,7 @@ function Index() {
               sitting inside the same padding as the row above it, so it
               reads as its own distinct "toolbar" band. */}
           {activeCategory.tools.length > 1 && (
-            <div className="hidden sm:flex items-center gap-1.5 py-2 px-3 sm:px-4 -mx-3 sm:-mx-4 bg-primary/5 border-t border-border/50 overflow-x-auto">
+            <div className="hidden sm:flex items-center gap-1.5 py-2 px-3 sm:px-4 -mx-3 sm:-mx-4 bg-primary/5 border-t border-border/50 overflow-x-auto no-scrollbar">
               {activeCategory.tools.map((value) => {
                 const t = tabByValue(value);
                 const active = tab === value;
@@ -348,6 +358,7 @@ function Index() {
             <div className="flex items-center gap-4">
               <a href="https://github.com/Syntrojex" target="_blank" rel="noopener noreferrer" aria-label="GitHub" className="text-muted-foreground hover:text-primary transition-colors"><Github className="h-4 w-4" /></a>
               <a href="https://www.linkedin.com/in/mustafa-amir-syntrojex" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" className="text-muted-foreground hover:text-primary transition-colors"><Linkedin className="h-4 w-4" /></a>
+              <a href="https://wa.me/923324097601" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="text-muted-foreground hover:text-primary transition-colors"><WhatsAppIcon className="h-4 w-4" /></a>
               <button
                 onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
                 className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
