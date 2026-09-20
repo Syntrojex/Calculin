@@ -10,7 +10,7 @@ export function useAutoRun(
   deps: unknown[],
   callback: () => void,
   enabled: boolean,
-  delay = 450
+  delay = 600
 ) {
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
