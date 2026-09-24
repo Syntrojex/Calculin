@@ -8,15 +8,18 @@ import {
   Infinity as InfinityIcon, LineChart, Calculator, Grid3X3,
   ArrowRight, ArrowLeftRight, Pentagon, TrendingUp,
   Zap, Hash, GraduationCap, Menu, Binary, BookOpen, Library, ChevronDown,
-  Github, Linkedin, ArrowUp,
+  Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart,
 } from "lucide-react";
 import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
 import { DEFINITION_TOPICS } from "@/lib/definitions-data";
 
 const DerivativeSolver = lazy(() => import("@/components/DerivativeSolver").then(m => ({ default: m.DerivativeSolver })));
 const IntegrationSolver = lazy(() => import("@/components/IntegrationSolver").then(m => ({ default: m.IntegrationSolver })));
-const CalculusPlus = lazy(() => import("@/components/CalculusPlus").then(m => ({ default: m.CalculusPlus })));
+const DoubleIntegralCalculator = lazy(() => import("@/components/DoubleIntegralCalculator").then(m => ({ default: m.DoubleIntegralCalculator })));
+const ExtremaCalculator = lazy(() => import("@/components/ExtremaCalculator").then(m => ({ default: m.ExtremaCalculator })));
+const PartialDerivativeCalculator = lazy(() => import("@/components/PartialDerivativeCalculator").then(m => ({ default: m.PartialDerivativeCalculator })));
 const LimitsCalculator = lazy(() => import("@/components/LimitsCalculator").then(m => ({ default: m.LimitsCalculator })));
+const PiecewiseCalculator = lazy(() => import("@/components/PiecewiseCalculator").then(m => ({ default: m.PiecewiseCalculator })));
 const EquationSolver = lazy(() => import("@/components/EquationSolver").then(m => ({ default: m.EquationSolver })));
 const MatrixCalculator = lazy(() => import("@/components/MatrixCalculator").then(m => ({ default: m.MatrixCalculator })));
 const TrigIdentities = lazy(() => import("@/components/TrigIdentities").then(m => ({ default: m.TrigIdentities })));
@@ -46,21 +49,32 @@ export const Route = createFileRoute("/")({
 
 // Tab order: Derivative, Integral, Calc+, Limits, Equations, Matrix, Trigonometry,
 // Complex, Num Theory, Shapes, Converter, Num Conversions, Graph, Practice
-const TABS: { value: string; label: string; shortLabel: string; icon: React.ReactNode; component: React.ReactNode }[] = [
-  { value: "derivative", label: "Derivative", shortLabel: "d/dx", icon: <span className="text-xs font-bold">d/dx</span>, component: <DerivativeSolver /> },
-  { value: "integration", label: "Integral", shortLabel: "∫", icon: <InfinityIcon className="h-3.5 w-3.5" />, component: <IntegrationSolver /> },
-  { value: "calcplus", label: "Calc+", shortLabel: "∂", icon: <TrendingUp className="h-3.5 w-3.5" />, component: <CalculusPlus /> },
-  { value: "limits", label: "Limits", shortLabel: "lim", icon: <ArrowRight className="h-3.5 w-3.5" />, component: <LimitsCalculator /> },
-  { value: "equation", label: "Equations", shortLabel: "ax=b", icon: <Calculator className="h-3.5 w-3.5" />, component: <EquationSolver /> },
-  { value: "matrix", label: "Matrix", shortLabel: "[ ]", icon: <Grid3X3 className="h-3.5 w-3.5" />, component: <MatrixCalculator /> },
-  { value: "trig", label: "Trigonometry", shortLabel: "θ", icon: <span className="text-xs font-bold">θ</span>, component: <TrigIdentities /> },
-  { value: "complex", label: "Complex", shortLabel: "z", icon: <Zap className="h-3.5 w-3.5" />, component: <ComplexCalculator /> },
-  { value: "numtheory", label: "Num Theory", shortLabel: "gcd", icon: <Hash className="h-3.5 w-3.5" />, component: <NumberTheory /> },
-  { value: "shapes", label: "Shapes", shortLabel: "△", icon: <Pentagon className="h-3.5 w-3.5" />, component: <ShapesCalculator /> },
-  { value: "converter", label: "Converter", shortLabel: "⇄", icon: <ArrowLeftRight className="h-3.5 w-3.5" />, component: <UnitConverter /> },
-  { value: "numconv", label: "Num Systems", shortLabel: "0b1", icon: <Binary className="h-3.5 w-3.5" />, component: <NumberConversions /> },
-  { value: "graph", label: "Graph", shortLabel: "📈", icon: <LineChart className="h-3.5 w-3.5" />, component: <GraphPlotter /> },
-  { value: "practice", label: "Practice", shortLabel: "✏︎", icon: <GraduationCap className="h-3.5 w-3.5" />, component: <PracticeMode /> },
+//
+// Each tab declares its own `category` (matching a CATEGORIES key below)
+// instead of being listed a second time in a separate per-category "tools"
+// array — that used to mean adding a new tool took TWO edits kept in sync by
+// hand (add it here, then remember to also add its value to the right
+// category's tools list), and a forgotten second edit silently orphaned a
+// tool from the header/mobile nav grouping. Now a new tool is a single line
+// here; toolsOf() below derives each category's tool list by filtering.
+const TABS: { value: string; label: string; shortLabel: string; icon: React.ReactNode; component: React.ReactNode; category: string }[] = [
+  { value: "derivative", label: "Derivative", shortLabel: "d/dx", icon: <span className="text-xs font-bold">d/dx</span>, component: <DerivativeSolver />, category: "calculus" },
+  { value: "integration", label: "Integral", shortLabel: "∫", icon: <InfinityIcon className="h-3.5 w-3.5" />, component: <IntegrationSolver />, category: "calculus" },
+  { value: "doubleintegral", label: "Double ∫", shortLabel: "∬", icon: <Layers className="h-3.5 w-3.5" />, component: <DoubleIntegralCalculator />, category: "calculus" },
+  { value: "extrema", label: "Extrema", shortLabel: "max/min", icon: <TrendingUp className="h-3.5 w-3.5" />, component: <ExtremaCalculator />, category: "calculus" },
+  { value: "partial", label: "Partial Deriv.", shortLabel: "∂f/∂x", icon: <PieChart className="h-3.5 w-3.5" />, component: <PartialDerivativeCalculator />, category: "calculus" },
+  { value: "limits", label: "Limits", shortLabel: "lim", icon: <ArrowRight className="h-3.5 w-3.5" />, component: <LimitsCalculator />, category: "calculus" },
+  { value: "piecewise", label: "Piecewise", shortLabel: "f{x}", icon: <GitBranch className="h-3.5 w-3.5" />, component: <PiecewiseCalculator />, category: "calculus" },
+  { value: "equation", label: "Equations", shortLabel: "ax=b", icon: <Calculator className="h-3.5 w-3.5" />, component: <EquationSolver />, category: "algebra" },
+  { value: "matrix", label: "Matrix", shortLabel: "[ ]", icon: <Grid3X3 className="h-3.5 w-3.5" />, component: <MatrixCalculator />, category: "algebra" },
+  { value: "trig", label: "Trigonometry", shortLabel: "θ", icon: <span className="text-xs font-bold">θ</span>, component: <TrigIdentities />, category: "geometry" },
+  { value: "complex", label: "Complex", shortLabel: "z", icon: <Zap className="h-3.5 w-3.5" />, component: <ComplexCalculator />, category: "algebra" },
+  { value: "numtheory", label: "Num Theory", shortLabel: "gcd", icon: <Hash className="h-3.5 w-3.5" />, component: <NumberTheory />, category: "numbers" },
+  { value: "shapes", label: "Shapes", shortLabel: "△", icon: <Pentagon className="h-3.5 w-3.5" />, component: <ShapesCalculator />, category: "geometry" },
+  { value: "converter", label: "Converter", shortLabel: "⇄", icon: <ArrowLeftRight className="h-3.5 w-3.5" />, component: <UnitConverter />, category: "numbers" },
+  { value: "numconv", label: "Num Systems", shortLabel: "0b1", icon: <Binary className="h-3.5 w-3.5" />, component: <NumberConversions />, category: "numbers" },
+  { value: "graph", label: "Graph", shortLabel: "📈", icon: <LineChart className="h-3.5 w-3.5" />, component: <GraphPlotter />, category: "graph" },
+  { value: "practice", label: "Practice", shortLabel: "✏︎", icon: <GraduationCap className="h-3.5 w-3.5" />, component: <PracticeMode />, category: "practice" },
   // One tab per formula-sheet topic — generated from the same data used to
   // render each sheet, so adding a topic to formula-sheet-data.ts is enough
   // to make it navigable from both the desktop header and the mobile menu.
@@ -70,6 +84,7 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
     shortLabel: topic.navLabel,
     icon: <BookOpen className="h-3.5 w-3.5" />,
     component: <FormulaSheet topicKey={topic.key} />,
+    category: "formulasheet",
   })),
   // Same pattern for Definitions topics.
   ...DEFINITION_TOPICS.map((topic) => ({
@@ -78,6 +93,7 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
     shortLabel: topic.navLabel,
     icon: <Library className="h-3.5 w-3.5" />,
     component: <Definitions topicKey={topic.key} />,
+    category: "definitions",
   })),
 ];
 
@@ -101,19 +117,32 @@ function tabByValue(value: string) {
 // categories, so clicking them jumps straight to that tool with no sub-row.
 // Mobile is untouched — it still uses the hamburger Sheet with the flat
 // TABS list above, regardless of this grouping.
-const CATEGORIES: { key: string; label: string; icon: React.ReactNode; tools: string[] }[] = [
-  { key: "calculus", label: "Calculus", icon: <span className="text-xs font-bold">d/dx</span>, tools: ["derivative", "integration", "calcplus", "limits"] },
-  { key: "algebra", label: "Algebra", icon: <Calculator className="h-3.5 w-3.5" />, tools: ["equation", "matrix", "complex"] },
-  { key: "geometry", label: "Geometry", icon: <span className="text-xs font-bold">θ</span>, tools: ["trig", "shapes"] },
-  { key: "numbers", label: "Numbers", icon: <Hash className="h-3.5 w-3.5" />, tools: ["numtheory", "numconv", "converter"] },
-  { key: "graph", label: "Graph", icon: <LineChart className="h-3.5 w-3.5" />, tools: ["graph"] },
-  { key: "practice", label: "Practice", icon: <GraduationCap className="h-3.5 w-3.5" />, tools: ["practice"] },
-  { key: "definitions", label: "Definitions", icon: <Library className="h-3.5 w-3.5" />, tools: DEFINITION_TOPICS.map((t) => `definitions-${t.key}`) },
-  { key: "formulasheet", label: "Formula Sheet", icon: <BookOpen className="h-3.5 w-3.5" />, tools: FORMULA_TOPICS.map((t) => `formula-${t.key}`) },
+const CATEGORIES: { key: string; label: string; icon: React.ReactNode; collapsedOnMobile?: boolean }[] = [
+  { key: "calculus", label: "Calculus", icon: <span className="text-xs font-bold">d/dx</span> },
+  { key: "algebra", label: "Algebra", icon: <Calculator className="h-3.5 w-3.5" /> },
+  { key: "geometry", label: "Geometry", icon: <span className="text-xs font-bold">θ</span> },
+  { key: "numbers", label: "Numbers", icon: <Hash className="h-3.5 w-3.5" /> },
+  { key: "graph", label: "Graph", icon: <LineChart className="h-3.5 w-3.5" /> },
+  { key: "practice", label: "Practice", icon: <GraduationCap className="h-3.5 w-3.5" /> },
+  // Only these two reference-heavy categories (10 topics each) collapse
+  // into a dropdown on mobile — every other category always lists its
+  // tools flat, an explicit per-category flag rather than a tool-count
+  // threshold, so adding another tool to Calculus (or anywhere else) can
+  // never silently flip it into the collapsed treatment again.
+  { key: "definitions", label: "Definitions", icon: <Library className="h-3.5 w-3.5" />, collapsedOnMobile: true },
+  { key: "formulasheet", label: "Formula Sheet", icon: <BookOpen className="h-3.5 w-3.5" />, collapsedOnMobile: true },
 ];
 
+/** Every tab value belonging to a category, in TABS' own order — the single
+ *  derived source every piece of nav UI below reads from, instead of each
+ *  keeping its own copy of the list. */
+function toolsOf(categoryKey: string): string[] {
+  return TABS.filter((t) => t.category === categoryKey).map((t) => t.value);
+}
+
 function categoryOf(tabValue: string) {
-  return CATEGORIES.find((c) => c.tools.includes(tabValue)) ?? CATEGORIES[0];
+  const category = tabByValue(tabValue).category;
+  return CATEGORIES.find((c) => c.key === category) ?? CATEGORIES[0];
 }
 
 function Index() {
@@ -138,10 +167,12 @@ function Index() {
     // Single-tool categories (Graph, Practice) jump straight there; multi-tool
     // categories switch to their first tool (unless the current tab is
     // already inside this category) and reveal the sub-row.
-    if (!cat.tools.includes(tab)) selectTab(cat.tools[0]);
+    const tools = toolsOf(cat.key);
+    if (!tools.includes(tab)) selectTab(tools[0]);
   };
 
   const activeCategory = categoryOf(tab);
+  const activeCategoryTools = toolsOf(activeCategory.key);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -188,9 +219,10 @@ function Index() {
               to the header's full width (negative margin) rather than
               sitting inside the same padding as the row above it, so it
               reads as its own distinct "toolbar" band. */}
-          {activeCategory.tools.length > 1 && (
-            <div className="hidden sm:flex items-center gap-1.5 py-2 px-3 sm:px-4 -mx-3 sm:-mx-4 bg-primary/5 border-t border-border/50 overflow-x-auto no-scrollbar">
-              {activeCategory.tools.map((value) => {
+          {activeCategoryTools.length > 1 && (
+            <div className="hidden sm:flex justify-center py-2 px-3 sm:px-4 -mx-3 sm:-mx-4 bg-primary/5 border-t border-border/50 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-1.5 mx-auto">
+                {activeCategoryTools.map((value) => {
                 const t = tabByValue(value);
                 const active = tab === value;
                 return (
@@ -208,6 +240,7 @@ function Index() {
                   </button>
                 );
               })}
+              </div>
             </div>
           )}
         </div>
@@ -222,11 +255,12 @@ function Index() {
           <nav className="px-2 pb-6 mt-2 space-y-4">
             {CATEGORIES.map((cat) => {
               // Small categories (Calculus, Algebra, ...) list their tools
-              // inline right away, same as before. Large reference
-              // categories (Definitions, Formula Sheet — 10 topics each)
-              // collapse into a dropdown instead, so the menu doesn't turn
-              // into one long undifferentiated scroll of 24+ items.
-              const isLarge = cat.tools.length > 4;
+              // inline right away, same as before. Only the two reference
+              // categories (Definitions, Formula Sheet — 10 topics each,
+              // via collapsedOnMobile) collapse into a dropdown instead, so
+              // the menu doesn't turn into one long undifferentiated scroll.
+              const catTools = toolsOf(cat.key);
+              const isLarge = cat.collapsedOnMobile === true;
               const isOpen = !isLarge || expandedMobileCategories.has(cat.key) || activeCategory.key === cat.key;
               return (
                 <div key={cat.key}>
@@ -245,7 +279,7 @@ function Index() {
                   )}
                   {isOpen && (
                     <div className="space-y-1">
-                      {cat.tools.map((value) => {
+                      {catTools.map((value) => {
                         const t = tabByValue(value);
                         return (
                           <button
