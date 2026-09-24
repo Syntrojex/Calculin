@@ -50,6 +50,39 @@ function canonicalizeFunctionNames(s: string): string {
   });
 }
 
+// Names sorted longest-first, so at any given position the regex below tries
+// "asin"/"atan2"/"acosh" etc. before a shorter prefix like "sin"/"tan"/"cos"
+// could otherwise grab part of the name and misparse the rest — JS regex
+// alternation picks the first alternative that matches, not the longest one.
+const FUNCTION_NAMES_BY_LENGTH_DESC = [...FUNCTION_NAMES].sort((a, b) => b.length - a.length);
+// A handful of named constants the argument may also spell out in full
+// ("cospi" -> "cos(pi)"), on top of the usual single-letter/number case.
+const IMPLICIT_ARG_WORDS = ["pi", "theta", "infinity", "inf"];
+const IMPLICIT_CALL_RE = new RegExp(
+  `(?<![a-zA-Z])(${FUNCTION_NAMES_BY_LENGTH_DESC.join("|")})(?!\\s*\\()(${IMPLICIT_ARG_WORDS.join("|")}|[0-9]+[a-zA-Z]?|[a-zA-Z])\\b`,
+  "gi"
+);
+
+/**
+ * Textbook shorthand like "sinx", "cos2x", "tan90" (a function name written
+ * directly against its argument, no parentheses) used to fail outright —
+ * mathjs only recognizes an explicit call, so it read the whole run as one
+ * unparseable identifier. This adds the parentheses back in: "sinx" ->
+ * "sin(x)", "cos2x" -> "cos(2x)". The argument is deliberately kept narrow
+ * (optional leading digits plus a single trailing letter, or a single
+ * letter, or bare digits) — enough for the common one-symbol-or-a-number
+ * argument this shorthand is actually used for, without misreading a
+ * multi-letter identifier that only happens to start with a function name
+ * (e.g. a variable someone genuinely intended to call "cost" is left alone,
+ * since "ost" is more than one trailing letter).
+ */
+function expandImplicitFunctionCalls(s: string): string {
+  return s.replace(IMPLICIT_CALL_RE, (_match, name: string, arg: string) => {
+    const canonical = CANONICAL_FUNCTION_NAME.get(name.toLowerCase()) ?? name.toLowerCase();
+    return `${canonical}(${arg})`;
+  });
+}
+
 // Constants people capitalize the same way. "PI" / "Pi" -> pi, "Theta" ->
 // theta. Standalone words only, so "Pin" or a variable "Pi2" is left alone.
 const CONSTANT_ALIASES: Record<string, string> = {
@@ -70,6 +103,10 @@ export function normalizeMathInput(input: string): string {
   // Case-folding first: everything downstream (the ln rewrite, sqrt handling,
   // mathjs itself) expects canonical lowercase function names.
   s = canonicalizeFunctionNames(s);
+  // "sinx", "cos2x", "tan90" -> "sin(x)", "cos(2x)", "tan(90)" — must run
+  // before canonicalizeConstants below, so a split like "cospi" -> "cos(pi)"
+  // still gets its argument constant-cased correctly afterward.
+  s = expandImplicitFunctionCalls(s);
   s = canonicalizeConstants(s);
 
   // mathjs has no built-in "ln" function — its single-argument log(x) IS the

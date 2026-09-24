@@ -1,5 +1,6 @@
 import type { DefinitionTopic } from "./definitions-data";
 import { latexToPlainText, sanitizeAsciiForPdf } from "./latex-to-text";
+import { getShapeDiagramStandaloneSvg } from "./shape-diagram-svg";
 
 // Same fixed, hardcoded palette as pdf-export.ts (formula sheets) — kept
 // consistent across both PDF exports rather than reading the app's live
@@ -19,6 +20,38 @@ const COLORS = {
 
 function formatGeneratedDate(): string {
   return new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
+
+/** Rasterizes one of the shared shape-diagram SVGs to a PNG data URL via an
+ *  offscreen canvas — jsPDF has no native SVG renderer, so this is how the
+ *  same labeled diagrams a person sees on the Definitions page (radius,
+ *  sector, cone slant height, …) end up in the downloaded PDF too, instead
+ *  of being silently dropped. `scale` renders at higher-than-display
+ *  resolution so the shape stays crisp at PDF print size. */
+function rasterizeDiagram(svgMarkup: string, scale = 3): Promise<{ dataUrl: string; width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const svgBlob = new Blob([svgMarkup], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const width = img.width || 200;
+      const height = img.height || 140;
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { URL.revokeObjectURL(url); reject(new Error("Canvas unavailable")); return; }
+      // Flatten onto a white background — the SVG itself is transparent, and
+      // a transparent PNG can look wrong against jsPDF's default page fill.
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve({ dataUrl: canvas.toDataURL("image/png"), width, height });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Failed to rasterize diagram")); };
+    img.src = url;
+  });
 }
 
 /** Converts a definition/example string that may contain inline `$...$`
@@ -114,22 +147,50 @@ export async function exportDefinitionsPDF(topic: DefinitionTopic): Promise<void
   let y = drawHeaderBand(false) + 30;
   drawFooter();
 
+  // Pre-convert every diagram this topic's definitions reference, in
+  // parallel, before laying out any pages — keeps the layout loop below
+  // simple and synchronous, and avoids rasterizing the same shape twice
+  // when several definitions (e.g. "Radius" and "Circumference") point at
+  // the same diagram.
+  const diagramImages = new Map<string, { dataUrl: string; width: number; height: number }>();
+  await Promise.all(
+    Array.from(new Set(topic.definitions.map((d) => d.diagram).filter((n): n is string => Boolean(n)))).map(
+      async (name) => {
+        const svg = getShapeDiagramStandaloneSvg(name);
+        if (!svg) return;
+        try {
+          diagramImages.set(name, await rasterizeDiagram(svg));
+        } catch {
+          // If rasterizing fails for any reason, that one definition just
+          // falls back to text-only — never blocks the rest of the export.
+        }
+      }
+    )
+  );
+  const DIAGRAM_W = 108; // pt, in the card
+  const DIAGRAM_GAP = 12;
+
   topic.definitions.forEach((d) => {
+    const diagram = d.diagram ? diagramImages.get(d.diagram) : undefined;
+    const diagramH = diagram ? (DIAGRAM_W * diagram.height) / diagram.width : 0;
+    const textWidth = diagram ? contentWidth - 24 - DIAGRAM_W - DIAGRAM_GAP : contentWidth - 24;
+
     const defText = plainize(d.definition);
     const exText = d.example ? plainize(d.example) : "";
 
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(10);
-    const defLines: string[] = pdf.splitTextToSize(defText, contentWidth - 24);
+    const defLines: string[] = pdf.splitTextToSize(defText, textWidth);
 
     pdf.setFont("helvetica", "italic");
     pdf.setFontSize(9);
-    const exLines: string[] = exText ? pdf.splitTextToSize(`Example: ${exText}`, contentWidth - 24) : [];
+    const exLines: string[] = exText ? pdf.splitTextToSize(`Example: ${exText}`, textWidth) : [];
 
     const termHeight = 17;
     const defHeight = defLines.length * 13;
     const exHeight = exLines.length ? exLines.length * 12 + 8 : 0;
-    const cardHeight = termHeight + defHeight + exHeight + 16;
+    const textBlockHeight = termHeight + defHeight + exHeight;
+    const cardHeight = Math.max(textBlockHeight, diagram ? diagramH + 20 : 0) + 16;
 
     if (y + cardHeight > contentBottom) {
       y = startNewPage();
@@ -156,6 +217,12 @@ export async function exportDefinitionsPDF(topic: DefinitionTopic): Promise<void
       pdf.setFontSize(9);
       pdf.setTextColor(...COLORS.muted);
       pdf.text(exLines, margin + 14, y + 17 + defHeight + 18);
+    }
+
+    if (diagram) {
+      const imgX = margin + contentWidth - 14 - DIAGRAM_W;
+      const imgY = y + 8;
+      pdf.addImage(diagram.dataUrl, "PNG", imgX, imgY, DIAGRAM_W, diagramH);
     }
 
     y += cardHeight + 10;

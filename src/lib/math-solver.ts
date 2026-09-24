@@ -636,7 +636,7 @@ function trySymbolicIntegral(node: MathNode, variable: string, label: string = "
   if (!piece) return null;
   const steps: string[] = [];
   const ruleNames = extractRuleNames(bodySteps);
-  if (ruleNames.length > 0) {
+  if (ruleNames.length > 1) {
     steps.push(`##Approach\nUsing **${ruleNames.join("**, **")}**.`);
   }
   steps.push(...bodySteps);
@@ -679,13 +679,12 @@ export function solveDerivative(
     const bodySteps: string[] = [];
 
     steps.push(`##Given\n$$f(${variable}) = ${exprToLatex(node.toString())}$$`);
-    steps.push(`##Goal\nDifferentiate $f(${variable})$ with respect to $${variable}$.`);
 
     narrateDerivativeTop(node, variable, bodySteps);
 
     const ruleNames = extractRuleNames(bodySteps);
-    if (ruleNames.length > 0) {
-      steps.push(`##Approach\nThis will use: **${ruleNames.join("**, **")}**.`);
+    if (ruleNames.length > 1) {
+      steps.push(`##Approach\nUsing **${ruleNames.join("**, **")}**.`);
     }
     steps.push(...bodySteps);
 
@@ -714,10 +713,7 @@ export function solveNthDerivative(
     }
     const steps: string[] = [];
     let current = parse(expression);
-    const ordinalSuffix = (n: number) =>
-      n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th";
     steps.push(`##Given\n$$f(${variable}) = ${exprToLatex(current.toString())}$$`);
-    steps.push(`##Goal\nFind the $${order}${ordinalSuffix(order)}$ derivative, i.e. apply differentiation ${order} time${order > 1 ? "s" : ""} in a row.`);
 
     for (let i = 1; i <= order; i++) {
       steps.push(`##Differentiation ${i} of ${order}\nStart from $f^{(${i - 1})}(${variable}) = ${exprToLatex(prettifyResult(current.toString(), variable))}$:`);
@@ -1400,7 +1396,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
     const args = asOperator(node)!.args;
     const [num, denom] = args;
     if (isConstantExpr(denom, variable)) {
-      steps.push(`##Constant Divisor\nDividing by the constant $${exprToLatex(denom.toString())}$ is the same as pulling out a factor of $\\frac{1}{${exprToLatex(denom.toString())}}$ — integrate the numerator, then divide the result:\n$$${here()} = \\frac{${integralLatex(num.toString(), variable)}}{${exprToLatex(denom.toString())}}$$`);
+      steps.push(`##Constant Divisor\nDividing by constant $${exprToLatex(denom.toString())}$ is a factor of $\\frac{1}{${exprToLatex(denom.toString())}}$ — integrate the numerator, then divide:\n$$${here()} = \\frac{${integralLatex(num.toString(), variable)}}{${exprToLatex(denom.toString())}}$$`);
       const piece = integrateNode(num, variable, steps, depth + 1);
       if (!piece) return null;
       return { antiderivative: `(${piece.antiderivative})/(${denom.toString()})`, rule: "constant divisor" };
@@ -1543,7 +1539,6 @@ export function solveIndefiniteIntegral(
     const steps: string[] = [];
     const bodySteps: string[] = [];
     steps.push(`##Given\n$$${integralLatex(expression, variable)}$$`);
-    steps.push(`##Goal\nFind $F(${variable})$ with $F'(${variable}) = ${exprToLatex(expression)}$.`);
 
     const node = simplify(parse(expression));
     const piece = integrateNode(node, variable, bodySteps);
@@ -1560,8 +1555,8 @@ export function solveIndefiniteIntegral(
     }
 
     const ruleNames = extractRuleNames(bodySteps);
-    if (ruleNames.length > 0) {
-      steps.push(`##Approach\nThis will use: **${ruleNames.join("**, **")}**.`);
+    if (ruleNames.length > 1) {
+      steps.push(`##Approach\nUsing **${ruleNames.join("**, **")}**.`);
     }
     steps.push(...bodySteps);
 
@@ -1615,8 +1610,8 @@ export function solvePartialDerivative(
     const others = allVars.filter(v => v !== variable);
     const node = parse(expression);
 
-    steps.push(`##Given\n$$f(${allVars.join(", ")}) = ${exprToLatex(node.toString())}$$`);
-    steps.push(`##Goal\nFind $\\frac{\\partial f}{\\partial ${variable}}$${others.length ? `, treating $${others.join(", ")}$ as constant${others.length > 1 ? "s" : ""}` : ""}.`);
+    const withRespectToNote = others.length ? ` ($${others.join(", ")}$ treated as constant${others.length > 1 ? "s" : ""})` : "";
+    steps.push(`##Given\n$$f(${allVars.join(", ")}) = ${exprToLatex(node.toString())}$$\nFind $\\frac{\\partial f}{\\partial ${variable}}$${withRespectToNote}.`);
 
     narrateDerivativeTop(node, variable, steps, true);
 
