@@ -14,7 +14,7 @@ import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
 import { exprToLatex } from "@/lib/latex";
 
-interface LimitResult {
+export interface LimitResult {
   value: string;
   steps: string[];
   error?: string;
@@ -30,7 +30,9 @@ function approachingLatex(approaching: string): string {
   return exprToLatex(approaching);
 }
 
-function computeLimit(expr: string, variable: string, approaching: string, fmt: (n: number) => string): LimitResult {
+export type LimitSide = "two-sided" | "left" | "right";
+
+export function computeLimit(expr: string, variable: string, approaching: string, side: LimitSide, fmt: (n: number) => string): LimitResult {
   try {
     if (!expr || !expr.trim()) {
       return { value: "", steps: [], error: "Please enter a function." };
@@ -39,7 +41,12 @@ function computeLimit(expr: string, variable: string, approaching: string, fmt: 
       return { value: "", steps: [], error: "Please enter a variable name." };
     }
     const steps: string[] = [];
-    const limitHeaderLatex = `\\lim_{${variable}\\to ${approachingLatex(approaching)}} ${exprToLatex(expr)}`;
+    // One-sided limits use the standard x -> a^- / x -> a^+ notation, so
+    // the "Given" step (and every later reference to it) reads correctly —
+    // a jump discontinuity can have a perfectly well-defined one-sided
+    // limit even when the two-sided limit doesn't exist.
+    const sideSuffix = side === "left" ? "^-" : side === "right" ? "^+" : "";
+    const limitHeaderLatex = `\\lim_{${variable}\\to ${approachingLatex(approaching)}${sideSuffix}} ${exprToLatex(expr)}`;
     steps.push(`##Given\n$$${limitHeaderLatex}$$`);
 
     let target: number;
@@ -63,7 +70,39 @@ function computeLimit(expr: string, variable: string, approaching: string, fmt: 
     // Numerical approach from both sides
     const scope: Record<string, number> = {};
 
-    if (isFinite(target)) {
+    if (isFinite(target) && side !== "two-sided") {
+      // One-sided limit only: approach from just the requested side. This
+      // can exist and be perfectly well-defined even where the two-sided
+      // limit does not (a jump discontinuity, or a function only defined on
+      // one side of the point, like sqrt(x) at x=0).
+      const deltas = [0.1, 0.01, 0.001, 0.0001, 0.00001];
+      const vals: number[] = [];
+      for (const d of deltas) {
+        scope[variable] = side === "left" ? target - d : target + d;
+        vals.push(evaluate(expr, scope) as number);
+      }
+      const sideWord = side === "left" ? "left" : "right";
+      const relation = side === "left" ? "less than" : "greater than";
+      steps.push(`##Numerical Approach\nEvaluate $f(${variable})$ as $${variable}$ approaches $${approachingLatex(approaching)}$ from the ${sideWord} (values ${relation} $${approachingLatex(approaching)}$):\n\n${vals.map(v => fmt(v)).join(" → ")}`);
+
+      const last = vals[vals.length - 1];
+      const secondLast = vals[vals.length - 2];
+
+      if (!isFinite(last)) {
+        const signLatex = last > 0 ? "+\\infty" : "-\\infty";
+        steps.push(`##Conclusion\n$$${limitHeaderLatex} = ${signLatex}$$`);
+        return { value: last > 0 ? "+∞" : "-∞", steps };
+      }
+
+      if (Math.abs(last - secondLast) < 0.001) {
+        const rounded = Math.abs(last - Math.round(last)) < 0.0001 ? Math.round(last) : parseFloat(last.toFixed(6));
+        steps.push(`##Conclusion\nThe values are converging — the ${sideWord}-hand limit exists:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
+        return { value: rounded.toString(), steps, numericValue: rounded };
+      }
+
+      steps.push(`##Conclusion\n$$${limitHeaderLatex} \\approx ${exprToLatex(fmt(last))}$$`);
+      return { value: last.toFixed(6), steps, numericValue: last };
+    } else if (isFinite(target)) {
       // Approach from left and right
       const deltas = [0.1, 0.01, 0.001, 0.0001, 0.00001];
       const leftVals: number[] = [];
@@ -90,7 +129,7 @@ function computeLimit(expr: string, variable: string, approaching: string, fmt: 
           steps.push(`##Conclusion\nBoth sides diverge the same way:\n$$${limitHeaderLatex} = ${signLatex}$$`);
           return { value: leftLimit > 0 ? "+∞" : "-∞", steps };
         }
-        steps.push(`##Conclusion\nThe left and right sides diverge in different directions (left → ${leftLimit > 0 ? "+∞" : "-∞"}, right → ${rightLimit > 0 ? "+∞" : "-∞"}), so the two-sided limit does not exist:\n$$${limitHeaderLatex} = \\text{DNE}$$`);
+        steps.push(`##Conclusion\nLeft and right diverge differently (left → ${leftLimit > 0 ? "+∞" : "-∞"}, right → ${rightLimit > 0 ? "+∞" : "-∞"}) — the limit does not exist:\n$$${limitHeaderLatex} = \\text{DNE}$$`);
         return { value: "DNE (Does Not Exist)", steps };
       }
 
@@ -100,7 +139,7 @@ function computeLimit(expr: string, variable: string, approaching: string, fmt: 
         steps.push(`##Conclusion\nThe left limit and right limit agree — the two-sided limit exists:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
         return { value: rounded.toString(), steps, numericValue: rounded };
       } else {
-        steps.push(`##Conclusion\nThe left limit ($${exprToLatex(fmt(leftLimit))}$) and right limit ($${exprToLatex(fmt(rightLimit))}$) don't agree, so the two-sided limit does not exist:\n$$${limitHeaderLatex} = \\text{DNE}$$`);
+        steps.push(`##Conclusion\nLeft limit $${exprToLatex(fmt(leftLimit))}$ and right limit $${exprToLatex(fmt(rightLimit))}$ disagree — the limit does not exist:\n$$${limitHeaderLatex} = \\text{DNE}$$`);
         return { value: "DNE (Does Not Exist)", steps };
       }
     } else {
@@ -142,17 +181,18 @@ export function LimitsCalculator() {
   const [expr, setExpr] = useState("sin(x)/x");
   const [variable, setVariable] = useState("x");
   const [approaching, setApproaching] = useState("0");
+  const [side, setSide] = useState<LimitSide>("two-sided");
   const [result, setResult] = useState<LimitResult | null>(null);
   const [showSteps, setShowSteps] = useState(settings.showSteps);
 
   useEffect(() => setShowSteps(settings.showSteps), [settings.showSteps]);
 
   const solve = useCallback(
-    () => setResult(computeLimit(expr, variable, approaching, (n) => formatNumber(n, settings))),
-    [expr, variable, approaching, settings]
+    () => setResult(computeLimit(expr, variable, approaching, side, (n) => formatNumber(n, settings))),
+    [expr, variable, approaching, side, settings]
   );
 
-  useAutoRun([expr, variable, approaching, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);
+  useAutoRun([expr, variable, approaching, side, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);
 
   return (
     <div className="space-y-6">
@@ -183,6 +223,26 @@ export function LimitsCalculator() {
               <Input value={approaching} onChange={(e) => setApproaching(e.target.value)} className="text-center font-mono" onKeyDown={(e) => e.key === "Enter" && solve()} />
             </div>
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Side</Label>
+            <div className="flex gap-1.5">
+              {([
+                { key: "two-sided", label: "Two-Sided" },
+                { key: "left", label: "Left-Hand (⁻)" },
+                { key: "right", label: "Right-Hand (⁺)" },
+              ] as { key: LimitSide; label: string }[]).map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setSide(opt.key)}
+                  className={`flex-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    side === opt.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
           {!settings.autoCalculate && (
             <Button onClick={solve} className="w-full gap-2">
               <ArrowRight className="h-4 w-4" /> Calculate Limit
@@ -200,7 +260,7 @@ export function LimitsCalculator() {
             ) : (
               <>
                 <Badge variant="secondary" className="text-base font-mono px-3 py-1">
-                  lim = {result.numericValue !== undefined ? formatNumber(result.numericValue, settings) : result.value}
+                  lim{side === "left" ? "\u207b" : side === "right" ? "\u207a" : ""} = {result.numericValue !== undefined ? formatNumber(result.numericValue, settings) : result.value}
                 </Badge>
                 <StepsReveal steps={result.steps} show={showSteps} resetKey={result.value} title="Steps:" />
                 <Button variant="ghost" size="sm" onClick={() => setShowSteps((v) => !v)} className="text-xs">

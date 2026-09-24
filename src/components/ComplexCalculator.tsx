@@ -112,7 +112,7 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
     case "divide": {
       const r = div(a, b);
       const denom = b.re * b.re + b.im * b.im;
-      steps.push(`##Multiply by the Conjugate\nMultiply numerator and denominator by the conjugate of $z_2$, $\\overline{z_2} = ${czLatex(conjugate(b), s)}$, to clear the imaginary part from the denominator:\n$$|z_2|^2 = ${fmt(denom, s)}$$`);
+      steps.push(`##Multiply by the Conjugate\nMultiply top and bottom by $\\overline{z_2} = ${czLatex(conjugate(b), s)}$ to clear the imaginary part from the denominator:\n$$|z_2|^2 = ${fmt(denom, s)}$$`);
       steps.push(`##Result\n$$\\frac{z_1}{z_2} = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }

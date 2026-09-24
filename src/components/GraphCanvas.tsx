@@ -22,8 +22,13 @@ interface GraphCanvasProps {
   /** Override the auto-computed y-range (useful for implicit/square aspect plots). */
   yMin?: number;
   yMax?: number;
-  /** Extra highlighted points drawn on top (e.g. intersection points between compared functions). */
-  markers?: { x: number; y: number }[];
+  /** Extra highlighted points drawn on top (e.g. intersection points between
+   *  compared functions, or open/closed circles at a piecewise function's
+   *  breakpoints). `filled: true` draws a solid dot (a point that IS part of
+   *  the graph); omitted/false draws the existing hollow ring (a point the
+   *  curve approaches but doesn't include) — standard open/closed-circle
+   *  notation for a jump or removable discontinuity. */
+  markers?: { x: number; y: number; filled?: boolean }[];
   /** Show the "download as PNG" button in the top-right corner. Default true.
    *  Always visible on mobile too — this isn't hidden behind a "sm:" breakpoint. */
   showDownload?: boolean;
@@ -192,20 +197,27 @@ export function GraphCanvas({
       ctx.stroke();
     });
 
-    // Highlight markers (e.g. intersection points)
+    // Highlight markers (e.g. intersection points, or a piecewise
+    // function's open/closed breakpoint circles)
     if (markers && markers.length > 0) {
       const isDarkLocal = isDark;
+      const accent = isDarkLocal ? "#f43f5e" : "#e11d48";
       for (const m of markers) {
         const cx = toCanvasX(m.x);
         const cy = toCanvasY(m.y);
         if (cx < pad || cx > w - pad || cy < pad + legendPad || cy > h - pad) continue;
         ctx.beginPath();
         ctx.arc(cx, cy, 5, 0, Math.PI * 2);
-        ctx.fillStyle = isDarkLocal ? "#fff" : "#fff";
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = isDarkLocal ? "#f43f5e" : "#e11d48";
-        ctx.stroke();
+        if (m.filled) {
+          ctx.fillStyle = accent;
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "#fff";
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = accent;
+          ctx.stroke();
+        }
       }
     }
 

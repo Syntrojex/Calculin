@@ -90,7 +90,7 @@ function performBaseArithmetic(aStr: string, bStr: string, baseA: number, baseB:
 
   const steps: string[] = [];
   steps.push(`##Given\n$$${aClean}_{${base}} \\;${opLatex}\\; ${bClean}_{${base}}$$`);
-  steps.push(`##Convert Both Numbers to Decimal\nArithmetic on non-decimal digits directly is error-prone, so work in decimal first, then convert the answer back:\n$$${aClean}_{${base}} = ${aDec}_{10}, \\qquad ${bClean}_{${base}} = ${bDec}_{10}$$`);
+  steps.push(`##Convert Both Numbers to Decimal\nNon-decimal arithmetic is error-prone — convert to decimal first, then convert back:\n$$${aClean}_{${base}} = ${aDec}_{10}, \\qquad ${bClean}_{${base}} = ${bDec}_{10}$$`);
 
   if (op === "divide" && bDec === 0) {
     return { result: "", steps, error: "Division by zero is not allowed." };

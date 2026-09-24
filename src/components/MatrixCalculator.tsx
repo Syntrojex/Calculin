@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,31 +11,33 @@ import { useSettings, type Settings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { StepsReveal } from "./StepsReveal";
 import { MathTex } from "./MathTex";
-import { formatNumber } from "@/lib/number-format";
+import { toFraction, toFractionLatex } from "@/lib/number-format";
 
 type Op = "add" | "subtract" | "multiply" | "determinant" | "inverse" | "transpose" | "cramer" | "rank" | "ref" | "rref";
 
 const SIZES = [1, 2, 3, 4, 5];
 
 function fmtCell(v: number): string {
-  if (Number.isInteger(v)) return v.toString();
-  const r = parseFloat(v.toFixed(4)).toString();
+  const r = toFractionLatex(v, 1000);
   return v < 0 ? `(${r})` : r;
 }
 
 /** Renders a plain 2D numeric matrix as a LaTeX bmatrix, e.g. for
  *  "$$A = \begin{bmatrix}1&2\\3&4\end{bmatrix}$$" style display steps. */
 function matrixLatex(m: number[][]): string {
-  const rows = m.map((row) => row.map((v) => (Number.isInteger(v) ? v.toString() : parseFloat(v.toFixed(4)).toString())).join(" & "));
-  return `\\begin{bmatrix}${rows.join("\\\\")}\\end{bmatrix}`;
+  const rows = m.map((row) => row.map((v) => toFractionLatex(v)).join(" & "));
+  // \arraystretch adds vertical room per row — without it, a fraction's
+  // numerator/denominator crowds into the row above or below it, since a
+  // plain matrix row is only as tall as ordinary single-line text needs.
+  return `\\def\\arraystretch{1.6}\\begin{bmatrix}${rows.join("\\\\")}\\end{bmatrix}`;
 }
 
 /** Same as matrixLatex but for an augmented [A | I]-style matrix, with a
  *  vertical divider drawn between the two halves — used for Gauss-Jordan
  *  inverse steps. */
 function augmentedLatex(m: number[][], splitAt: number): string {
-  const rows = m.map((row) => row.map((v) => (Number.isInteger(v) ? v.toString() : parseFloat(v.toFixed(4)).toString())).join(" & "));
-  return `\\left[\\begin{array}{${"c".repeat(splitAt)}|${"c".repeat(m[0].length - splitAt)}}${rows.join("\\\\")}\\end{array}\\right]`;
+  const rows = m.map((row) => row.map((v) => toFractionLatex(v)).join(" & "));
+  return `\\def\\arraystretch{1.6}\\left[\\begin{array}{${"c".repeat(splitAt)}|${"c".repeat(m[0].length - splitAt)}}${rows.join("\\\\")}\\end{array}\\right]`;
 }
 
 /** Creates an empty rows×cols grid of cell strings, reusing existing values
@@ -63,7 +65,7 @@ function parseGrid(grid: string[][], label: string): number[][] {
   return parsed;
 }
 
-function formatMatrix(m: number[][] | Matrix, settings: Settings): string {
+function formatMatrix(m: number[][] | Matrix): string {
   const arr = Array.isArray(m) ? m : (m as { toArray(): number[][] }).toArray() as number[][];
   return arr
     .map(row =>
@@ -71,7 +73,10 @@ function formatMatrix(m: number[][] | Matrix, settings: Settings): string {
         .map(v => {
           if (typeof v !== "number") return String(v);
           const snapped = Math.abs(v) < 1e-10 ? 0 : v;
-          return formatNumber(snapped, settings);
+          // Matrices always display as fractions, never decimals, regardless
+          // of the global number-format setting — a decimal entry like
+          // 0.3333333 doesn't read as "the matrix" the way 1/3 does.
+          return toFraction(snapped, 1000);
         })
         .join("\t")
     )
@@ -106,7 +111,7 @@ function determinantWithSteps(a: number[][], steps: string[]): number {
     const signs = [1, -1, 1];
     const minors = row0.map((_, j) => minorOf(a, 0, j));
     const minorDets = minors.map((m) => m[0][0] * m[1][1] - m[0][1] * m[1][0]);
-    steps.push(`##Cofactor Expansion (along Row 1)\nExpand along the first row: multiply each entry by the determinant of the 2×2 "minor" left after crossing out its row and column, alternating signs $(+,-,+)$:\n$$\\det(A) = a_{11}\\begin{vmatrix}a_{22}&a_{23}\\\\a_{32}&a_{33}\\end{vmatrix} - a_{12}\\begin{vmatrix}a_{21}&a_{23}\\\\a_{31}&a_{33}\\end{vmatrix} + a_{13}\\begin{vmatrix}a_{21}&a_{22}\\\\a_{31}&a_{32}\\end{vmatrix}$$`);
+    steps.push(`##Cofactor Expansion (along Row 1)\nMultiply each entry by its 2×2 minor (cross out its row/column), alternating signs $(+,-,+)$:\n$$\\det(A) = a_{11}\\begin{vmatrix}a_{22}&a_{23}\\\\a_{32}&a_{33}\\end{vmatrix} - a_{12}\\begin{vmatrix}a_{21}&a_{23}\\\\a_{31}&a_{33}\\end{vmatrix} + a_{13}\\begin{vmatrix}a_{21}&a_{22}\\\\a_{31}&a_{32}\\end{vmatrix}$$`);
     minors.forEach((m, j) => {
       steps.push(`##Minor ${j + 1} (remove row 1, column ${j + 1})\n$$${matrixLatex(m)} \\;\\Rightarrow\\; \\det = (${fmtCell(m[0][0])})(${fmtCell(m[1][1])}) - (${fmtCell(m[0][1])})(${fmtCell(m[1][0])}) = ${fmtCell(minorDets[j])}$$`);
     });
@@ -157,7 +162,7 @@ function inverseWithSteps(a: number[][], settings: Settings, steps: string[]): n
     steps.push(`##No Inverse\nSince $\\det(A) = 0$, this matrix is singular — it has no inverse.`);
     return null;
   }
-  steps.push(`##Method: Gauss-Jordan Elimination\nSince $\\det(A)\\neq0$, an inverse exists. Augment $A$ with the identity matrix, then row-reduce the left half to the identity — whatever happens to the right half along the way IS $A^{-1}$.`);
+  steps.push(`##Method: Gauss-Jordan Elimination\n$\\det(A)\\neq0$, so an inverse exists. Augment $A$ with the identity, row-reduce the left half to identity — the right half becomes $A^{-1}$.`);
 
   const aug = a.map((row, i) => [...row, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
   steps.push(`##Augment with the Identity Matrix\n$$${augmentedLatex(aug, n)}$$`);
@@ -220,15 +225,14 @@ function gaussianElim(matrix: number[][], toRREF: boolean): { ref: number[][]; s
     if (Math.abs(pivot - 1) > 1e-10) {
       const factor = 1 / pivot;
       m[pivotRow] = m[pivotRow].map(v => v * factor);
-      steps.push(`##Scale Pivot Row\n$$R_{${pivotRow + 1}} \\to \\frac{1}{${parseFloat(pivot.toFixed(4))}} R_{${pivotRow + 1}}$$\n$$${matrixLatex(m)}$$`);
+      steps.push(`##Scale Pivot Row\n$$R_{${pivotRow + 1}} \\to \\frac{1}{${toFractionLatex(pivot)}} R_{${pivotRow + 1}}$$\n$$${matrixLatex(m)}$$`);
     }
 
     for (let r = pivotRow + 1; r < rows; r++) {
       const factor = m[r][col];
       if (Math.abs(factor) > 1e-10) {
         m[r] = m[r].map((v, c) => v - factor * m[pivotRow][c]);
-        const fStr = parseFloat(factor.toFixed(4));
-        steps.push(`##Eliminate Below the Pivot\n$$R_{${r + 1}} \\to R_{${r + 1}} - (${fStr})\\,R_{${pivotRow + 1}}$$\n$$${matrixLatex(m)}$$`);
+        steps.push(`##Eliminate Below the Pivot\n$$R_{${r + 1}} \\to R_{${r + 1}} - (${fmtCell(factor)})\\,R_{${pivotRow + 1}}$$\n$$${matrixLatex(m)}$$`);
       }
     }
     pivotCols.push(col);
@@ -238,30 +242,37 @@ function gaussianElim(matrix: number[][], toRREF: boolean): { ref: number[][]; s
   const rank = m.filter(row => row.some(v => Math.abs(v) > 1e-10)).length;
 
   if (toRREF && pivotCols.length > 0) {
-    steps.push(`##Back-Substitution\nRow Echelon Form only clears entries BELOW each pivot. For Reduced Row Echelon Form, also clear every entry ABOVE each pivot, working from the last pivot back to the first:`);
+    steps.push(`##Back-Substitution\nRow Echelon Form only clears BELOW each pivot; Reduced form also clears ABOVE each pivot, working from the last pivot back:`);
     for (let i = pivotCols.length - 1; i >= 0; i--) {
       const col = pivotCols[i];
       for (let r = 0; r < i; r++) {
         const factor = m[r][col];
         if (Math.abs(factor) > 1e-10) {
           m[r] = m[r].map((v, c) => v - factor * m[i][c]);
-          const fStr = parseFloat(factor.toFixed(4));
-          steps.push(`##Clear Above Pivot ${i + 1}\n$$R_{${r + 1}} \\to R_{${r + 1}} - (${fStr})\\,R_{${i + 1}}$$\n$$${matrixLatex(m)}$$`);
+          steps.push(`##Clear Above Pivot ${i + 1}\n$$R_{${r + 1}} \\to R_{${r + 1}} - (${fmtCell(factor)})\\,R_{${i + 1}}$$\n$$${matrixLatex(m)}$$`);
         }
       }
     }
   }
 
-  steps.push(`##${toRREF ? "Reduced Row Echelon Form" : "Rank"}\n${toRREF ? "Every pivot is $1$, with zeros both above and below it:" : "The rank is the number of non-zero rows remaining:"}\n$$${toRREF ? matrixLatex(m.map(row => row.map(v => Math.abs(v) < 1e-10 ? 0 : parseFloat(v.toFixed(6))))) : `\\text{rank} = ${rank}`}$$`);
+  steps.push(`##${toRREF ? "Reduced Row Echelon Form" : "Rank"}\n${toRREF ? "Every pivot is $1$, with zeros both above and below it:" : "The rank is the number of non-zero rows remaining:"}\n$$${toRREF ? matrixLatex(m.map(row => row.map(v => Math.abs(v) < 1e-10 ? 0 : v))) : `\\text{rank} = ${rank}`}$$`);
 
-  const ref = m.map(row => row.map(v => Math.abs(v) < 1e-10 ? 0 : parseFloat(v.toFixed(6))));
+  const ref = m.map(row => row.map(v => Math.abs(v) < 1e-10 ? 0 : v));
   return { ref, steps, rank };
 }
 
 /** A small grid of cell inputs replacing the old free-text textarea — no
  *  "press Enter for a new row" gesture needed at all (rows/cols are picked
  *  from dropdowns instead), which sidesteps the textarea/Enter-to-submit
- *  conflict entirely rather than trying to special-case it. */
+ *  conflict entirely rather than trying to special-case it.
+ *
+ *  Arrow keys move between cells like a spreadsheet: Up/Down always jump a
+ *  row (there's nothing else for them to do in a one-line input); Left/Right
+ *  only jump a column once the caret is already at that edge of the cell's
+ *  text, so normal in-cell caret movement still works while editing a
+ *  multi-character value. Landing on a cell selects its contents so typing
+ *  immediately replaces it, matching spreadsheet muscle memory.
+ */
 function MatrixGrid({ label, rows, cols, values, onCellChange }: {
   label: string;
   rows: number;
@@ -269,10 +280,48 @@ function MatrixGrid({ label, rows, cols, values, onCellChange }: {
   values: string[][];
   onCellChange: (r: number, c: number, value: string) => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const focusCell = (r: number, c: number) => {
+    const el = containerRef.current?.querySelector<HTMLInputElement>(`input[data-r="${r}"][data-c="${c}"]`);
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, r: number, c: number) => {
+    const el = e.currentTarget;
+    switch (e.key) {
+      case "ArrowUp":
+        e.preventDefault();
+        focusCell(Math.max(0, r - 1), c);
+        break;
+      case "ArrowDown":
+      case "Enter":
+        e.preventDefault();
+        focusCell(Math.min(rows - 1, r + 1), c);
+        break;
+      case "ArrowLeft":
+        if (el.selectionStart === 0 && el.selectionEnd === 0) {
+          e.preventDefault();
+          focusCell(r, Math.max(0, c - 1));
+        }
+        break;
+      case "ArrowRight":
+        if (el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+          e.preventDefault();
+          focusCell(r, Math.min(cols - 1, c + 1));
+        }
+        break;
+    }
+  };
+
   return (
     <div className="space-y-1.5">
       <Label className="text-xs">{label} ({rows}×{cols})</Label>
       <div
+        ref={containerRef}
         className="inline-grid gap-1 p-2 rounded-md border border-input bg-background"
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(2.5rem, 1fr))` }}
       >
@@ -280,8 +329,11 @@ function MatrixGrid({ label, rows, cols, values, onCellChange }: {
           Array.from({ length: cols }).map((_, c) => (
             <input
               key={`${r}-${c}`}
+              data-r={r}
+              data-c={c}
               value={values[r]?.[c] ?? ""}
               onChange={(e) => onCellChange(r, c, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(e, r, c)}
               inputMode="decimal"
               className="w-full h-9 rounded border border-border bg-muted/30 text-center font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
@@ -338,7 +390,7 @@ export function MatrixCalculator() {
         const stepList: string[] = [`##Given\n$$A = ${matrixLatex(a)}$$`];
         const d = determinantWithSteps(a, stepList);
         setSteps(stepList);
-        setResult(`Determinant = ${formatNumber(Math.abs(d) < 1e-10 ? 0 : d, settings)}`);
+        setResult(`Determinant = ${toFraction(Math.abs(d) < 1e-10 ? 0 : d, 1000)}`);
         return;
       }
       if (op === "inverse") {
@@ -347,7 +399,7 @@ export function MatrixCalculator() {
         const r = inverseWithSteps(a, settings, stepList);
         setSteps(stepList);
         if (!r) { setResult("No inverse (singular matrix)"); return; }
-        setResult(formatMatrix(r, settings));
+        setResult(formatMatrix(r));
         setResultMatrix(r);
         return;
       }
@@ -357,28 +409,28 @@ export function MatrixCalculator() {
           ? `\nFor example, entry $(1,2)=${fmtCell(a[0][1])}$ becomes entry $(2,1)$ in $A^T$, and entry $(2,1)=${fmtCell(a[1][0])}$ becomes entry $(1,2)$.`
           : "";
         setSteps([`##Given\n$$A = ${matrixLatex(a)}$$`, `##Transpose\nFlip rows and columns — row $i$, column $j$ of $A$ becomes row $j$, column $i$ of $A^T$.${exampleSwaps}\n$$A^T = ${matrixLatex(r)}$$`]);
-        setResult(formatMatrix(r, settings));
+        setResult(formatMatrix(r));
         setResultMatrix(r);
         return;
       }
       if (op === "rank") {
         const { rank, ref, steps: refSteps } = gaussianElim(a, false);
         setSteps(refSteps);
-        setResult(`Rank = ${rank}\n\nRow Echelon Form:\n${formatMatrix(ref, settings)}`);
+        setResult(`Rank = ${rank}\n\nRow Echelon Form:\n${formatMatrix(ref)}`);
         setResultMatrix(ref);
         return;
       }
       if (op === "ref") {
         const { ref, steps: refSteps } = gaussianElim(a, false);
         setSteps(refSteps);
-        setResult(formatMatrix(ref, settings));
+        setResult(formatMatrix(ref));
         setResultMatrix(ref);
         return;
       }
       if (op === "rref") {
         const { ref, steps: refSteps } = gaussianElim(a, true);
         setSteps(refSteps);
-        setResult(formatMatrix(ref, settings));
+        setResult(formatMatrix(ref));
         setResultMatrix(ref);
         return;
       }
@@ -392,7 +444,7 @@ export function MatrixCalculator() {
         const D = mathDet(a) as number;
         const stepList: string[] = [];
         stepList.push(`##System\n$$A\\vec{x} = \\vec{b}, \\qquad ${n} \\text{ unknowns}$$`);
-        stepList.push(`##Step 1 — Determinant of A\n$$D = \\det(A) = ${formatNumber(Math.round(D * 10000) / 10000, settings)}$$`);
+        stepList.push(`##Step 1 — Determinant of A\n$$D = \\det(A) = ${toFractionLatex(D)}$$`);
         if (Math.abs(D) < 1e-12) {
           stepList.push(`##Singular System\n$D = 0$ — the system has no unique solution.`);
           setSteps(stepList);
@@ -405,12 +457,12 @@ export function MatrixCalculator() {
           const Ai = a.map((row, r) => row.map((v, c) => (c === i ? bv[r] : v)));
           const Di = mathDet(Ai) as number;
           const xi = Di / D;
-          stepList.push(`##Step ${i + 2} — Solve for $x_{${i + 1}}$\nReplace column ${i + 1} of $A$ with $\\vec{b}$ to form $A_{${i + 1}}$:\n$$${matrixLatex(Ai)}$$\n$$\\det(A_{${i + 1}}) = ${formatNumber(Math.round(Di * 10000) / 10000, settings)}, \\qquad x_{${i + 1}} = \\frac{\\det(A_{${i + 1}})}{D} = ${formatNumber(Math.round(xi * 10000) / 10000, settings)}$$`);
+          stepList.push(`##Step ${i + 2} — Solve for $x_{${i + 1}}$\nReplace column ${i + 1} of $A$ with $\\vec{b}$ to form $A_{${i + 1}}$:\n$$${matrixLatex(Ai)}$$\n$$\\det(A_{${i + 1}}) = ${toFractionLatex(Di)}, \\qquad x_{${i + 1}} = \\frac{\\det(A_{${i + 1}})}{D} = ${toFractionLatex(xi)}$$`);
           xs.push(xi);
         }
 
         setSteps(stepList);
-        setResult(xs.map((x, i) => `x${i + 1} = ${formatNumber(Math.abs(x) < 1e-10 ? 0 : x, settings)}`).join("\n"));
+        setResult(xs.map((x, i) => `x${i + 1} = ${toFraction(Math.abs(x) < 1e-10 ? 0 : x, 1000)}`).join("\n"));
         return;
       }
 
@@ -456,7 +508,7 @@ export function MatrixCalculator() {
       }
 
       setSteps(stepList);
-      setResult(formatMatrix(r, settings));
+      setResult(formatMatrix(r));
       setResultMatrix(Array.isArray(r) ? r : (r as { toArray(): number[][] }).toArray());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Invalid matrix");
@@ -543,20 +595,13 @@ export function MatrixCalculator() {
           </div>
 
           {needsVec && (
-            <div className="space-y-1.5">
-              <Label className="text-xs">Vector b ({rowsA} entries)</Label>
-              <div className="inline-grid gap-1 p-2 rounded-md border border-input bg-background" style={{ gridTemplateColumns: "minmax(2.5rem, 1fr)" }}>
-                {vecB.map((v, i) => (
-                  <input
-                    key={i}
-                    value={v}
-                    onChange={(e) => setVecCell(i, e.target.value)}
-                    inputMode="decimal"
-                    className="w-full h-9 rounded border border-border bg-muted/30 text-center font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                ))}
-              </div>
-            </div>
+            <MatrixGrid
+              label="Vector b"
+              rows={rowsA}
+              cols={1}
+              values={vecB.map((v) => [v])}
+              onCellChange={(r, _c, v) => setVecCell(r, v)}
+            />
           )}
 
           <label className="flex items-center gap-2 text-sm">
