@@ -136,7 +136,7 @@ export function analyzeBreakpoint(pieces: Piece[], variable: string, x: number, 
   let leftLimit: number | null = null;
   if (leftPiece) {
     leftLimit = computeLimit(leftPiece.formula, variable, x.toString(), "left", fmt).numericValue ?? null;
-    steps.push(`##Left-Hand Limit\nUsing $f(${variable}) = ${exprToLatex(normalizeMathInput(leftPiece.formula))}$, which governs $${pieceDomainPhraseLatex(leftPiece, variable)}$:\n$$\\lim_{${variable}\\to ${xLatex}^-} f(${variable}) = ${leftLimit !== null ? exprToLatex(fmt(leftLimit)) : "\\text{DNE}"}$$`);
+    steps.push(`##Left-Hand Limit\n$f(${variable}) = ${exprToLatex(normalizeMathInput(leftPiece.formula))}$ for $${pieceDomainPhraseLatex(leftPiece, variable)}$:\n$$\\lim_{${variable}\\to ${xLatex}^-} f(${variable}) = ${leftLimit !== null ? exprToLatex(fmt(leftLimit)) : "\\text{DNE}"}$$`);
   } else {
     steps.push(`##Left-Hand Limit\nNo piece is defined just left of $${variable} = ${xLatex}$.`);
   }
@@ -144,7 +144,7 @@ export function analyzeBreakpoint(pieces: Piece[], variable: string, x: number, 
   let rightLimit: number | null = null;
   if (rightPiece) {
     rightLimit = computeLimit(rightPiece.formula, variable, x.toString(), "right", fmt).numericValue ?? null;
-    steps.push(`##Right-Hand Limit\nUsing $f(${variable}) = ${exprToLatex(normalizeMathInput(rightPiece.formula))}$, which governs $${pieceDomainPhraseLatex(rightPiece, variable)}$:\n$$\\lim_{${variable}\\to ${xLatex}^+} f(${variable}) = ${rightLimit !== null ? exprToLatex(fmt(rightLimit)) : "\\text{DNE}"}$$`);
+    steps.push(`##Right-Hand Limit\n$f(${variable}) = ${exprToLatex(normalizeMathInput(rightPiece.formula))}$ for $${pieceDomainPhraseLatex(rightPiece, variable)}$:\n$$\\lim_{${variable}\\to ${xLatex}^+} f(${variable}) = ${rightLimit !== null ? exprToLatex(fmt(rightLimit)) : "\\text{DNE}"}$$`);
   } else {
     steps.push(`##Right-Hand Limit\nNo piece is defined just right of $${variable} = ${xLatex}$.`);
   }

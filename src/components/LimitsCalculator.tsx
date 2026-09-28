@@ -83,7 +83,7 @@ export function computeLimit(expr: string, variable: string, approaching: string
       }
       const sideWord = side === "left" ? "left" : "right";
       const relation = side === "left" ? "less than" : "greater than";
-      steps.push(`##Numerical Approach\nEvaluate $f(${variable})$ as $${variable}$ approaches $${approachingLatex(approaching)}$ from the ${sideWord} (values ${relation} $${approachingLatex(approaching)}$):\n\n${vals.map(v => fmt(v)).join(" → ")}`);
+      steps.push(`##Numerical Approach\nApproaching from the ${sideWord} (values ${relation} $${approachingLatex(approaching)}$):\n\n${vals.map(v => fmt(v)).join(" → ")}`);
 
       const last = vals[vals.length - 1];
       const secondLast = vals[vals.length - 2];
@@ -96,7 +96,7 @@ export function computeLimit(expr: string, variable: string, approaching: string
 
       if (Math.abs(last - secondLast) < 0.001) {
         const rounded = Math.abs(last - Math.round(last)) < 0.0001 ? Math.round(last) : parseFloat(last.toFixed(6));
-        steps.push(`##Conclusion\nThe values are converging — the ${sideWord}-hand limit exists:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
+        steps.push(`##Conclusion\nConverging — the ${sideWord}-hand limit exists:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
         return { value: rounded.toString(), steps, numericValue: rounded };
       }
 
@@ -118,7 +118,7 @@ export function computeLimit(expr: string, variable: string, approaching: string
         rightVals.push(rv);
       }
 
-      steps.push(`##Numerical Approach\nEvaluate $f(${variable})$ as $${variable}$ gets closer to $${approachingLatex(approaching)}$ from both sides:\n\nFrom the left: ${leftVals.map(v => fmt(v)).join(" → ")}\n\nFrom the right: ${rightVals.map(v => fmt(v)).join(" → ")}`);
+      steps.push(`##Numerical Approach\nFrom the left: ${leftVals.map(v => fmt(v)).join(" → ")}\n\nFrom the right: ${rightVals.map(v => fmt(v)).join(" → ")}`);
 
       const leftLimit = leftVals[leftVals.length - 1];
       const rightLimit = rightVals[rightVals.length - 1];
@@ -136,7 +136,7 @@ export function computeLimit(expr: string, variable: string, approaching: string
       if (Math.abs(leftLimit - rightLimit) < 0.001) {
         const avg = (leftLimit + rightLimit) / 2;
         const rounded = Math.abs(avg - Math.round(avg)) < 0.0001 ? Math.round(avg) : parseFloat(avg.toFixed(6));
-        steps.push(`##Conclusion\nThe left limit and right limit agree — the two-sided limit exists:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
+        steps.push(`##Conclusion\nLeft and right limits agree:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
         return { value: rounded.toString(), steps, numericValue: rounded };
       } else {
         steps.push(`##Conclusion\nLeft limit $${exprToLatex(fmt(leftLimit))}$ and right limit $${exprToLatex(fmt(rightLimit))}$ disagree — the limit does not exist:\n$$${limitHeaderLatex} = \\text{DNE}$$`);
@@ -152,7 +152,7 @@ export function computeLimit(expr: string, variable: string, approaching: string
         results.push(evaluate(expr, scope) as number);
       }
 
-      steps.push(`##Numerical Approach\nEvaluate $f(${variable})$ as $${variable} \\to ${approachingLatex(approaching)}$:\n\n${vals.map((v, i) => `f(${v})=${fmt(results[i])}`).join(", ")}`);
+      steps.push(`##Numerical Approach\nAs $${variable} \\to ${approachingLatex(approaching)}$:\n\n${vals.map((v, i) => `f(${v})=${fmt(results[i])}`).join(", ")}`);
 
       const last = results[results.length - 1];
       const secondLast = results[results.length - 2];
@@ -164,7 +164,7 @@ export function computeLimit(expr: string, variable: string, approaching: string
 
       if (Math.abs(last - secondLast) < 0.01) {
         const rounded = parseFloat(last.toFixed(6));
-        steps.push(`##Conclusion\nThe values are converging — the limit exists:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
+        steps.push(`##Conclusion\nConverging:\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
         return { value: rounded.toString(), steps, numericValue: rounded };
       }
 

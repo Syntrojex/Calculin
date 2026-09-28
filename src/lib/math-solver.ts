@@ -571,7 +571,7 @@ function narrateDerivativeNode(node: MathNode, variable: string, steps: string[]
   // non-constant factors, quotients, deeper nesting, ...) — still correct
   // and still rendered as real LaTeX, just without a granular rule-by-rule
   // breakdown.
-  steps.push(`##Differentiate\\nApply the standard differentiation rules:\\n$$${here()} = ${exprToLatex(prettifyResult(simplify(derivative(node, variable)).toString(), variable))}$$`);
+  steps.push(`##Differentiate\nApply the standard differentiation rules:\n$$${here()} = ${exprToLatex(prettifyResult(simplify(derivative(node, variable)).toString(), variable))}$$`);
 }
 
 
@@ -655,12 +655,21 @@ function extractRuleNames(steps: string[]): string[] {
     "Add the Constant of Integration", "Verify", "Method: Simpson's Rule", "Result",
     "Separate the Terms", "Beyond This Solver", "No Critical Points", "Step 1 — Find Critical Points",
   ]);
+  // Internal mechanics of a single rule (the individual moves of a chain
+  // rule: name the composition, differentiate outer, differentiate inner,
+  // combine) are NOT separate rules — listing them in the "Approach" line
+  // just restated every upcoming step header back to the reader.
+  const chainRuleSubSteps = new Set([
+    "Differentiate the Outer Function", "Differentiate the Inner Function", "Combine via the Chain Rule",
+  ]);
   const seen = new Set<string>();
   const names: string[] = [];
   for (const s of steps) {
     if (!s.startsWith("##")) continue;
     const nl = s.indexOf("\n");
-    const header = (nl === -1 ? s.slice(2) : s.slice(2, nl)).trim();
+    let header = (nl === -1 ? s.slice(2) : s.slice(2, nl)).trim();
+    if (header.startsWith("Chain Rule")) header = "Chain Rule";
+    if (chainRuleSubSteps.has(header) || header.startsWith("Derivative of ") || header.startsWith("Differentiation ")) continue;
     if (skip.has(header) || header.length > 60 || seen.has(header)) continue;
     seen.add(header);
     names.push(header);
@@ -1445,7 +1454,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
           if (isTrivialLinear(lin)) {
             steps.push(`##Power Rule\n$\\int ${variable}^n\\,d${variable} = \\frac{${variable}^{n+1}}{n+1}$, with $n = ${fmtNum(n)}$, $n+1 = ${fmtNum(newExp)}$:\n$$${here()} = \\frac{${variable}^{${fmtNum(newExp)}}}{${fmtNum(newExp)}}$$`);
           } else {
-            steps.push(`##Power Rule + u-Substitution\nLet $u = ${exprToLatex(argStr)}$ (linear in $${variable}$), so $du = ${fmtNum(lin.a)}\\,d${variable}$. By the Power Rule, $\\int u^n\\,du = \\frac{u^{n+1}}{n+1}$; here $n+1 = ${fmtNum(newExp)}$:\n$$${here()} = \\frac{\\left(${exprToLatex(argStr)}\\right)^{${fmtNum(newExp)}}}{${fmtNum(newExp)}\\cdot ${fmtNum(lin.a)}}$$`);
+            steps.push(`##Power Rule + u-Substitution\nLet $u = ${exprToLatex(argStr)}$ so $du = ${fmtNum(lin.a)}\\,d${variable}$. Power Rule: $\\int u^n\\,du = \\frac{u^{n+1}}{n+1}$, $n+1 = ${fmtNum(newExp)}$:\n$$${here()} = \\frac{\\left(${exprToLatex(argStr)}\\right)^{${fmtNum(newExp)}}}{${fmtNum(newExp)}\\cdot ${fmtNum(lin.a)}}$$`);
           }
           return {
             antiderivative: `(${argStr})^${fmtNum(newExp)}/(${fmtNum(newExp)}*${fmtNum(lin.a)})`,
@@ -1668,10 +1677,10 @@ export function solveExtrema1D(
         throw new MathInputError("This expression doesn't evaluate to a real function of " + variable + ".");
       }
       if (Math.abs(slope) < EPS) {
-        steps.push(`##Constant Function\n$f'(${variable}) = 0$ everywhere, so $f$ never rises or falls — it has no isolated maximum or minimum.`);
+        steps.push(`##Constant Function\n$f'(${variable}) = 0$ everywhere — no isolated maximum or minimum.`);
         return { input: expression, result: "Constant function — no isolated extrema", steps };
       }
-      steps.push(`##Straight Line\n$f'(${variable}) = ${fmtNum(slope)}$ is a non-zero constant, so the slope never reaches $0$ — there are no critical points.`);
+      steps.push(`##Straight Line\n$f'(${variable}) = ${fmtNum(slope)}$ , a non-zero constant — no critical points.`);
       return { input: expression, result: "No local extrema (constant non-zero slope)", steps };
     }
 
@@ -1725,7 +1734,7 @@ export function solveExtrema1D(
     }
 
     if (!labels.length) {
-      steps.push(`##No Usable Critical Points\nEvery candidate point found is outside the function's domain, so there is no local maximum or minimum to report here.`);
+      steps.push(`##No Usable Critical Points\nEvery candidate point lies outside the domain — nothing to report.`);
       return { input: expression, result: "No local extrema in range", steps };
     }
 

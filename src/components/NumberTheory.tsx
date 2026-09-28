@@ -17,7 +17,7 @@ function lcm(a: number, b: number): number { return Math.abs(a * b) / gcd(a, b);
 
 function gcdSteps(a: number, b: number): string[] {
   const steps: string[] = [];
-  steps.push(`##Euclidean Algorithm\nFind $\\gcd(${a}, ${b})$ by repeated division — each step divides the previous divisor by the previous remainder:`);
+  steps.push(`##Euclidean Algorithm\nRepeated division — divide the previous divisor by the previous remainder:`);
   let x = Math.abs(a), y = Math.abs(b);
   while (y !== 0) {
     const q = Math.floor(x / y);
@@ -127,7 +127,7 @@ function PrimeFactorization() {
     const factors = primeFactors(n);
     const prime = isPrime(n);
     const steps: string[] = [];
-    steps.push(`##Given\nFind the prime factorization of $${n}$.`);
+    steps.push(`##Given\n$$n = ${n}$$`);
     if (prime) { steps.push(`##Already Prime\n$${n}$ has no divisors other than $1$ and itself — it's prime.`); }
     else {
       let cur = n;

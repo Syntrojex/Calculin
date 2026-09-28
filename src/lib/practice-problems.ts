@@ -1115,7 +1115,7 @@ const EASY_WORD: ((d: Difficulty) => Problem)[] = [
     const mean = sum / nums.length;
     return {
       category: "word",
-      prompt: `Find the mean of these five values:\\n$$${nums.join(",\\\\; ")}$$`,
+      prompt: `Find the mean of these five values:\n$$${nums.join(",\\\\; ")}$$`,
       correctAnswer: fmt(mean),
       hint: "Mean = sum of the values ÷ how many there are.",
       answerFormat: "a number",
@@ -1440,7 +1440,7 @@ const HARD_WORD: ((d: Difficulty) => Problem)[] = [
     const saved = Math.round((tSlow - tFast) * 60);
     return {
       category: "word",
-      prompt: `${who} travels ${d} km by ${v}. At ${slower} km/h the trip takes a certain time; at ${faster} km/h it takes less.\\n\\nHow many MINUTES are saved by travelling at the faster speed? Round to the nearest minute.`,
+      prompt: `${who} travels ${d} km by ${v}. At ${slower} km/h the trip takes a certain time; at ${faster} km/h it takes less.\n\nHow many MINUTES are saved by travelling at the faster speed? Round to the nearest minute.`,
       correctAnswer: `${saved}`,
       hint: "Find each journey time separately, subtract, then convert the difference from hours into minutes.",
       answerFormat: "a number of minutes",
@@ -1463,7 +1463,7 @@ const HARD_WORD: ((d: Difficulty) => Problem)[] = [
     const label = n === 2 ? "half-yearly" : n === 4 ? "quarterly" : "monthly";
     return {
       category: "word",
-      prompt: `$${p} is invested at a nominal ${r}% per year, compounded ${label}, for ${t} years.\\n\\nWhat is the final amount? Round to 2 decimal places.`,
+      prompt: `$${p} is invested at a nominal ${r}% per year, compounded ${label}, for ${t} years.\n\nWhat is the final amount? Round to 2 decimal places.`,
       correctAnswer: `${amount}`,
       hint: "A = P(1 + r/(100n))^(nt), where n is the number of compounding periods per year.",
       answerFormat: "a number",
@@ -1488,7 +1488,7 @@ const HARD_WORD: ((d: Difficulty) => Problem)[] = [
     const lost = Math.round((v0 - v1) * 1000) / 1000;
     return {
       category: "word",
-      prompt: `A cone-shaped tank stands point-down. It is ${h0} cm deep, ${base} cm across at the top, and full to the brim.\\n\\nThe water level then drops by ${drop} cm. How many cm³ of water were lost? Round to 3 decimal places.`,
+      prompt: `A cone-shaped tank stands point-down. It is ${h0} cm deep, ${base} cm across at the top, and full to the brim.\n\nThe water level then drops by ${drop} cm. How many cm³ of water were lost? Round to 3 decimal places.`,
       correctAnswer: `${lost}`,
       hint: "As the level falls the surface radius shrinks in the same proportion — use similar triangles before applying V = ⅓πr²h.",
       answerFormat: "a number (cm³)",
@@ -1496,7 +1496,7 @@ const HARD_WORD: ((d: Difficulty) => Problem)[] = [
         step("Radius at the Top", eq(`r_0 = \\frac{${base}}{2} = ${fmt(r0)}\\text{ cm}`)),
         step("Volume When Full", eq(`V_0 = \\tfrac{1}{3}\\pi r_0^{2} h_0 = \\tfrac{1}{3}\\pi(${fmt(r0)})^{2}(${h0}) = ${fmt(v0)}\\text{ cm}^3`)),
         step("New Depth", eq(`h_1 = ${h0} - ${drop} = ${h1}\\text{ cm}`)),
-        step("New Radius by Similar Triangles", `The cone tapers uniformly, so radius and depth keep the same ratio:\\n${eq(`\\frac{r_1}{h_1} = \\frac{r_0}{h_0} \\;\\Rightarrow\\; r_1 = \\frac{${fmt(r0)}\\times ${h1}}{${h0}} = ${fmt(r1)}\\text{ cm}`)}`),
+        step("New Radius by Similar Triangles", `The cone tapers uniformly, so radius and depth keep the same ratio:\n${eq(`\\frac{r_1}{h_1} = \\frac{r_0}{h_0} \\;\\Rightarrow\\; r_1 = \\frac{${fmt(r0)}\\times ${h1}}{${h0}} = ${fmt(r1)}\\text{ cm}`)}`),
         step("Volume Remaining", eq(`V_1 = \\tfrac{1}{3}\\pi(${fmt(r1)})^{2}(${h1}) = ${fmt(v1)}\\text{ cm}^3`)),
         step("Water Lost", eq(`V_0 - V_1 = ${fmt(v0)} - ${fmt(v1)} = ${lost}\\text{ cm}^3`)),
       ],
@@ -1511,7 +1511,7 @@ const HARD_WORD: ((d: Difficulty) => Problem)[] = [
     const totalValue = big * bigCount + small * smallCount;
     return {
       category: "word",
-      prompt: `${who} has ${totalNotes} banknotes, each one either a ${big}-rupee note or a ${small}-rupee note, worth ${totalValue} rupees altogether.\\n\\nHow many ${big}-rupee notes does ${who} have?`,
+      prompt: `${who} has ${totalNotes} banknotes, each one either a ${big}-rupee note or a ${small}-rupee note, worth ${totalValue} rupees altogether.\n\nHow many ${big}-rupee notes does ${who} have?`,
       correctAnswer: `${bigCount}`,
       hint: "Let x be the number of large notes and y the small ones: one equation counts the notes, the other adds up their value.",
       answerFormat: "a number of notes",

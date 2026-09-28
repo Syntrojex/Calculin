@@ -29,7 +29,7 @@ function calcShape(shape: Shape, params: Record<string, number>, fmt: (n: number
     switch (shape) {
       case "circle": {
         const { r } = params;
-        steps.push(`##Given\nA circle with radius $r = ${r}$.`);
+        steps.push(`##Given\n$$r = ${r}$$`);
         steps.push(`##Area\n$$A = \\pi r^2 = \\pi(${r})^2 = ${fmt(Math.PI * r * r)}$$`);
         const perimeter = 2 * Math.PI * r;
         steps.push(`##Circumference\n$$C = 2\\pi r = 2\\pi(${r}) = ${fmt(perimeter)}$$`);
@@ -38,7 +38,7 @@ function calcShape(shape: Shape, params: Record<string, number>, fmt: (n: number
       }
       case "rectangle": {
         const { l, w } = params;
-        steps.push(`##Given\nA rectangle with length $${l}$ and width $${w}$.`);
+        steps.push(`##Given\n$$l = ${l}, \\quad w = ${w}$$`);
         const area = l * w;
         steps.push(`##Area\n$$A = l \\times w = ${l}\\times ${w} = ${fmt(area)}$$`);
         const perimeter = 2 * (l + w);
@@ -50,7 +50,7 @@ function calcShape(shape: Shape, params: Record<string, number>, fmt: (n: number
         if (a + b <= c || a + c <= b || b + c <= a) {
           return { area: null, perimeter: null, steps: [], error: "These three sides can't form a triangle (triangle inequality violated)" };
         }
-        steps.push(`##Given\nA triangle with sides $a=${a}$, $b=${b}$, $c=${c}$.`);
+        steps.push(`##Given\n$$a=${a}, \\quad b=${b}, \\quad c=${c}$$`);
         const s = (a + b + c) / 2;
         steps.push(`##Semi-Perimeter\n$$s = \\frac{a+b+c}{2} = ${s}$$`);
         const areaVal = Math.sqrt(s * (s - a) * (s - b) * (s - c));
@@ -61,21 +61,21 @@ function calcShape(shape: Shape, params: Record<string, number>, fmt: (n: number
       }
       case "trapezoid": {
         const { a, b, h } = params;
-        steps.push(`##Given\nA trapezoid with parallel sides $a=${a}$, $b=${b}$, and height $h=${h}$.`);
+        steps.push(`##Given\n$$a=${a}, \\quad b=${b}, \\quad h=${h}$$`);
         const area = 0.5 * (a + b) * h;
         steps.push(`##Area\n$$A = \\frac{1}{2}(a+b)h = \\frac{1}{2}(${a}+${b})(${h}) = ${fmt(area)}$$`);
         return { area, perimeter: null, perimeterNote: "Need all 4 sides", steps };
       }
       case "parallelogram": {
         const { b, h } = params;
-        steps.push(`##Given\nA parallelogram with base $b=${b}$ and height $h=${h}$.`);
+        steps.push(`##Given\n$$b=${b}, \\quad h=${h}$$`);
         const area = b * h;
         steps.push(`##Area\n$$A = b \\times h = ${b}\\times ${h} = ${fmt(area)}$$`);
         return { area, perimeter: null, perimeterNote: "Need all sides", steps };
       }
       case "ellipse": {
         const { a, b } = params;
-        steps.push(`##Given\nAn ellipse with semi-major axis $a=${a}$ and semi-minor axis $b=${b}$.`);
+        steps.push(`##Given\n$$a=${a}, \\quad b=${b}$$`);
         const area = Math.PI * a * b;
         steps.push(`##Area\n$$A = \\pi a b = \\pi(${a})(${b}) = ${fmt(area)}$$`);
         const peri = Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)));
@@ -84,7 +84,7 @@ function calcShape(shape: Shape, params: Record<string, number>, fmt: (n: number
       }
       case "rhombus": {
         const { d1, d2 } = params;
-        steps.push(`##Given\nA rhombus with diagonals $d_1=${d1}$ and $d_2=${d2}$.`);
+        steps.push(`##Given\n$$d_1=${d1}, \\quad d_2=${d2}$$`);
         const area = 0.5 * d1 * d2;
         steps.push(`##Area\n$$A = \\frac{1}{2}d_1 d_2 = \\frac{1}{2}(${d1})(${d2}) = ${fmt(area)}$$`);
         const side = Math.sqrt((d1 / 2) ** 2 + (d2 / 2) ** 2);
@@ -98,7 +98,7 @@ function calcShape(shape: Shape, params: Record<string, number>, fmt: (n: number
         if (theta <= 0 || theta > 360) {
           return { area: null, perimeter: null, steps: [], error: "Angle must be between 0° and 360° (exclusive)" };
         }
-        steps.push(`##Given\nA circle sector with radius $r=${r}$ and angle $\\theta = ${theta}°$.`);
+        steps.push(`##Given\n$$r=${r}, \\quad \\theta = ${theta}°$$`);
         const rad = theta * Math.PI / 180;
         steps.push(`##Convert Angle to Radians\n$$\\theta = ${theta}° = ${rad.toFixed(6)}\\text{ rad}$$`);
         const area = 0.5 * r * r * rad;
@@ -114,7 +114,7 @@ function calcShape(shape: Shape, params: Record<string, number>, fmt: (n: number
         if (r >= R) {
           return { area: null, perimeter: null, steps: [], error: "Inner radius must be strictly less than outer radius (r < R)" };
         }
-        steps.push(`##Given\nA ring (annulus) with outer radius $R=${R}$ and inner radius $r=${r}$.`);
+        steps.push(`##Given\n$$R=${R}, \\quad r=${r}$$`);
         const area = Math.PI * (R * R - r * r);
         steps.push(`##Area\n$$A = \\pi(R^2 - r^2) = \\pi\\left[(${R})^2 - (${r})^2\\right] = ${fmt(area)}$$`);
         return { area, perimeter: null, perimeterNote: `Outer: ${fmt(2 * Math.PI * R)}, Inner: ${fmt(2 * Math.PI * r)}`, steps };

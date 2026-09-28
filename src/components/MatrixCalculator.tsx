@@ -162,7 +162,7 @@ function inverseWithSteps(a: number[][], settings: Settings, steps: string[]): n
     steps.push(`##No Inverse\nSince $\\det(A) = 0$, this matrix is singular — it has no inverse.`);
     return null;
   }
-  steps.push(`##Method: Gauss-Jordan Elimination\n$\\det(A)\\neq0$, so an inverse exists. Augment $A$ with the identity, row-reduce the left half to identity — the right half becomes $A^{-1}$.`);
+  steps.push(`##Method: Gauss-Jordan Elimination\n$\\det(A)\\neq0$. Augment $A$ with the identity, row-reduce the left half to identity — the right half becomes $A^{-1}$.`);
 
   const aug = a.map((row, i) => [...row, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
   steps.push(`##Augment with the Identity Matrix\n$$${augmentedLatex(aug, n)}$$`);
