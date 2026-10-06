@@ -8,7 +8,7 @@ import {
   Infinity as InfinityIcon, LineChart, Calculator, Grid3X3,
   ArrowRight, ArrowLeftRight, Pentagon, TrendingUp,
   Zap, Hash, GraduationCap, Menu, Binary, BookOpen, Library, ChevronDown,
-  Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart,
+  Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart, Move3d,
 } from "lucide-react";
 import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
 import { DEFINITION_TOPICS } from "@/lib/definitions-data";
@@ -22,6 +22,7 @@ const LimitsCalculator = lazy(() => import("@/components/LimitsCalculator").then
 const PiecewiseCalculator = lazy(() => import("@/components/PiecewiseCalculator").then(m => ({ default: m.PiecewiseCalculator })));
 const EquationSolver = lazy(() => import("@/components/EquationSolver").then(m => ({ default: m.EquationSolver })));
 const MatrixCalculator = lazy(() => import("@/components/MatrixCalculator").then(m => ({ default: m.MatrixCalculator })));
+const VectorCalculator = lazy(() => import("@/components/VectorCalculator").then(m => ({ default: m.VectorCalculator })));
 const TrigIdentities = lazy(() => import("@/components/TrigIdentities").then(m => ({ default: m.TrigIdentities })));
 const ComplexCalculator = lazy(() => import("@/components/ComplexCalculator").then(m => ({ default: m.ComplexCalculator })));
 const NumberTheory = lazy(() => import("@/components/NumberTheory").then(m => ({ default: m.NumberTheory })));
@@ -67,6 +68,7 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
   { value: "piecewise", label: "Piecewise", shortLabel: "f{x}", icon: <GitBranch className="h-3.5 w-3.5" />, component: <PiecewiseCalculator />, category: "calculus" },
   { value: "equation", label: "Equations", shortLabel: "ax=b", icon: <Calculator className="h-3.5 w-3.5" />, component: <EquationSolver />, category: "algebra" },
   { value: "matrix", label: "Matrix", shortLabel: "[ ]", icon: <Grid3X3 className="h-3.5 w-3.5" />, component: <MatrixCalculator />, category: "algebra" },
+  { value: "vector", label: "Vectors", shortLabel: "v⃗", icon: <Move3d className="h-3.5 w-3.5" />, component: <VectorCalculator />, category: "algebra" },
   { value: "trig", label: "Trigonometry", shortLabel: "θ", icon: <span className="text-xs font-bold">θ</span>, component: <TrigIdentities />, category: "geometry" },
   { value: "complex", label: "Complex", shortLabel: "z", icon: <Zap className="h-3.5 w-3.5" />, component: <ComplexCalculator />, category: "algebra" },
   { value: "numtheory", label: "Num Theory", shortLabel: "gcd", icon: <Hash className="h-3.5 w-3.5" />, component: <NumberTheory />, category: "numbers" },
