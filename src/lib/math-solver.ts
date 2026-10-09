@@ -451,17 +451,102 @@ function substituteRuleVariable(ruleNode: MathNode, argNode: MathNode): string {
   return exprToLatex(substituted);
 }
 
-function narrateDerivativeNode(node: MathNode, variable: string, steps: string[], partial = false, depth = 0): void {
+/** Derivative of a node as ready-to-render LaTeX (simplified + prettified).
+ *  Always computed by mathjs, so it is correct for any expression. */
+function derivLx(node: MathNode, variable: string): string {
+  return exprToLatex(prettifyResult(simplify(derivative(node, variable)).toString(), variable));
+}
+
+/** Removes redundant wrapping parentheses so structure checks see the real operator. */
+function unwrapParens(node: MathNode): MathNode {
+  let n = node;
+  while (n.type === "ParenthesisNode") n = (n as unknown as { content: MathNode }).content;
+  return n;
+}
+
+/** Operand of a product: only sums/differences/negations need parentheses. */
+function wrapProd(node: MathNode): string {
+  const tex = exprToLatex(node.toString());
+  const op = asOperator(node);
+  return op && (op.fn === "add" || op.fn === "subtract" || op.fn === "unaryMinus") ? `\\left(${tex}\\right)` : tex;
+}
+
+/** LaTeX of a node, wrapped in \left( \right) unless it is a bare symbol/number. */
+function wrapNode(node: MathNode): string {
+  const tex = exprToLatex(node.toString());
+  return node.type === "SymbolNode" || node.type === "ConstantNode" ? tex : `\\left(${tex}\\right)`;
+}
+
+/** Same, for an already-built LaTeX string (e.g. a derivative result). */
+function wrapTex(tex: string): string {
+  return /[+\-]/.test(tex) ? `\\left(${tex}\\right)` : tex;
+}
+
+/** True when a node's derivative is obvious at a glance — a constant, a linear
+ *  expression, a constant power of a linear expression, or one function of a
+ *  linear expression. Those get their derivative written inline; anything
+ *  more involved gets its own worked sub-steps. */
+function isElementary(rawNode: MathNode, variable: string): boolean {
+  const node = unwrapParens(rawNode);
+  if (isConstantExpr(node, variable) || tryLinear(node, variable)) return true;
+  const op = asOperator(node);
+  if (op?.fn === "pow" && op.args.length === 2 && isConstantExpr(op.args[1], variable)) {
+    return !!tryLinear(op.args[0], variable);
+  }
+  const fn = asFunctionNode(node);
+  return !!(fn && fn.args.length === 1 && tryLinear(fn.args[0], variable));
+}
+
+/** n·x^(n-1) with the trivial cases (x^1, x^0, coefficient ±1) tidied. */
+function powerRuleResult(n: number, variable: string): string {
+  if (n === 0) return "0";
+  const e = n - 1;
+  if (e === 0) return "1";
+  const coef = n === 1 ? "" : n === -1 ? "-" : fmtNum(n);
+  return `${coef}${variable}${e === 1 ? "" : `^{${fmtNum(e)}}`}`;
+}
+
+/** Pushes a "rule" step (name, what u/v are, the general formula), then a
+ *  worked sub-derivation for every part that isn't elementary, then a
+ *  "Substitute" step that plugs the pieces into the formula. */
+function pushRuleSteps(
+  steps: string[],
+  o: {
+    header: string;
+    defs: string;
+    formula: string;
+    sub: { label: string; node: MathNode }[];
+    here: string;
+    substituted: string;
+    result: string;
+    showResult: boolean;
+  },
+  variable: string,
+  partial: boolean,
+  depth: number,
+): void {
+  steps.push(`##${o.header}\n$$${o.defs}$$\n$$${o.formula}$$`);
+  for (const s of o.sub) {
+    steps.push(`##Find $${s.label}$\n$$${s.label} = ${derivativeLatex(s.node.toString(), variable, partial)}$$`);
+    narrateDerivativeTop(s.node, variable, steps, partial, depth + 1);
+  }
+  steps.push(`##Substitute\n$$${o.here} = ${o.substituted}${o.showResult ? ` = ${o.result}` : ""}$$`);
+}
+
+function narrateDerivativeNode(rawNode: MathNode, variable: string, steps: string[], partial = false, depth = 0): void {
+  const node = unwrapParens(rawNode);
   const here = () => derivativeLatex(node.toString(), variable, partial);
+  const D = (inner: string) => derivativeLatex(inner, variable, partial);
+  const showResult = depth > 0; // top level is followed by "Final Answer" anyway
 
   if (isConstantExpr(node, variable)) {
-    steps.push(`##Constant Rule\nThe derivative of any constant is $0$:\n$$${here()} = 0$$`);
+    steps.push(`##Constant Rule\n$$${here()} = 0$$`);
     return;
   }
   {
     const sym = asSymbol(node);
     if (sym && sym.name === variable) {
-      steps.push(`##Power Rule\n$${variable}$ is the same as $${variable}^1$; bring down the exponent $1$ and reduce it by $1$:\n$$${here()} = 1$$`);
+      steps.push(`##Power Rule\n$$${here()} = 1$$`);
       return;
     }
   }
@@ -473,104 +558,209 @@ function narrateDerivativeNode(node: MathNode, variable: string, steps: string[]
   // here it's already a single signed term, so no further +/- splitting.
 
   if (op?.fn === "unaryMinus" && op.args.length === 1) {
-    steps.push(`##Constant Multiple Rule\nThe leading minus sign is a factor of $-1$:\n$$${here()} = -${derivativeLatex(op.args[0].toString(), variable, partial)}$$`);
+    steps.push(`##Constant Multiple Rule\n$$${here()} = -${derivativeLatex(op.args[0].toString(), variable, partial)}$$`);
     narrateDerivativeNode(op.args[0], variable, steps, partial, depth + 1);
     return;
   }
 
   // Constant multiple: c · f(x)
   if (op?.fn === "multiply" && op.args.length === 2) {
-    const [a, b] = op.args;
+    const [a, b] = op.args.map(unwrapParens);
     const constSide = isConstantExpr(a, variable) ? a : isConstantExpr(b, variable) ? b : null;
     const fnSide = constSide === a ? b : a;
     if (constSide) {
-      steps.push(`##Constant Multiple Rule\nA constant factor can be pulled outside the derivative:\n$$${here()} = ${exprToLatex(constSide.toString())}\\cdot ${derivativeLatex(fnSide.toString(), variable, partial)}$$`);
+      steps.push(`##Constant Multiple Rule\n$$${here()} = ${exprToLatex(constSide.toString())}\\cdot ${derivativeLatex(fnSide.toString(), variable, partial)}$$`);
       narrateDerivativeNode(fnSide, variable, steps, partial, depth + 1);
       return;
     }
   }
 
-  // Power rule: x^n or (linear)^n
+  // Division by a constant: f(x) / c
+  if (op?.fn === "divide" && op.args.length === 2 && isConstantExpr(op.args[1], variable)) {
+    steps.push(`##Constant Multiple Rule\n$$${here()} = \\frac{1}{${exprToLatex(op.args[1].toString())}}\\cdot ${derivativeLatex(op.args[0].toString(), variable, partial)}$$`);
+    narrateDerivativeNode(op.args[0], variable, steps, partial, depth + 1);
+    return;
+  }
+
+  // Product rule: u · v, both depending on the variable
+  if (op?.fn === "multiply" && op.args.length === 2 && depth < 6) {
+    const [u, v] = op.args.map(unwrapParens);
+    const up = derivLx(u, variable);
+    const vp = derivLx(v, variable);
+    const uE = isElementary(u, variable);
+    const vE = isElementary(v, variable);
+    let defs = `u = ${exprToLatex(u.toString())},\\quad v = ${exprToLatex(v.toString())}`;
+    if (uE) defs += `,\\quad u' = ${up}`;
+    if (vE) defs += `,\\quad v' = ${vp}`;
+    pushRuleSteps(steps, {
+      header: "Product Rule",
+      defs,
+      formula: `${D("u*v")} = u'v + uv'`,
+      sub: [...(uE ? [] : [{ label: "u'", node: u }]), ...(vE ? [] : [{ label: "v'", node: v }])],
+      here: here(),
+      substituted: `${wrapTex(up)}\\cdot ${wrapProd(v)} + ${wrapProd(u)}\\cdot ${wrapTex(vp)}`,
+      result: derivLx(node, variable),
+      showResult,
+    }, variable, partial, depth);
+    return;
+  }
+
+  // Quotient rule: u / v, both depending on the variable
+  if (op?.fn === "divide" && op.args.length === 2 && depth < 6) {
+    const [u, v] = op.args.map(unwrapParens);
+    const up = derivLx(u, variable);
+    const vp = derivLx(v, variable);
+    const uE = isElementary(u, variable);
+    const vE = isElementary(v, variable);
+    let defs = `u = ${exprToLatex(u.toString())},\\quad v = ${exprToLatex(v.toString())}`;
+    if (uE) defs += `,\\quad u' = ${up}`;
+    if (vE) defs += `,\\quad v' = ${vp}`;
+    pushRuleSteps(steps, {
+      header: "Quotient Rule",
+      defs,
+      formula: `${D("u/v")} = \\frac{u'v - uv'}{v^{2}}`,
+      sub: [...(uE ? [] : [{ label: "u'", node: u }]), ...(vE ? [] : [{ label: "v'", node: v }])],
+      here: here(),
+      substituted: `\\frac{${wrapTex(up)}\\cdot ${wrapProd(v)} - ${wrapProd(u)}\\cdot ${wrapTex(vp)}}{${wrapNode(v)}^{2}}`,
+      result: derivLx(node, variable),
+      showResult,
+    }, variable, partial, depth);
+    return;
+  }
+
   if (op?.fn === "pow" && op.args.length === 2) {
-    const [base, exp] = op.args;
+    const [base, exp] = op.args.map(unwrapParens);
+
+    // Constant exponent: x^n, (linear)^n, (anything)^n
     if (isConstantExpr(exp, variable)) {
       const n = evaluate(exp.toString());
       if (typeof n === "number") {
         const sym = asSymbol(base);
         if (sym && sym.name === variable) {
-          steps.push(`##Power Rule\nBring down the exponent $${fmtNum(n)}$ and reduce it by $1$:\n$$${here()} = ${fmtNum(n)}${variable}^{${fmtNum(n - 1)}}$$`);
+          steps.push(`##Power Rule\n$$${here()} = ${fmtNum(n)}\\,${variable}^{${fmtNum(n)}-1} = ${powerRuleResult(n, variable)}$$`);
           return;
         }
         const lin = tryLinear(base, variable);
         if (lin) {
           const u = exprToLatex(wrapLinearArg(lin.a, lin.b, variable));
-          steps.push(`##Power Rule + Chain Rule\nLet $u = ${u}$, so $u' = ${fmtNum(lin.a)}$. Bring down the exponent, reduce it by $1$, then multiply by $u'$:\n$$${here()} = ${fmtNum(n)}\\left(${u}\\right)^{${fmtNum(n - 1)}}\\cdot ${fmtNum(lin.a)}$$`);
+          steps.push(`##Power Rule + Chain Rule\n$u = ${u},\\quad u' = ${fmtNum(lin.a)}$\n$$${here()} = ${fmtNum(n)}\\left(${u}\\right)^{${fmtNum(n - 1)}}\\cdot ${fmtNum(lin.a)}$$`);
+          return;
+        }
+        if (depth < 6) {
+          const bp = derivLx(base, variable);
+          const bE = isElementary(base, variable);
+          pushRuleSteps(steps, {
+            header: "Power Rule + Chain Rule",
+            defs: `u = ${exprToLatex(base.toString())}${bE ? `,\\quad u' = ${bp}` : ""}`,
+            formula: `${D(`u^(${fmtNum(n)})`)} = ${fmtNum(n)}\\,u^{${fmtNum(n)}-1}\\cdot u'`,
+            sub: bE ? [] : [{ label: "u'", node: base }],
+            here: here(),
+            substituted: `${fmtNum(n)}\\cdot ${wrapNode(base)}^{${fmtNum(n - 1)}}\\cdot ${wrapTex(bp)}`,
+            result: derivLx(node, variable),
+            showResult,
+          }, variable, partial, depth);
           return;
         }
       }
+    }
+
+    // Constant base, variable exponent: a^u (including e^u)
+    if (isConstantExpr(base, variable) && depth < 6) {
+      const ep = derivLx(exp, variable);
+      const eE = isElementary(exp, variable);
+      const isE = asSymbol(base)?.name === "e";
+      pushRuleSteps(steps, {
+        header: "Exponential Rule",
+        defs: `u = ${exprToLatex(exp.toString())}${eE ? `,\\quad u' = ${ep}` : ""}`,
+        formula: isE ? `${D("e^u")} = e^{u}\\cdot u'` : `${D("a^u")} = a^{u}\\ln a\\cdot u'`,
+        sub: eE ? [] : [{ label: "u'", node: exp }],
+        here: here(),
+        substituted: isE
+          ? `e^{${exprToLatex(exp.toString())}}\\cdot ${wrapTex(ep)}`
+          : `${wrapNode(base)}^{${exprToLatex(exp.toString())}}\\cdot \\ln ${wrapNode(base)}\\cdot ${wrapTex(ep)}`,
+        result: derivLx(node, variable),
+        showResult,
+      }, variable, partial, depth);
+      return;
+    }
+
+    // Variable base AND variable exponent: u^v
+    if (depth < 6) {
+      const up = derivLx(base, variable);
+      const vp = derivLx(exp, variable);
+      const uE = isElementary(base, variable);
+      const vE = isElementary(exp, variable);
+      let defs = `u = ${exprToLatex(base.toString())},\\quad v = ${exprToLatex(exp.toString())}`;
+      if (uE) defs += `,\\quad u' = ${up}`;
+      if (vE) defs += `,\\quad v' = ${vp}`;
+      pushRuleSteps(steps, {
+        header: "Logarithmic Differentiation",
+        defs,
+        formula: `${D("u^v")} = u^{v}\\left(v'\\ln u + \\frac{v\\,u'}{u}\\right)`,
+        sub: [...(uE ? [] : [{ label: "u'", node: base }]), ...(vE ? [] : [{ label: "v'", node: exp }])],
+        here: here(),
+        substituted: `${wrapNode(base)}^{${exprToLatex(exp.toString())}}\\left(${vp === "1" ? "" : `${wrapTex(vp)}\\,`}\\ln ${wrapNode(base)} + \\frac{${wrapProd(exp)}${up === "1" ? "" : `\\cdot ${wrapTex(up)}`}}{${wrapNode(base)}}\\right)`,
+        result: derivLx(node, variable),
+        showResult,
+      }, variable, partial, depth);
+      return;
     }
   }
 
   // Any single-argument function (sin, cos, tan, sec, csc, cot, their
   // inverses, the hyperbolics, exp, log/ln, sqrt, cbrt, abs, ...) of the
-  // variable — Chain Rule. Rather than a hand-picked table covering only a
-  // few functions (which silently skipped step narration for anything else,
+  // variable — Chain Rule. The outer derivative rule is computed once via
+  // mathjs's own derivative() applied to an abstract placeholder "u", so it
+  // covers every function mathjs can differentiate, with the same correctness
+  // guarantee the rest of the app already relies on.
   const fn = asFunctionNode(node);
-  // e.g. sec(x), asin(x), tanh(x) used to fall straight to the generic
-  // fallback with zero explanation even for a trivial argument), the outer
-  // derivative rule is computed once via mathjs's own derivative() applied
-  // to an abstract placeholder "u" — this covers every function mathjs can
-  // differentiate, automatically, with the exact same correctness guarantee
-  // the rest of the app already relies on.
   if (fn && fn.args.length === 1 && !isConstantExpr(fn.args[0], variable) && depth < 6) {
-    const arg = fn.args[0];
+    const arg = unwrapParens(fn.args[0]);
     const displayName = fn.fn.name === "log" ? "ln" : fn.fn.name;
     const outerRule = outerDerivativeRule(fn.fn.name);
     if (outerRule) {
       const lin = tryLinear(arg, variable);
       if (lin) {
-        // Simple case: the inner function is linear (ax+b, or bare x) — a
-        // single multiply-by-u' finishes the job, same wording as before.
+        // Inner function is linear (ax+b, or bare x): one multiply-by-u'.
         const u = exprToLatex(wrapLinearArg(lin.a, lin.b, variable));
         const outerAtArg = substituteRuleVariable(outerRule, arg);
         const trivial = lin.a === 1 && lin.b === 0;
         if (trivial) {
           steps.push(`##Derivative of ${displayName}(${variable})\n$$${here()} = ${outerAtArg}$$`);
         } else {
-          steps.push(`##Chain Rule\nLet $u = ${u}$, so $u' = ${fmtNum(lin.a)}$. Multiply the outer derivative by $u'$:\n$$${here()} = ${outerAtArg}\\cdot ${fmtNum(lin.a)}$$`);
+          steps.push(`##Chain Rule\n$u = ${u},\\quad u' = ${fmtNum(lin.a)}$\n$$${here()} = ${outerAtArg}\\cdot ${fmtNum(lin.a)}$$`);
         }
         return;
       }
 
-      // General case: the inner function is itself non-linear (e.g.
-      // sqrt(cos(x)), sin(x^2)) — a genuine two-layer chain rule. Narrate it
-      // as a textbook would: name the composition, differentiate the outer
-      // function abstractly (treating u as the variable), differentiate the
-      // inner function — RECURSIVELY, so an inner product/chain/quotient
-      // gets its own full breakdown too — then combine.
+      // Inner function is itself non-linear (sqrt(cos(x)), sin(x^2), ...):
+      // a genuine two-layer chain rule. Inner derivatives that aren't obvious
+      // get their own worked sub-steps (recursively).
       const uLatex = exprToLatex(arg.toString());
       const outerAtU = exprToLatex(outerRule.toString());
       const outerAtArg = substituteRuleVariable(outerRule, arg);
-      // For the LaTeX rendering of "fn(u)" itself, let exprToLatex build it
-      // (via mathjs's own toTex()) rather than hand-concatenating displayName
-      // as plain text -- that correctly turns sqrt into a radical and abs
-      // into bars instead of the literal non-mathematical text "sqrt(u)".
+      // Let exprToLatex build "fn(u)" (via mathjs's toTex) so sqrt becomes a
+      // radical and abs becomes bars instead of literal text.
       const outerFnLatex = exprToLatex(`${fn.fn.name}(u)`);
-      steps.push(`##Chain Rule — Identify the Composition\nComposite function: outer $${outerFnLatex}$, inner $u = ${uLatex}$. Chain rule:\n$$\\frac{d}{d${variable}}\\left[${outerFnLatex}\\right] = \\frac{d}{du}\\left[${outerFnLatex}\\right]\\cdot\\frac{du}{d${variable}}$$`);
-      steps.push(`##Differentiate the Outer Function\nTreat $u$ as the variable:\n$$\\frac{d}{du}\\left[${outerFnLatex}\\right] = ${outerAtU}$$`);
-      steps.push(`##Differentiate the Inner Function\nFind $u' = \\dfrac{d}{d${variable}}\\left[${uLatex}\\right]$:`);
-      narrateDerivativeTop(arg, variable, steps, partial, depth + 1);
-      const innerDerivLatex = exprToLatex(prettifyResult(simplify(derivative(arg, variable)).toString(), variable));
-      steps.push(`##Combine via the Chain Rule\nSubstitute $u = ${uLatex}$ back, multiply by $u'$:\n$$${here()} = ${outerAtArg}\\cdot\\left(${innerDerivLatex}\\right)$$`);
+      const ip = derivLx(arg, variable);
+      const iE = isElementary(arg, variable);
+      pushRuleSteps(steps, {
+        header: "Chain Rule",
+        defs: `u = ${uLatex}${iE ? `,\\quad u' = ${ip}` : ""}`,
+        formula: `\\frac{d}{d${variable}}\\left[${outerFnLatex}\\right] = ${wrapTex(outerAtU)}\\cdot u'`,
+        sub: iE ? [] : [{ label: "u'", node: arg }],
+        here: here(),
+        substituted: `${outerAtArg}\\cdot ${wrapTex(ip)}`,
+        result: derivLx(node, variable),
+        showResult: false,
+      }, variable, partial, depth);
       return;
     }
   }
 
-  // Fallback for anything not specifically narrated above (products of two
-  // non-constant factors, quotients, deeper nesting, ...) — still correct
-  // and still rendered as real LaTeX, just without a granular rule-by-rule
-  // breakdown.
-  steps.push(`##Differentiate\nApply the standard differentiation rules:\n$$${here()} = ${exprToLatex(prettifyResult(simplify(derivative(node, variable)).toString(), variable))}$$`);
+  // Fallback for anything not specifically narrated above — still correct and
+  // still rendered as real LaTeX, just without a granular breakdown.
+  steps.push(`##Differentiate\n$$${here()} = ${derivLx(node, variable)}$$`);
 }
 
 
@@ -580,7 +770,8 @@ function narrateDerivativeNode(node: MathNode, variable: string, steps: string[]
  *  combine" structure — rather than recursing through the parser's binary
  *  add/subtract tree one pair at a time, which produced redundant nested
  *  "combine" steps for every intermediate pairing. */
-function narrateDerivativeTop(node: MathNode, variable: string, steps: string[], partial = false, depth = 0): void {
+function narrateDerivativeTop(rawNode: MathNode, variable: string, steps: string[], partial = false, depth = 0): void {
+  const node = unwrapParens(rawNode);
   const terms = flattenSum(node);
   if (terms.length <= 1) {
     narrateDerivativeNode(node, variable, steps, partial, depth);
@@ -596,11 +787,10 @@ function narrateDerivativeTop(node: MathNode, variable: string, steps: string[],
     })
     .join("");
 
-  steps.push(`##Separate the Terms\nThe derivative of a sum is the sum of the derivatives — differentiate each term separately:\n$$${wholeLatex} = ${perTermLatex}$$`);
+  steps.push(`##Separate the Terms\n$$${wholeLatex} = ${perTermLatex}$$`);
   terms.forEach((t) => narrateDerivativeNode(t.node, variable, steps, partial, depth + 1));
 
-  const finalLatex = exprToLatex(prettifyResult(simplify(derivative(node, variable)).toString(), variable));
-  steps.push(`##Combine the Results\nAdd all the term derivatives together:\n$$${wholeLatex} = ${finalLatex}$$`);
+  steps.push(`##Combine the Results\n$$${wholeLatex} = ${derivLx(node, variable)}$$`);
 }
 
 /** Substitutes a numeric value for `varName` (as a whole word, so "x" won't
@@ -690,10 +880,6 @@ export function solveDerivative(
 
     narrateDerivativeTop(node, variable, bodySteps);
 
-    const ruleNames = extractRuleNames(bodySteps);
-    if (ruleNames.length > 1) {
-      steps.push(`##Approach\nUsing **${ruleNames.join("**, **")}**.`);
-    }
     steps.push(...bodySteps);
 
     const deriv = derivative(node, variable);
@@ -724,7 +910,7 @@ export function solveNthDerivative(
     steps.push(`##Given\n$$f(${variable}) = ${exprToLatex(current.toString())}$$`);
 
     for (let i = 1; i <= order; i++) {
-      steps.push(`##Differentiation ${i} of ${order}\nStart from $f^{(${i - 1})}(${variable}) = ${exprToLatex(prettifyResult(current.toString(), variable))}$:`);
+      steps.push(`##Differentiation ${i} of ${order}\n$$f^{(${i - 1})}(${variable}) = ${exprToLatex(prettifyResult(current.toString(), variable))}$$`);
       narrateDerivativeTop(current, variable, steps);
       const deriv = derivative(current, variable);
       const simplified = simplify(deriv);
