@@ -35,8 +35,7 @@ function DocumentationPage() {
         </p>
         <p>
           <strong>Calc+</strong> covers partial derivatives with respect to any chosen
-          variable, and finding extrema (maxima, minima) for both single- and
-          two-variable functions.
+          variable.
         </p>
         <p>
           <strong>Limits</strong> numerically approximates one-sided and two-sided
@@ -68,9 +67,6 @@ function DocumentationPage() {
           <li><strong>Matrix</strong> — addition, subtraction, multiplication, determinant, inverse, transpose, rank, row echelon form, and Cramer's Rule.</li>
           <li><strong>Trignometry</strong> — a full identity reference organized by category, plus a Prove Identity tool that simplifies both sides of an equation symbolically using real trig identities and shows its reasoning.</li>
           <li><strong>Complex</strong> — arithmetic, modulus/argument, polar-to-rectangular conversion, powers, principal roots, and De Moivre's Theorem.</li>
-          <li><strong>Num Theory</strong> — GCD/LCM via the Euclidean algorithm, prime factorization with full factor trees, and prime listing up to a chosen limit.</li>
-          <li><strong>Shapes</strong> — area and perimeter for circles, rectangles, triangles, trapezoids, parallelograms, ellipses, rhombi, sectors, and rings.</li>
-          <li><strong>Converter</strong> — length, weight, temperature, speed, and area unit conversion with live results.</li>
           <li><strong>Num Systems</strong> — convert any number between bases 2 through 36, with the full division/remainder working shown.</li>
           <li><strong>Graph</strong> — 2D function plotting with Compare Mode (overlay multiple functions with automatic intersection-point detection), and a fully interactive, color-mapped 3D surface plotter you can rotate and zoom.</li>
           <li><strong>Practice</strong> — randomly generated problems across every category and difficulty level, including real-world word problems, with full worked solutions revealed on demand.</li>

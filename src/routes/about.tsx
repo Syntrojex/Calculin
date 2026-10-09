@@ -25,7 +25,7 @@ function AboutPage() {
         <p>
           Most calculators online either hide their steps behind a paywall or don't
           show them at all. Calculin was built to fix that: derivatives, integrals,
-          equations, matrices, trigonometry, complex numbers, number theory, geometry,
+          equations, matrices, trigonometry, complex numbers, number systems,
           2D/3D graphing, and a practice mode with worked solutions — all free, all in
           one place, with no account required.
         </p>

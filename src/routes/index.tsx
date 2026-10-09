@@ -6,8 +6,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { SettingsPanel } from "@/components/SettingsPanel";
 import {
   Infinity as InfinityIcon, LineChart, Calculator, Grid3X3,
-  ArrowRight, ArrowLeftRight, Pentagon, TrendingUp,
-  Zap, Hash, GraduationCap, Menu, Binary, BookOpen, Library, ChevronDown,
+  ArrowRight,
+  Zap, GraduationCap, Menu, Binary, BookOpen, Library, ChevronDown,
   Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart, Move3d,
 } from "lucide-react";
 import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
@@ -16,7 +16,6 @@ import { DEFINITION_TOPICS } from "@/lib/definitions-data";
 const DerivativeSolver = lazy(() => import("@/components/DerivativeSolver").then(m => ({ default: m.DerivativeSolver })));
 const IntegrationSolver = lazy(() => import("@/components/IntegrationSolver").then(m => ({ default: m.IntegrationSolver })));
 const DoubleIntegralCalculator = lazy(() => import("@/components/DoubleIntegralCalculator").then(m => ({ default: m.DoubleIntegralCalculator })));
-const ExtremaCalculator = lazy(() => import("@/components/ExtremaCalculator").then(m => ({ default: m.ExtremaCalculator })));
 const PartialDerivativeCalculator = lazy(() => import("@/components/PartialDerivativeCalculator").then(m => ({ default: m.PartialDerivativeCalculator })));
 const LimitsCalculator = lazy(() => import("@/components/LimitsCalculator").then(m => ({ default: m.LimitsCalculator })));
 const PiecewiseCalculator = lazy(() => import("@/components/PiecewiseCalculator").then(m => ({ default: m.PiecewiseCalculator })));
@@ -25,9 +24,6 @@ const MatrixCalculator = lazy(() => import("@/components/MatrixCalculator").then
 const VectorCalculator = lazy(() => import("@/components/VectorCalculator").then(m => ({ default: m.VectorCalculator })));
 const TrigIdentities = lazy(() => import("@/components/TrigIdentities").then(m => ({ default: m.TrigIdentities })));
 const ComplexCalculator = lazy(() => import("@/components/ComplexCalculator").then(m => ({ default: m.ComplexCalculator })));
-const NumberTheory = lazy(() => import("@/components/NumberTheory").then(m => ({ default: m.NumberTheory })));
-const ShapesCalculator = lazy(() => import("@/components/ShapesCalculator").then(m => ({ default: m.ShapesCalculator })));
-const UnitConverter = lazy(() => import("@/components/UnitConverter").then(m => ({ default: m.UnitConverter })));
 const NumberConversions = lazy(() => import("@/components/NumberConversions").then(m => ({ default: m.NumberConversions })));
 const GraphPlotter = lazy(() => import("@/components/GraphPlotter").then(m => ({ default: m.GraphPlotter })));
 const PracticeMode = lazy(() => import("@/components/PracticeMode").then(m => ({ default: m.PracticeMode })));
@@ -42,14 +38,14 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Free online calculator: derivatives, integrals, equations, limits, matrices, trigonometry, complex numbers, number theory, shapes, converters, number systems, 2D/3D graphs & practice mode.",
+          "Free online calculator: derivatives, integrals, equations, limits, matrices, trigonometry, complex numbers, number systems, 2D/3D graphs & practice mode.",
       },
     ],
   }),
 });
 
-// Tab order: Derivative, Integral, Calc+, Limits, Equations, Matrix, Trigonometry,
-// Complex, Num Theory, Shapes, Converter, Num Conversions, Graph, Practice
+// Tab order: Derivative, Integral, Double ∫, Partial Deriv., Limits, Piecewise,
+// Equations, Matrix, Vectors, Complex, Num Systems, Trigonometry, Graph, Practice
 //
 // Each tab declares its own `category` (matching a CATEGORIES key below)
 // instead of being listed a second time in a separate per-category "tools"
@@ -62,19 +58,15 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
   { value: "derivative", label: "Derivative", shortLabel: "d/dx", icon: <span className="text-xs font-bold">d/dx</span>, component: <DerivativeSolver />, category: "calculus" },
   { value: "integration", label: "Integral", shortLabel: "∫", icon: <InfinityIcon className="h-3.5 w-3.5" />, component: <IntegrationSolver />, category: "calculus" },
   { value: "doubleintegral", label: "Double ∫", shortLabel: "∬", icon: <Layers className="h-3.5 w-3.5" />, component: <DoubleIntegralCalculator />, category: "calculus" },
-  { value: "extrema", label: "Extrema", shortLabel: "max/min", icon: <TrendingUp className="h-3.5 w-3.5" />, component: <ExtremaCalculator />, category: "calculus" },
   { value: "partial", label: "Partial Deriv.", shortLabel: "∂f/∂x", icon: <PieChart className="h-3.5 w-3.5" />, component: <PartialDerivativeCalculator />, category: "calculus" },
   { value: "limits", label: "Limits", shortLabel: "lim", icon: <ArrowRight className="h-3.5 w-3.5" />, component: <LimitsCalculator />, category: "calculus" },
   { value: "piecewise", label: "Piecewise", shortLabel: "f{x}", icon: <GitBranch className="h-3.5 w-3.5" />, component: <PiecewiseCalculator />, category: "calculus" },
   { value: "equation", label: "Equations", shortLabel: "ax=b", icon: <Calculator className="h-3.5 w-3.5" />, component: <EquationSolver />, category: "algebra" },
   { value: "matrix", label: "Matrix", shortLabel: "[ ]", icon: <Grid3X3 className="h-3.5 w-3.5" />, component: <MatrixCalculator />, category: "algebra" },
   { value: "vector", label: "Vectors", shortLabel: "v⃗", icon: <Move3d className="h-3.5 w-3.5" />, component: <VectorCalculator />, category: "algebra" },
-  { value: "trig", label: "Trigonometry", shortLabel: "θ", icon: <span className="text-xs font-bold">θ</span>, component: <TrigIdentities />, category: "geometry" },
   { value: "complex", label: "Complex", shortLabel: "z", icon: <Zap className="h-3.5 w-3.5" />, component: <ComplexCalculator />, category: "algebra" },
-  { value: "numtheory", label: "Num Theory", shortLabel: "gcd", icon: <Hash className="h-3.5 w-3.5" />, component: <NumberTheory />, category: "numbers" },
-  { value: "shapes", label: "Shapes", shortLabel: "△", icon: <Pentagon className="h-3.5 w-3.5" />, component: <ShapesCalculator />, category: "geometry" },
-  { value: "converter", label: "Converter", shortLabel: "⇄", icon: <ArrowLeftRight className="h-3.5 w-3.5" />, component: <UnitConverter />, category: "numbers" },
-  { value: "numconv", label: "Num Systems", shortLabel: "0b1", icon: <Binary className="h-3.5 w-3.5" />, component: <NumberConversions />, category: "numbers" },
+  { value: "numconv", label: "Num Systems", shortLabel: "0b1", icon: <Binary className="h-3.5 w-3.5" />, component: <NumberConversions />, category: "algebra" },
+  { value: "trig", label: "Trigonometry", shortLabel: "θ", icon: <span className="text-xs font-bold">θ</span>, component: <TrigIdentities />, category: "trigonometry" },
   { value: "graph", label: "Graph", shortLabel: "📈", icon: <LineChart className="h-3.5 w-3.5" />, component: <GraphPlotter />, category: "graph" },
   { value: "practice", label: "Practice", shortLabel: "✏︎", icon: <GraduationCap className="h-3.5 w-3.5" />, component: <PracticeMode />, category: "practice" },
   // One tab per formula-sheet topic — generated from the same data used to
@@ -122,8 +114,7 @@ function tabByValue(value: string) {
 const CATEGORIES: { key: string; label: string; icon: React.ReactNode; collapsedOnMobile?: boolean }[] = [
   { key: "calculus", label: "Calculus", icon: <span className="text-xs font-bold">d/dx</span> },
   { key: "algebra", label: "Algebra", icon: <Calculator className="h-3.5 w-3.5" /> },
-  { key: "geometry", label: "Geometry", icon: <span className="text-xs font-bold">θ</span> },
-  { key: "numbers", label: "Numbers", icon: <Hash className="h-3.5 w-3.5" /> },
+  { key: "trigonometry", label: "Trigonometry", icon: <span className="text-xs font-bold">θ</span> },
   { key: "graph", label: "Graph", icon: <LineChart className="h-3.5 w-3.5" /> },
   { key: "practice", label: "Practice", icon: <GraduationCap className="h-3.5 w-3.5" /> },
   // Only these two reference-heavy categories (10 topics each) collapse
@@ -323,7 +314,7 @@ function Index() {
             Solve Math <span className="text-primary">Instantly</span>
           </h2>
           <p className="mt-2 text-muted-foreground text-xs sm:text-sm px-2">
-            Derivatives · Integrals · Limits · Matrices · Trigonometry · Complex Numbers · Number Theory · Shapes · 2D/3D Graphs · Practice Mode
+            Derivatives · Integrals · Limits · Matrices · Trigonometry · Complex Numbers · Number Systems · 2D/3D Graphs · Practice Mode
           </p>
         </motion.section>
       </div>
