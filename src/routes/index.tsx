@@ -211,10 +211,11 @@ function Index() {
               category's specific tools, when it has more than one — bleeds
               to the header's full width (negative margin) rather than
               sitting inside the same padding as the row above it, so it
-              reads as its own distinct "toolbar" band. */}
+              reads as its own distinct "toolbar" band. It wraps onto extra
+              lines when the chips don't fit — never scrolls sideways. */}
           {activeCategoryTools.length > 1 && (
-            <div className="hidden sm:flex justify-center py-2 px-3 sm:px-4 -mx-3 sm:-mx-4 bg-primary/5 border-t border-border/50 overflow-x-auto no-scrollbar">
-              <div className="flex items-center gap-1.5 mx-auto">
+            <div className="hidden sm:flex justify-center py-2 px-3 sm:px-4 -mx-3 sm:-mx-4 bg-primary/5 border-t border-border/50">
+              <div className="flex flex-wrap items-center justify-center gap-1.5 mx-auto">
                 {activeCategoryTools.map((value) => {
                 const t = tabByValue(value);
                 const active = tab === value;

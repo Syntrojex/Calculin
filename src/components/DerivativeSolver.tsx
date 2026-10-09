@@ -6,7 +6,7 @@ import { MathInput } from "./MathInput";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { solveDerivative, solveNthDerivative, generateGraphPoints } from "@/lib/math-solver";
+import { solveDerivative, solveNthDerivative, generateGraphPoints, extractVariables } from "@/lib/math-solver";
 import { GraphCanvas } from "./GraphCanvas";
 import { StepsReveal } from "./StepsReveal";
 import type { MathResult } from "@/lib/math-solver";
@@ -25,6 +25,17 @@ export function DerivativeSolver() {
   const [result, setResult] = useState<MathResult | null>(null);
 
   useEffect(() => setShowSteps(settings.showSteps), [settings.showSteps]);
+
+  // Variables found in the expression (single letters; "e" is Euler's number).
+  const detectedVars = extractVariables(expr).filter((v) => v !== "e");
+  // Keep the chosen variable valid as the expression changes: if it no longer
+  // appears in the expression, fall back to the first variable that does.
+  useEffect(() => {
+    if (detectedVars.length > 0 && !detectedVars.includes(variable)) {
+      setVariable(detectedVars[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detectedVars.join(",")]);
 
   const solve = useCallback(() => {
     const res = order === 1
@@ -60,7 +71,7 @@ export function DerivativeSolver() {
             }}
           >
             <div className="space-y-2">
-              <Label>Function f(x)</Label>
+              <Label>Function f({variable})</Label>
               <MathInput
                 value={expr}
                 onChange={setExpr}
@@ -69,15 +80,41 @@ export function DerivativeSolver() {
               />
             </div>
 
-            <div className="flex gap-4">
-              <div className="space-y-2 w-24">
-                <Label>Variable</Label>
-                <Input
-                  value={variable}
-                  onChange={(e) => setVariable(e.target.value)}
-                  className="font-mono text-center"
-                />
+            {detectedVars.length > 1 && (
+              <div className="space-y-2">
+                <Label>Variable Selection</Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {detectedVars.map((v) => (
+                    <Button
+                      key={v}
+                      type="button"
+                      size="sm"
+                      variant={variable === v ? "default" : "outline"}
+                      onClick={() => setVariable(v)}
+                      className="font-mono w-10"
+                    >
+                      {v}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Differentiating with respect to <span className="font-mono">{variable}</span> — the other
+                  variables ({detectedVars.filter((v) => v !== variable).join(", ")}) are treated as constants.
+                </p>
               </div>
+            )}
+
+            <div className="flex gap-4">
+              {detectedVars.length <= 1 && (
+                <div className="space-y-2 w-24">
+                  <Label>Variable</Label>
+                  <Input
+                    value={variable}
+                    onChange={(e) => setVariable(e.target.value)}
+                    className="font-mono text-center"
+                  />
+                </div>
+              )}
               <div className="space-y-2 w-24">
                 <Label>Order</Label>
                 <Input
