@@ -227,7 +227,7 @@ export const DEFINITION_TOPICS: DefinitionTopic[] = [
     key: "shapes",
     navLabel: "Shapes",
     title: "Geometry Definitions",
-    description: "Core vocabulary for 2D shapes and 3D solids, each with a labeled diagram — used throughout the Shapes calculator.",
+    description: "Core vocabulary for 2D shapes and 3D solids, each with a labeled diagram.",
     definitions: [
       { term: "Angle", definition: "The amount of turn between two rays that meet at a shared endpoint (the vertex), measured in degrees or radians.", example: "A right angle is $90°$; a straight angle is $180°$.", diagram: "angle" },
       { term: "Vertex", definition: "A corner point where two sides (or edges) of a shape meet.", example: "A triangle has 3 vertices; a cube has 8." },
@@ -269,7 +269,7 @@ export const DEFINITION_TOPICS: DefinitionTopic[] = [
     key: "numtheory",
     navLabel: "Number Theory",
     title: "Number Theory Definitions",
-    description: "Core vocabulary for number theory, used in the Number Theory calculator.",
+    description: "Core vocabulary for number theory.",
     definitions: [
       { term: "Prime Number", definition: "A whole number greater than 1 with exactly two divisors: 1 and itself.", example: "$7$ is prime — only $1$ and $7$ divide it evenly." },
       { term: "Composite Number", definition: "A whole number greater than 1 with more than two divisors (i.e., not prime).", example: "$12$ is composite — divisible by $1,2,3,4,6,12$." },

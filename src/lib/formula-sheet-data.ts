@@ -174,7 +174,7 @@ export const FORMULA_TOPICS: FormulaTopic[] = [
     key: "shapes",
     navLabel: "Shapes",
     title: "Geometry & Shape Formulas",
-    description: "Area and perimeter formulas used in the Shapes calculator.",
+    description: "Area and perimeter formulas for common 2D shapes.",
     formulas: [
       { name: "Circle — Area", latex: "A = \\pi r^2" },
       { name: "Circle — Circumference", latex: "C = 2\\pi r" },
@@ -201,7 +201,7 @@ export const FORMULA_TOPICS: FormulaTopic[] = [
     key: "numtheory",
     navLabel: "Number Theory",
     title: "Number Theory Formulas",
-    description: "GCD, LCM, and divisor formulas used in the Number Theory calculator.",
+    description: "GCD, LCM, and divisor formulas.",
     formulas: [
       { name: "GCD–LCM Relationship", latex: "\\gcd(a,b)\\times \\text{lcm}(a,b) = |a\\times b|" },
       { name: "LCM from GCD", latex: "\\text{lcm}(a,b) = \\frac{|a\\times b|}{\\gcd(a,b)}" },
