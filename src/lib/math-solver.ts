@@ -824,46 +824,10 @@ function trySymbolicIntegral(node: MathNode, variable: string, label: string = "
   const piece = integrateNode(node, variable, bodySteps);
   if (!piece) return null;
   const steps: string[] = [];
-  const ruleNames = extractRuleNames(bodySteps);
-  if (ruleNames.length > 1) {
-    steps.push(`##Approach\nUsing **${ruleNames.join("**, **")}**.`);
-  }
   steps.push(...bodySteps);
   const antiderivativePretty = prettifyResult(piece.antiderivative, variable);
   steps.push(`##Antiderivative\n$$${label}(${variable}) = ${exprToLatex(antiderivativePretty)}$$`);
   return { antiderivativePretty, steps };
-}
-
-/** Scans already-generated steps for their "##Header" names and returns the
- *  like "Given" or "Final Answer") — used to build a one-line "Approach"
- *  overview before diving into the step-by-step work, the way a textbook
- *  solution names which rules it's about to use before applying them. */
-function extractRuleNames(steps: string[]): string[] {
-  const skip = new Set([
-    "Given", "Goal", "Final Answer", "Combine the Results", "Combine Everything",
-    "Add the Constant of Integration", "Verify", "Method: Simpson's Rule", "Result",
-    "Separate the Terms", "Beyond This Solver", "No Critical Points", "Step 1 — Find Critical Points",
-  ]);
-  // Internal mechanics of a single rule (the individual moves of a chain
-  // rule: name the composition, differentiate outer, differentiate inner,
-  // combine) are NOT separate rules — listing them in the "Approach" line
-  // just restated every upcoming step header back to the reader.
-  const chainRuleSubSteps = new Set([
-    "Differentiate the Outer Function", "Differentiate the Inner Function", "Combine via the Chain Rule",
-  ]);
-  const seen = new Set<string>();
-  const names: string[] = [];
-  for (const s of steps) {
-    if (!s.startsWith("##")) continue;
-    const nl = s.indexOf("\n");
-    let header = (nl === -1 ? s.slice(2) : s.slice(2, nl)).trim();
-    if (header.startsWith("Chain Rule")) header = "Chain Rule";
-    if (chainRuleSubSteps.has(header) || header.startsWith("Derivative of ") || header.startsWith("Differentiation ")) continue;
-    if (skip.has(header) || header.length > 60 || seen.has(header)) continue;
-    seen.add(header);
-    names.push(header);
-  }
-  return names;
 }
 
 export function solveDerivative(
@@ -961,7 +925,7 @@ export function solveDefiniteIntegral(
         const result = atUpperVal - atLowerVal;
         assertUsableNumber(result, "This integral");
         steps.push(...symbolic.steps);
-        steps.push(`##Apply the Fundamental Theorem of Calculus\n$$\\int_{${fmtNum(lower)}}^{${fmtNum(upper)}} ${exprToLatex(expression)}\\,d${variable} = F(${fmtNum(upper)}) - F(${fmtNum(lower)})$$`);
+        steps.push(`##Fundamental Theorem of Calculus\n$$\\int_{${fmtNum(lower)}}^{${fmtNum(upper)}} ${exprToLatex(expression)}\\,d${variable} = F(${fmtNum(upper)}) - F(${fmtNum(lower)})$$`);
         steps.push(`##Evaluate at the Bounds\n$$F(${fmtNum(upper)}) - F(${fmtNum(lower)}) = ${exprToLatex(atUpperStr)} - \\left(${exprToLatex(atLowerStr)}\\right) = ${fmtNum(atUpperVal)} - (${fmtNum(atLowerVal)})$$`);
 
         const rounded = Math.round(result * EPS_ROUND) / EPS_ROUND;
@@ -997,7 +961,7 @@ export function solveDefiniteIntegral(
     const result = (h / 3) * sum;
     assertUsableNumber(result, "This integral");
 
-    steps.push(`##No Elementary Antiderivative\nNo closed-form antiderivative exists — approximate with Simpson's Rule: split $[${fmtNum(lower)}, ${fmtNum(upper)}]$ into $n=${n}$ strips of width $h=${h.toFixed(6)}$, fitting a parabola through each triple of points.\n$$\\int_a^b f(${variable})\\,d${variable} \\approx \\frac{h}{3}\\Big[f(a) + 4f(x_1) + 2f(x_2) + \\cdots + f(b)\\Big]$$`);
+    steps.push(`##No Closed Form — Simpson's Rule\n$n = ${n}, \\quad h = ${h.toFixed(6)}$\n$$\\int_a^b f(${variable})\\,d${variable} \\approx \\frac{h}{3}\\Big[f(a) + 4f(x_1) + 2f(x_2) + \\cdots + f(b)\\Big]$$`);
 
     const rounded = Math.round(result * EPS_ROUND) / EPS_ROUND;
     if (Math.abs(result - Math.round(result)) < EPS) {
@@ -1062,8 +1026,8 @@ export function solveDoubleIntegral(
     }
 
     const steps: string[] = [];
-    steps.push(`##Given\n$$\\iint_R ${exprToLatex(expression)}\\;d${varY}\\,d${varX}$$\nRegion: $${varX} \\in [${fmtNum(xLower)}, ${fmtNum(xUpper)}]$, $${varY} \\in [${fmtNum(yLower)}, ${fmtNum(yUpper)}]$.`);
-    steps.push(`##Set Up as an Iterated Integral\nIntegrate with respect to $${varY}$ first (holding $${varX}$ fixed), then $${varX}$:\n$$\\int_{${fmtNum(xLower)}}^{${fmtNum(xUpper)}}\\left(\\int_{${fmtNum(yLower)}}^{${fmtNum(yUpper)}} ${exprToLatex(expression)}\\,d${varY}\\right)d${varX}$$`);
+    steps.push(`##Given\n$$\\iint_R ${exprToLatex(expression)}\\;d${varY}\\,d${varX}$$\n$${varX} \\in [${fmtNum(xLower)}, ${fmtNum(xUpper)}],\\quad ${varY} \\in [${fmtNum(yLower)}, ${fmtNum(yUpper)}]$`);
+    steps.push(`##Iterated Integral\n$$\\int_{${fmtNum(xLower)}}^{${fmtNum(xUpper)}}\\left(\\int_{${fmtNum(yLower)}}^{${fmtNum(yUpper)}} ${exprToLatex(expression)}\\,d${varY}\\right)d${varX}$$`);
 
     const node = simplify(parse(expression));
     const innerSymbolic = trySymbolicIntegral(node, varY);
@@ -1076,7 +1040,7 @@ export function solveDoubleIntegral(
         const gNode = simplify(parse(`(${atUpperStr}) - (${atLowerStr})`));
         gPretty = prettifyResult(gNode.toString(), varX);
 
-        steps.push(`##Inner Integral (with respect to ${varY})\nTreat $${varX}$ as a constant:`);
+        steps.push(`##Inner Integral — d${varY} ($${varX}$ constant)`);
         steps.push(...innerSymbolic.steps);
         steps.push(`##Evaluate at the ${varY}-Bounds\n$$\\Big[F(${varX},${varY})\\Big]_{${varY}=${fmtNum(yLower)}}^{${varY}=${fmtNum(yUpper)}} = ${exprToLatex(gPretty)}$$`);
       } catch {
@@ -1116,7 +1080,7 @@ export function solveDoubleIntegral(
 
     // Fallback: 2D Simpson's Rule, for integrands with no elementary closed
     // form (or where evaluating a closed form hits a domain issue).
-    const numericSteps: string[] = [...steps, `##No Elementary Antiderivative\nAt least one stage has no closed form — approximate numerically with Simpson's Rule on both $${varX}$ and $${varY}$.`];
+    const numericSteps: string[] = [...steps, `##No Closed Form — Simpson's Rule`];
 
     if (n % 2 !== 0) n++;
     const hx = (xUpper - xLower) / n;
@@ -1144,7 +1108,7 @@ export function solveDoubleIntegral(
     assertUsableNumber(result, "This double integral");
     const rounded = Math.round(result * EPS_ROUND) / EPS_ROUND;
 
-    numericSteps.push(`##Method: Double Simpson's Rule\nUse a $${n}\\times${n}$ grid, step sizes $h_{${varX}} = ${hx.toFixed(6)}$ and $h_{${varY}} = ${hy.toFixed(6)}$:\n$$\\iint_R f\\,d${varY}\\,d${varX} \\approx \\frac{h_{${varX}}h_{${varY}}}{9}\\sum_{i,j} w_i w_j\\, f(x_i, y_j)$$`);
+    numericSteps.push(`##Double Simpson's Rule\n$${n}\\times${n}\\text{ grid}, \\quad h_{${varX}} = ${hx.toFixed(6)}, \\quad h_{${varY}} = ${hy.toFixed(6)}$\n$$\\iint_R f\\,d${varY}\\,d${varX} \\approx \\frac{h_{${varX}}h_{${varY}}}{9}\\sum_{i,j} w_i w_j\\, f(x_i, y_j)$$`);
     numericSteps.push(`##Result\n$$\\approx ${formatNumber(rounded, settings)}$$`);
 
     return { input: expression, result: rounded.toString(), steps: numericSteps, numericResult: rounded };
@@ -1366,18 +1330,17 @@ function tryGeneralUSub(node: MathNode, variable: string, steps: string[]): Inte
     const derivL = exprToLatex(innerDeriv.toString());
     const kL = fmtNum(ratio);
 
-    steps.push(`##Choose the Substitution\n$${innerL}$ sits inside another function, and the rest is a constant multiple of its derivative — a u-substitution. Let\n$$u = ${innerL}$$`);
-    steps.push(`##Differentiate the Substitution\n$$\\frac{du}{d${variable}} = ${derivL} \\quad\\Longrightarrow\\quad du = ${derivL}\\,d${variable}$$`);
+    steps.push(`##u-Substitution\n$$u = ${innerL}, \\quad du = ${derivL}\\,d${variable}$$`);
     const integrandInU =
       form.kind === "recip" ? "\\frac{1}{u}"
       : form.kind === "pow" ? `u^{${fmtNum(form.exponent)}}`
       : form.kind === "identity" ? "u"
       : `${form.name === "log" ? "\\ln" : `\\${form.name}`}(u)`;
-    steps.push(`##Rewrite the Integral in Terms of u\nThe leftover factor $${exprToLatex(restStr)}$ equals $${kL}\\cdot\\left(${derivL}\\right) = ${kL}\\,du$:\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${ratio === 1 ? "" : kL}\\int ${integrandInU}\\,du$$`);
-    steps.push(`##Integrate with Respect to u\nUsing the standard rule $${anti.latexRule}$:\n$$${ratio === 1 ? "" : kL}\\int \\ldots\\,du = ${ratio === 1 ? "" : kL}\\left[${exprToLatex(anti.expr.replace(/u/g, "u"))}\\right]$$`);
+    steps.push(`##Rewrite in Terms of u\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${ratio === 1 ? "" : kL}\\int ${integrandInU}\\,du$$`);
+    steps.push(`##Integrate\n$$${ratio === 1 ? "" : kL}\\int ${integrandInU}\\,du = ${ratio === 1 ? "" : kL}${ratio === 1 ? exprToLatex(anti.expr) : `\\left[${exprToLatex(anti.expr)}\\right]`}$$`);
     const backStr = anti.expr.replace(/\bu\b/g, `(${inner.toString()})`);
     const finalStr = ratio === 1 ? backStr : `(${kL})*(${backStr})`;
-    steps.push(`##Substitute Back ($u = ${innerL}$)\n$$= ${exprToLatex(finalStr)}$$`);
+    steps.push(`##Substitute Back\n$$u = ${innerL} \\;\\Rightarrow\\; ${exprToLatex(finalStr)}$$`);
 
     return { antiderivative: finalStr, rule: "u-substitution" };
   }
@@ -1452,9 +1415,9 @@ function tryIntegrationByParts(node: MathNode, variable: string, steps: string[]
   const vL = exprToLatex(vStr);
   const duL = exprToLatex(duNode.toString());
 
-  steps.push(`##Integration by Parts — Choose $u$ and $dv$\nA product of two different function types — use $\\int u\\,dv = uv - \\int v\\,du$. By LIATE, let $u$ = ${otherIsLog ? "the logarithm" : "the polynomial"} (its derivative is simpler):\n$$u = ${uL}, \\qquad dv = ${dvL}\\,d${variable}$$`);
-  steps.push(`##Differentiate $u$ and Integrate $dv$\n$$du = ${duL}\\,d${variable}, \\qquad v = \\int ${dvL}\\,d${variable} = ${vL}$$`);
-  steps.push(`##Apply the Formula\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${uL}\\cdot ${vL} - \\int ${vL}\\cdot ${duL}\\,d${variable}$$`);
+  steps.push(`##Integration by Parts\n$$\\int u\\,dv = uv - \\int v\\,du$$\n$$u = ${uL}, \\qquad dv = ${dvL}\\,d${variable}$$`);
+  steps.push(`##Find $du$ and $v$\n$$du = ${duL}\\,d${variable}, \\qquad v = \\int ${dvL}\\,d${variable} = ${vL}$$`);
+  steps.push(`##Substitute\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${uL}\\cdot ${vL} - \\int ${vL}\\cdot ${duL}\\,d${variable}$$`);
 
   const remainderStr = `(${vStr})*(${duNode.toString()})`;
   let remainderNode: MathNode;
@@ -1476,7 +1439,7 @@ function tryIntegrationByParts(node: MathNode, variable: string, steps: string[]
   steps.push(...innerSteps);
 
   const finalStr = tidyExpr(`(${uNode.toString()})*(${vStr}) - (${remainderPiece.antiderivative})`);
-  steps.push(`##Put the Pieces Together\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${exprToLatex(finalStr)}$$`);
+  steps.push(`##Combine\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${exprToLatex(finalStr)}$$`);
 
   return { antiderivative: finalStr, rule: "integration by parts" };
 }
@@ -1500,8 +1463,8 @@ function tryArctanForm(node: MathNode, variable: string, steps: string[]): Integ
     const aStr = fmtNum(a);
     const argStr = a === 1 ? variable : `${variable}/(${aStr})`;
     const coef = k / (c * a);
-    steps.push(`##Recognize the Arctangent Form\nDenominator is a sum of squares: $${exprToLatex(den.toString())} = ${fmtNum(c)}\\left(${variable}^2 + ${fmtNum(a * a)}\\right)$ — matches $\\int\\frac{du}{u^2+a^2} = \\frac{1}{a}\\arctan\\!\\left(\\frac{u}{a}\\right)$, $a = ${fmtNum(a)}$.`);
-    steps.push(`##Apply the Standard Rule\n$$\\int \\frac{${fmtNum(k)}}{${exprToLatex(den.toString())}}\\,d${variable} = \\frac{${fmtNum(k)}}{${fmtNum(c)}\\cdot ${fmtNum(a)}}\\arctan\\!\\left(\\frac{${variable}}{${fmtNum(a)}}\\right)$$`);
+    steps.push(`##Arctangent Form\n$$${c === 1 ? "" : `${exprToLatex(den.toString())} = ${fmtNum(c)}\\left(${variable}^2 + ${fmtNum(a * a)}\\right), \\quad `}a = ${fmtNum(a)}$$\n$$\\int\\frac{du}{u^2+a^2} = \\frac{1}{a}\\arctan\\!\\left(\\frac{u}{a}\\right)$$`);
+    steps.push(`##Substitute\n$$\\int \\frac{${fmtNum(k)}}{${exprToLatex(den.toString())}}\\,d${variable} = \\frac{${fmtNum(k)}}{${c === 1 ? "" : `${fmtNum(c)}\\cdot `}${fmtNum(a)}}\\arctan\\!\\left(\\frac{${variable}}{${fmtNum(a)}}\\right)$$`);
     return {
       antiderivative: coef === 1 ? `atan(${argStr})` : `(${fmtNum(coef)})*atan(${argStr})`,
       rule: "arctangent rule",
@@ -1521,7 +1484,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       return null;
     }
     const k = str === "0" ? "0" : str;
-    steps.push(`##Constant Rule\n${k === "0" ? "The integrand is $0$" : `The integrand is the constant $${exprToLatex(k)}$`} — a constant has antiderivative $k${variable}$:\n$$${here()} = ${exprToLatex(k)}${variable}$$`);
+    steps.push(`##Constant Rule\n$$${here()} = ${k === "0" ? "0" : `${exprToLatex(k)}${variable}`}$$`);
     return { antiderivative: k === "0" ? "0" : `(${k})*${variable}`, rule: "constant rule" };
   }
 
@@ -1538,7 +1501,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
         return t.sign === -1 ? ` - ${d}` : ` + ${d}`;
       })
       .join("");
-    steps.push(`##Separate the Terms\nSum/difference of ${flatTerms.length} terms — integrate each separately, then add:\n$$${here()} = ${perTermLatex}$$`);
+    steps.push(`##Separate the Terms\n$$${here()} = ${perTermLatex}$$`);
     const parts: string[] = [];
     let ok = true;
     flatTerms.forEach((t) => {
@@ -1547,13 +1510,13 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       parts.push(t.sign === -1 ? `-(${piece.antiderivative})` : piece.antiderivative);
     });
     if (!ok) return null;
-    steps.push(`##Combine the Results\nAdd all the term-by-term antiderivatives together:\n$$${here()} = ${exprToLatex(prettifyResult(parts.join("+"), variable))}$$`);
+    steps.push(`##Combine the Results\n$$${here()} = ${exprToLatex(prettifyResult(parts.join("+"), variable))}$$`);
     return { antiderivative: parts.join(" + ").replace(/\+ -/g, "- "), rule: "sum rule" };
   }
   // Unary minus: -f(x)
   if (asOperator(node)?.fn === "unaryMinus") {
     const arg = asOperator(node)!.args[0];
-    steps.push(`##Constant Multiple Rule\nThe leading minus is a factor of $-1$ — integrate the rest, then reattach the sign:\n$$${here()} = -${integralLatex(arg.toString(), variable)}$$`);
+    steps.push(`##Constant Multiple Rule\n$$${here()} = -${integralLatex(arg.toString(), variable)}$$`);
     const piece = integrateNode(arg, variable, steps, depth + 1);
     if (!piece) return null;
     return { antiderivative: `-(${piece.antiderivative})`, rule: "constant-multiple rule (k=-1)" };
@@ -1567,7 +1530,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       const constSide = isConstantExpr(lhs, variable) ? lhs : isConstantExpr(rhs, variable) ? rhs : null;
       const fnSide = constSide === lhs ? rhs : lhs;
       if (constSide) {
-        steps.push(`##Constant Multiple Rule\n$${exprToLatex(constSide.toString())}$ is constant — pull it out front, integrate the rest:\n$$${here()} = ${exprToLatex(constSide.toString())}\\cdot ${integralLatex(fnSide.toString(), variable)}$$`);
+        steps.push(`##Constant Multiple Rule\n$$${here()} = ${exprToLatex(constSide.toString())}\\cdot ${integralLatex(fnSide.toString(), variable)}$$`);
         const piece = integrateNode(fnSide, variable, steps, depth + 1);
         if (!piece) return null;
         return { antiderivative: `(${constSide.toString()})*(${piece.antiderivative})`, rule: "constant multiple rule" };
@@ -1590,7 +1553,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
     const args = asOperator(node)!.args;
     const [num, denom] = args;
     if (isConstantExpr(denom, variable)) {
-      steps.push(`##Constant Divisor\nDividing by constant $${exprToLatex(denom.toString())}$ is a factor of $\\frac{1}{${exprToLatex(denom.toString())}}$ — integrate the numerator, then divide:\n$$${here()} = \\frac{${integralLatex(num.toString(), variable)}}{${exprToLatex(denom.toString())}}$$`);
+      steps.push(`##Constant Divisor\n$$${here()} = \\frac{${integralLatex(num.toString(), variable)}}{${exprToLatex(denom.toString())}}$$`);
       const piece = integrateNode(num, variable, steps, depth + 1);
       if (!piece) return null;
       return { antiderivative: `(${piece.antiderivative})/(${denom.toString()})`, rule: "constant divisor" };
@@ -1601,9 +1564,9 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       if (lin && lin.a !== 0) {
         const argStr = wrapLinearArg(lin.a, lin.b, variable);
         if (isTrivialLinear(lin)) {
-          steps.push(`##Reciprocal Rule\nReciprocal form $\\int \\frac{1}{${variable}}\\,d${variable}$ — standard result is $\\ln|${variable}|$:\n$$${here()} = \\ln\\left|${variable}\\right|$$`);
+          steps.push(`##Reciprocal Rule\n$$${here()} = \\ln\\left|${variable}\\right|$$`);
         } else {
-          steps.push(`##Reciprocal Rule + u-Substitution\nLet $u = ${exprToLatex(argStr)}$, so $du = ${fmtNum(lin.a)}\\,d${variable}$:\n$$${here()} = \\frac{1}{${fmtNum(lin.a)}}\\int \\frac{1}{u}\\,du = \\frac{1}{${fmtNum(lin.a)}}\\ln\\left|${exprToLatex(argStr)}\\right|$$`);
+          steps.push(`##Reciprocal Rule + u-Substitution\n$u = ${exprToLatex(argStr)},\\quad du = ${fmtNum(lin.a)}\\,d${variable}$\n$$${here()} = \\frac{1}{${fmtNum(lin.a)}}\\int \\frac{1}{u}\\,du = \\frac{1}{${fmtNum(lin.a)}}\\ln\\left|${exprToLatex(argStr)}\\right|$$`);
         }
         return { antiderivative: `(${num.toString()})*log(abs(${argStr}))/(${fmtNum(lin.a)})`, rule: "reciprocal/log rule" };
       }
@@ -1628,18 +1591,18 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
           if (Math.abs(n + 1) < EPS_TIGHT) {
             const argStr = wrapLinearArg(lin.a, lin.b, variable);
             if (isTrivialLinear(lin)) {
-              steps.push(`##Power Rule Exception (n = -1)\n$${variable}^{-1}$ is the one exponent Power Rule cannot handle ($n+1=0$ divides by zero); its antiderivative is $\\ln|${variable}|$:\n$$${here()} = \\ln\\left|${variable}\\right|$$`);
+              steps.push(`##Power Rule Exception (n = -1)\n$$${here()} = \\ln\\left|${variable}\\right|$$`);
             } else {
-              steps.push(`##Power Rule Exception (n = -1) + u-Substitution\nLet $u = ${exprToLatex(argStr)}$, so $du = ${fmtNum(lin.a)}\\,d${variable}$:\n$$${here()} = \\frac{1}{${fmtNum(lin.a)}}\\ln\\left|${exprToLatex(argStr)}\\right|$$`);
+              steps.push(`##Power Rule Exception (n = -1) + u-Substitution\n$u = ${exprToLatex(argStr)},\\quad du = ${fmtNum(lin.a)}\\,d${variable}$\n$$${here()} = \\frac{1}{${fmtNum(lin.a)}}\\ln\\left|${exprToLatex(argStr)}\\right|$$`);
             }
             return { antiderivative: `log(abs(${argStr}))/(${fmtNum(lin.a)})`, rule: "power rule (n=-1, log form)" };
           }
           const newExp = n + 1;
           const argStr = wrapLinearArg(lin.a, lin.b, variable);
           if (isTrivialLinear(lin)) {
-            steps.push(`##Power Rule\n$\\int ${variable}^n\\,d${variable} = \\frac{${variable}^{n+1}}{n+1}$, with $n = ${fmtNum(n)}$, $n+1 = ${fmtNum(newExp)}$:\n$$${here()} = \\frac{${variable}^{${fmtNum(newExp)}}}{${fmtNum(newExp)}}$$`);
+            steps.push(`##Power Rule\n$$${here()} = \\frac{${variable}^{${fmtNum(n)}+1}}{${fmtNum(n)}+1} = \\frac{${variable}^{${fmtNum(newExp)}}}{${fmtNum(newExp)}}$$`);
           } else {
-            steps.push(`##Power Rule + u-Substitution\nLet $u = ${exprToLatex(argStr)}$ so $du = ${fmtNum(lin.a)}\\,d${variable}$. Power Rule: $\\int u^n\\,du = \\frac{u^{n+1}}{n+1}$, $n+1 = ${fmtNum(newExp)}$:\n$$${here()} = \\frac{\\left(${exprToLatex(argStr)}\\right)^{${fmtNum(newExp)}}}{${fmtNum(newExp)}\\cdot ${fmtNum(lin.a)}}$$`);
+            steps.push(`##Power Rule + u-Substitution\n$u = ${exprToLatex(argStr)},\\quad du = ${fmtNum(lin.a)}\\,d${variable}$\n$$${here()} = \\frac{\\left(${exprToLatex(argStr)}\\right)^{${fmtNum(newExp)}}}{${fmtNum(newExp)}\\cdot ${fmtNum(lin.a)}}$$`);
           }
           return {
             antiderivative: `(${argStr})^${fmtNum(newExp)}/(${fmtNum(newExp)}*${fmtNum(lin.a)})`,
@@ -1657,13 +1620,15 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
           const argStr = wrapLinearArg(lin.a, lin.b, variable);
           const b = base.toString();
           if (isTrivialLinear(lin)) {
-            steps.push(`##Exponential Rule\nWith a constant base $a = ${b}$, the standard rule is $\\int a^${variable}\\,d${variable} = \\frac{a^${variable}}{\\ln(a)}$:\n$$${here()} = \\frac{${b}^${variable}}{\\ln(${b})}$$`);
+            steps.push(`##Exponential Rule\n$$${here()} = ${b === "e" ? `e^${variable}` : `\\frac{${b}^${variable}}{\\ln(${b})}`}$$`);
           } else {
-            steps.push(`##Exponential Rule + u-Substitution\nLet $u = ${exprToLatex(argStr)}$, so $du = ${fmtNum(lin.a)}\\,d${variable}$. The base $a = ${b}$ is constant, so $\\int a^u\\,du = \\frac{a^u}{\\ln(a)}$:\n$$${here()} = \\frac{${b}^{${exprToLatex(argStr)}}}{${fmtNum(lin.a)}\\cdot \\ln(${b})}$$`);
+            steps.push(`##Exponential Rule + u-Substitution\n$u = ${exprToLatex(argStr)},\\quad du = ${fmtNum(lin.a)}\\,d${variable}$\n$$${here()} = ${b === "e" ? `\\frac{e^{${exprToLatex(argStr)}}}{${fmtNum(lin.a)}}` : `\\frac{${b}^{${exprToLatex(argStr)}}}{${fmtNum(lin.a)}\\cdot \\ln(${b})}`}$$`);
           }
           const aFactor = lin.a === 1 ? "" : `(${fmtNum(lin.a)})*`;
           return {
-            antiderivative: `(${base.toString()})^(${argStr})/(${aFactor}log(${base.toString()}))`,
+            antiderivative: b === "e"
+              ? `(e)^(${argStr})${lin.a === 1 ? "" : `/(${fmtNum(lin.a)})`}`
+              : `(${base.toString()})^(${argStr})/(${aFactor}log(${base.toString()}))`,
             rule: "exponential rule (base a)",
           };
         }
@@ -1688,7 +1653,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       const header = trivial ? `##Standard ${displayName === "ln" ? "\\ln" : `\\${displayName}`} Rule` : `##u-Substitution`;
       const intro = trivial
         ? ""
-        : `Let $u = ${uL}$, so $du = ${a}\\,d${variable}$:\n`;
+        : `$u = ${uL},\\quad du = ${a}\\,d${variable}$\n`;
 
       const RULES: Record<string, { rule: string; trivialLatex: string; subLatex: string; antideriv: string }> = {
         sin: { rule: "-\\cos", trivialLatex: `-\\cos(${variable})`, subLatex: `\\frac{-\\cos(u)}{${a}}`, antideriv: `-cos(${u})/(${a})` },
@@ -1704,11 +1669,11 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
         return { antiderivative: r.antideriv, rule: `${fname} rule` };
       }
       if (fname === "log") {
-        steps.push(`##Log Rule (Integration by Parts result)\n${intro}This uses the standard result $\\int \\ln(u)\\,du = u\\ln(u) - u$:\n$$${here()} = ${trivial ? `${variable}\\ln(${variable}) - ${variable}` : `\\frac{u\\ln(u) - u}{${a}}`}$$`);
+        steps.push(`##Log Rule\n${intro}$$${here()} = ${trivial ? `${variable}\\ln(${variable}) - ${variable}` : `\\frac{u\\ln(u) - u}{${a}}`}$$`);
         return { antiderivative: `((${u})*log(${u}) - (${u}))/(${a})`, rule: "log rule (∫ln u du = u ln u - u)" };
       }
       if (fname === "sqrt") {
-        steps.push(`##Power Rule (via $\\sqrt{u} = u^{1/2}$)\n${intro}Rewrite $\\sqrt{u}$ as $u^{1/2}$, then apply the Power Rule: $\\int u^{1/2}\\,du = \\frac{2}{3}u^{3/2}$:\n$$${here()} = ${trivial ? `\\frac{2}{3}${variable}^{3/2}` : `\\frac{2u^{3/2}}{3\\cdot ${a}}`}$$`);
+        steps.push(`##Power Rule ($\\sqrt{u} = u^{1/2}$)\n${intro}$$${here()} = ${trivial ? `\\frac{2}{3}${variable}^{3/2}` : `\\frac{2u^{3/2}}{3\\cdot ${a}}`}$$`);
         return { antiderivative: `(2/3)*(${u})^(3/2)/(${a})`, rule: "power rule (sqrt, linear sub)" };
       }
     }
@@ -1717,7 +1682,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
 
   // Bare variable: ∫x dx = x²/2
   if (asSymbol(node) && str === variable) {
-    steps.push(`##Power Rule\n$${variable}$ is the same as $${variable}^1$; by the Power Rule, $\\int ${variable}^n\\,d${variable} = \\frac{${variable}^{n+1}}{n+1}$ with $n=1$:\n$$${here()} = \\frac{${variable}^2}{2}$$`);
+    steps.push(`##Power Rule\n$$${here()} = \\frac{${variable}^{1+1}}{1+1} = \\frac{${variable}^2}{2}$$`);
     return { antiderivative: `${variable}^2/2`, rule: "power rule (n=1)" };
   }
 
@@ -1739,18 +1704,13 @@ export function solveIndefiniteIntegral(
 
     if (!piece) {
       steps.push(...bodySteps);
-      steps.push(`##Beyond This Solver\nThis needs a technique not covered here (e.g. trig substitution).\n\nTip: try Definite Integration for a numerical answer.`);
+      steps.push(`##Beyond This Solver\nNot supported (needs e.g. trig substitution). Try Definite Integration for a numerical value.`);
       return {
         input: expression,
         result: "Cannot solve symbolically — try Definite Integration",
         steps,
         error: undefined,
       };
-    }
-
-    const ruleNames = extractRuleNames(bodySteps);
-    if (ruleNames.length > 1) {
-      steps.push(`##Approach\nUsing **${ruleNames.join("**, **")}**.`);
     }
     steps.push(...bodySteps);
 
@@ -1759,8 +1719,7 @@ export function solveIndefiniteIntegral(
     // simplify() output, which scrambles term order and sign placement.
     const finalStr = prettifyResult(piece.antiderivative, variable);
 
-    steps.push(`##Combine Everything\n$$F(${variable}) = ${exprToLatex(finalStr)}$$`);
-    steps.push(`##Add the Constant of Integration\nA constant\u2019s derivative is $0$, so $F(${variable}) + C$ shares the same derivative for every $C$ \u2014 "$+\\,C$" covers the whole family:\n$$${integralLatex(expression, variable)} = ${exprToLatex(finalStr)} + C$$`);
+    steps.push(`##Add the Constant\n$$${integralLatex(expression, variable)} = ${exprToLatex(finalStr)} + C$$`);
 
     // Sanity check: numerically verify d/dx[F(x)] ≈ f(x) at a few sample points
     try {
@@ -1778,9 +1737,9 @@ export function solveIndefiniteIntegral(
         }
       }
       if (allMatch) {
-        steps.push(`##Verify\nDifferentiating $F(${variable})$ at several sample points reproduces the original integrand — ✓ confirming this antiderivative is correct.`);
+        steps.push(`##Verify\n$F'(${variable}) = f(${variable})$ ✓`);
       } else {
-        steps.push(`##Verify\n⚠ This check did not match cleanly — double-check this result, or use Definite Integration.`);
+        steps.push(`##Verify\n⚠ Check didn't match — re-verify manually, or use Definite Integration.`);
       }
     } catch {
       // skip verification silently if it fails to evaluate (e.g. domain issues)
