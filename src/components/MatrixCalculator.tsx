@@ -96,13 +96,13 @@ function minorOf(a: number[][], skipRow: number, skipCol: number): number[][] {
 function determinantWithSteps(a: number[][], steps: string[]): number {
   const n = a.length;
   if (n === 1) {
-    steps.push(`##Determinant (1×1)\nA 1×1 matrix's determinant is just its single entry:\n$$\\det(A) = ${fmtCell(a[0][0])}$$`);
+    steps.push(`##Determinant (1×1)\n$$\\det(A) = ${fmtCell(a[0][0])}$$`);
     return a[0][0];
   }
   if (n === 2) {
     const [[p, q], [r, s]] = a;
     const d = p * s - q * r;
-    steps.push(`##Formula (2×2)\nFor $A=\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}$, cross-multiply the diagonals and subtract:\n$$\\det(A) = ad - bc$$`);
+    steps.push(`##Formula (2×2)\n$$\\det\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix} = ad - bc$$`);
     steps.push(`##Substitute and Compute\n$$\\det(A) = (${fmtCell(p)})(${fmtCell(s)}) - (${fmtCell(q)})(${fmtCell(r)}) = ${fmtCell(p * s)} - ${fmtCell(q * r)} = ${fmtCell(d)}$$`);
     return d;
   }
@@ -111,9 +111,9 @@ function determinantWithSteps(a: number[][], steps: string[]): number {
     const signs = [1, -1, 1];
     const minors = row0.map((_, j) => minorOf(a, 0, j));
     const minorDets = minors.map((m) => m[0][0] * m[1][1] - m[0][1] * m[1][0]);
-    steps.push(`##Cofactor Expansion (along Row 1)\nMultiply each entry by its 2×2 minor (cross out its row/column), alternating signs $(+,-,+)$:\n$$\\det(A) = a_{11}\\begin{vmatrix}a_{22}&a_{23}\\\\a_{32}&a_{33}\\end{vmatrix} - a_{12}\\begin{vmatrix}a_{21}&a_{23}\\\\a_{31}&a_{33}\\end{vmatrix} + a_{13}\\begin{vmatrix}a_{21}&a_{22}\\\\a_{31}&a_{32}\\end{vmatrix}$$`);
+    steps.push(`##Cofactor Expansion (Row 1)\n$$\\det(A) = a_{11}\\begin{vmatrix}a_{22}&a_{23}\\\\a_{32}&a_{33}\\end{vmatrix} - a_{12}\\begin{vmatrix}a_{21}&a_{23}\\\\a_{31}&a_{33}\\end{vmatrix} + a_{13}\\begin{vmatrix}a_{21}&a_{22}\\\\a_{31}&a_{32}\\end{vmatrix}$$`);
     minors.forEach((m, j) => {
-      steps.push(`##Minor ${j + 1} (remove row 1, column ${j + 1})\n$$${matrixLatex(m)} \\;\\Rightarrow\\; \\det = (${fmtCell(m[0][0])})(${fmtCell(m[1][1])}) - (${fmtCell(m[0][1])})(${fmtCell(m[1][0])}) = ${fmtCell(minorDets[j])}$$`);
+      steps.push(`##Minor $M_{1${j + 1}}$\n$$${matrixLatex(m)} \\;\\Rightarrow\\; \\det = (${fmtCell(m[0][0])})(${fmtCell(m[1][1])}) - (${fmtCell(m[0][1])})(${fmtCell(m[1][0])}) = ${fmtCell(minorDets[j])}$$`);
     });
     const d = row0.reduce((acc, v, j) => acc + signs[j] * v * minorDets[j], 0);
     const combineExpr = row0.map((v, j) => `${signs[j] === 1 ? (j === 0 ? "" : "+") : "-"}(${fmtCell(v)})(${fmtCell(minorDets[j])})`).join(" ");
@@ -125,9 +125,9 @@ function determinantWithSteps(a: number[][], steps: string[]): number {
   const row0 = a[0];
   const minors = row0.map((_, j) => minorOf(a, 0, j));
   const minorDets = minors.map((m) => mathDet(m) as number);
-  steps.push(`##Cofactor Expansion (along Row 1, ${n}×${n})\nFor a matrix this size, expand along the first row into ${n} minors of size ${n - 1}×${n - 1}, alternating signs:\n$$\\det(A) = \\sum_{j=1}^{${n}} (-1)^{1+j}\\,a_{1j}\\,M_{1j}$$`);
+  steps.push(`##Cofactor Expansion (Row 1, ${n}×${n})\n$$\\det(A) = \\sum_{j=1}^{${n}} (-1)^{1+j}\\,a_{1j}\\,M_{1j}$$`);
   minors.forEach((m, j) => {
-    steps.push(`##Minor $M_{1,${j + 1}}$ (remove row 1, column ${j + 1})\n$$\\det\\left(${matrixLatex(m)}\\right) = ${fmtCell(minorDets[j])}$$`);
+    steps.push(`##Minor $M_{1,${j + 1}}$\n$$\\det\\left(${matrixLatex(m)}\\right) = ${fmtCell(minorDets[j])}$$`);
   });
   const d = row0.reduce((acc, v, j) => acc + (j % 2 === 0 ? 1 : -1) * v * minorDets[j], 0);
   const combineExpr = row0.map((v, j) => `${j % 2 === 0 ? (j === 0 ? "" : "+") : "-"}(${fmtCell(v)})(${fmtCell(minorDets[j])})`).join(" ");
@@ -147,25 +147,25 @@ function inverseWithSteps(a: number[][], settings: Settings, steps: string[]): n
   if (n === 2) {
     steps.push(`##Determinant\n$$\\det(A) = (${fmtCell(a[0][0])})(${fmtCell(a[1][1])}) - (${fmtCell(a[0][1])})(${fmtCell(a[1][0])}) = ${fmtCell(d)}$$`);
     if (Math.abs(d) < 1e-10) {
-      steps.push(`##No Inverse\nSince $\\det(A) = 0$, this matrix is singular — it has no inverse.`);
+      steps.push(`##No Inverse\n$$\\det(A) = 0 \\;\\Rightarrow\\; \\text{singular, no inverse}$$`);
       return null;
     }
     const [[p, q], [r, s]] = a;
-    steps.push(`##Swap and Negate (Adjugate)\nFor a 2×2 matrix, swap the main diagonal entries and negate the other two:\n$$\\text{adj}(A) = \\begin{bmatrix}d&-b\\\\-c&a\\end{bmatrix} = ${matrixLatex([[s, -q], [-r, p]])}$$`);
+    steps.push(`##Adjugate\n$$\\text{adj}(A) = \\begin{bmatrix}d&-b\\\\-c&a\\end{bmatrix} = ${matrixLatex([[s, -q], [-r, p]])}$$`);
     const inv2 = [[s / d, -q / d], [-r / d, p / d]];
-    steps.push(`##Divide by the Determinant\n$$A^{-1} = \\frac{1}{\\det(A)}\\,\\text{adj}(A) = \\frac{1}{${fmtCell(d)}}${matrixLatex([[s, -q], [-r, p]])} = ${matrixLatex(inv2)}$$`);
+    steps.push(`##Inverse\n$$A^{-1} = \\frac{1}{\\det(A)}\\,\\text{adj}(A) = \\frac{1}{${fmtCell(d)}}${matrixLatex([[s, -q], [-r, p]])} = ${matrixLatex(inv2)}$$`);
     return inv2;
   }
 
   steps.push(`##Determinant\n$$\\det(A) = ${fmtCell(d)}$$`);
   if (Math.abs(d) < 1e-10) {
-    steps.push(`##No Inverse\nSince $\\det(A) = 0$, this matrix is singular — it has no inverse.`);
+    steps.push(`##No Inverse\n$$\\det(A) = 0 \\;\\Rightarrow\\; \\text{singular, no inverse}$$`);
     return null;
   }
-  steps.push(`##Method: Gauss-Jordan Elimination\n$\\det(A)\\neq0$. Augment $A$ with the identity, row-reduce the left half to identity — the right half becomes $A^{-1}$.`);
+  steps.push(`##Method: Gauss-Jordan\n$$[A \\mid I] \\;\\to\\; [I \\mid A^{-1}]$$`);
 
   const aug = a.map((row, i) => [...row, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
-  steps.push(`##Augment with the Identity Matrix\n$$${augmentedLatex(aug, n)}$$`);
+  steps.push(`##Augment $[A \\mid I]$\n$$${augmentedLatex(aug, n)}$$`);
 
   for (let col = 0; col < n; col++) {
     let pivotRow = col;
@@ -192,7 +192,7 @@ function inverseWithSteps(a: number[][], settings: Settings, steps: string[]): n
   }
 
   const result = aug.map((row) => row.slice(n).map((v) => (Math.abs(v) < 1e-10 ? 0 : v)));
-  steps.push(`##Result\nThe left half is now the identity matrix — the right half is $A^{-1}$:\n$$A^{-1} = ${matrixLatex(result)}$$`);
+  steps.push(`##Result\n$$A^{-1} = ${matrixLatex(result)}$$`);
   return result;
 }
 
@@ -205,7 +205,7 @@ function gaussianElim(matrix: number[][], toRREF: boolean): { ref: number[][]; s
   const cols = matrix[0].length;
   const m = matrix.map(r => [...r]);
   const steps: string[] = [];
-  steps.push(`##Start\nReduce to Row Echelon Form using Gaussian Elimination:\n$$${matrixLatex(matrix)}$$`);
+  steps.push(`##Start — Gaussian Elimination\n$$${matrixLatex(matrix)}$$`);
   let pivotRow = 0;
   const pivotCols: number[] = [];
 
@@ -218,7 +218,7 @@ function gaussianElim(matrix: number[][], toRREF: boolean): { ref: number[][]; s
 
     if (maxRow !== pivotRow) {
       [m[pivotRow], m[maxRow]] = [m[maxRow], m[pivotRow]];
-      steps.push(`##Partial Pivoting\n$R_{${pivotRow + 1}} \\leftrightarrow R_{${maxRow + 1}}$ (swap to put the largest entry in the pivot position):\n$$${matrixLatex(m)}$$`);
+      steps.push(`##Partial Pivoting\n$R_{${pivotRow + 1}} \\leftrightarrow R_{${maxRow + 1}}$\n$$${matrixLatex(m)}$$`);
     }
 
     const pivot = m[pivotRow][col];
@@ -242,7 +242,7 @@ function gaussianElim(matrix: number[][], toRREF: boolean): { ref: number[][]; s
   const rank = m.filter(row => row.some(v => Math.abs(v) > 1e-10)).length;
 
   if (toRREF && pivotCols.length > 0) {
-    steps.push(`##Back-Substitution\nRow Echelon Form only clears BELOW each pivot; Reduced form also clears ABOVE each pivot, working from the last pivot back:`);
+    steps.push(`##Back-Substitution (clear above the pivots)`);
     for (let i = pivotCols.length - 1; i >= 0; i--) {
       const col = pivotCols[i];
       for (let r = 0; r < i; r++) {
@@ -255,7 +255,7 @@ function gaussianElim(matrix: number[][], toRREF: boolean): { ref: number[][]; s
     }
   }
 
-  steps.push(`##${toRREF ? "Reduced Row Echelon Form" : "Rank"}\n${toRREF ? "Every pivot is $1$, with zeros both above and below it:" : "The rank is the number of non-zero rows remaining:"}\n$$${toRREF ? matrixLatex(m.map(row => row.map(v => Math.abs(v) < 1e-10 ? 0 : v))) : `\\text{rank} = ${rank}`}$$`);
+  steps.push(`##${toRREF ? "Reduced Row Echelon Form" : "Rank"}\n$$${toRREF ? matrixLatex(m.map(row => row.map(v => Math.abs(v) < 1e-10 ? 0 : v))) : `\\text{rank} = ${rank}`}$$`);
 
   const ref = m.map(row => row.map(v => Math.abs(v) < 1e-10 ? 0 : v));
   return { ref, steps, rank };
@@ -405,10 +405,7 @@ export function MatrixCalculator() {
       }
       if (op === "transpose") {
         const r = transpose(a) as number[][];
-        const exampleSwaps = rowsA > 1 && colsA > 1
-          ? `\nFor example, entry $(1,2)=${fmtCell(a[0][1])}$ becomes entry $(2,1)$ in $A^T$, and entry $(2,1)=${fmtCell(a[1][0])}$ becomes entry $(1,2)$.`
-          : "";
-        setSteps([`##Given\n$$A = ${matrixLatex(a)}$$`, `##Transpose\nFlip rows and columns — row $i$, column $j$ of $A$ becomes row $j$, column $i$ of $A^T$.${exampleSwaps}\n$$A^T = ${matrixLatex(r)}$$`]);
+        setSteps([`##Given\n$$A = ${matrixLatex(a)}$$`, `##Transpose\n$$(A^T)_{ji} = A_{ij}$$\n$$A^T = ${matrixLatex(r)}$$`]);
         setResult(formatMatrix(r));
         setResultMatrix(r);
         return;
@@ -446,7 +443,7 @@ export function MatrixCalculator() {
         stepList.push(`##System\n$$A\\vec{x} = \\vec{b}, \\qquad ${n} \\text{ unknowns}$$`);
         stepList.push(`##Step 1 — Determinant of A\n$$D = \\det(A) = ${toFractionLatex(D)}$$`);
         if (Math.abs(D) < 1e-12) {
-          stepList.push(`##Singular System\n$D = 0$ — the system has no unique solution.`);
+          stepList.push(`##Singular System\n$$D = 0 \\;\\Rightarrow\\; \\text{no unique solution}$$`);
           setSteps(stepList);
           setResult("No unique solution");
           return;
@@ -457,7 +454,7 @@ export function MatrixCalculator() {
           const Ai = a.map((row, r) => row.map((v, c) => (c === i ? bv[r] : v)));
           const Di = mathDet(Ai) as number;
           const xi = Di / D;
-          stepList.push(`##Step ${i + 2} — Solve for $x_{${i + 1}}$\nReplace column ${i + 1} of $A$ with $\\vec{b}$ to form $A_{${i + 1}}$:\n$$${matrixLatex(Ai)}$$\n$$\\det(A_{${i + 1}}) = ${toFractionLatex(Di)}, \\qquad x_{${i + 1}} = \\frac{\\det(A_{${i + 1}})}{D} = ${toFractionLatex(xi)}$$`);
+          stepList.push(`##Step ${i + 2} — $x_{${i + 1}}$ (column ${i + 1} → $\\vec{b}$)\n$$${matrixLatex(Ai)}$$\n$$\\det(A_{${i + 1}}) = ${toFractionLatex(Di)}, \\qquad x_{${i + 1}} = \\frac{\\det(A_{${i + 1}})}{D} = ${toFractionLatex(xi)}$$`);
           xs.push(xi);
         }
 
@@ -486,12 +483,12 @@ export function MatrixCalculator() {
         // instead of listing each row's arithmetic as separate flat lines.
         const exprRows = a.map((row, ri) => row.map((v, ci) => `${fmtCell(v)}${opSym}${fmtCell(b[ri][ci])}`).join(" & "));
         const exprMatrix = `\\begin{bmatrix}${exprRows.join("\\\\")}\\end{bmatrix}`;
-        stepList.push(`##${op === "add" ? "Add" : "Subtract"} Corresponding Entries\n${op === "add" ? "Add each entry of $A$ to the entry in the same position in $B$" : "Subtract each entry of $B$ from the entry in the same position in $A$"} — position by position:\n$$A${opSym}B = ${exprMatrix}$$`);
+        stepList.push(`##${op === "add" ? "Add" : "Subtract"} Entrywise\n$$A${opSym}B = ${exprMatrix}$$`);
         stepList.push(`##Result\n$$A${opSym}B = ${matrixLatex(r)}$$`);
       } else {
         r = multiply(a, b);
         const rMat = r as number[][];
-        stepList.push(`##Multiply — Row × Column\nEach entry of $A\\times B$ is the dot product of a row of $A$ with a column of $B$:\n$$(AB)_{ij} = \\sum_k A_{ik}B_{kj}$$`);
+        stepList.push(`##Multiply — Row × Column\n$$(AB)_{ij} = \\sum_k A_{ik}B_{kj}$$`);
         // Show the whole "expression matrix" bracketed — every output cell
         // as its own dot-product expression — THEN the collapsed numeric
         // result matrix, instead of listing each row as separate equations.

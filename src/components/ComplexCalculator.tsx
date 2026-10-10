@@ -95,24 +95,25 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
   switch (op) {
     case "add": {
       const r = add(a, b);
-      steps.push(`##Add Real and Imaginary Parts Separately\n$$z_1 + z_2 = (${fmt(a.re, s)} + ${fmt(b.re, s)}) + (${fmt(a.im, s)} + ${fmt(b.im, s)})i = ${czLatex(r, s)}$$`);
+      steps.push(`##Add Parts\n$$z_1 + z_2 = (${fmt(a.re, s)} + ${fmt(b.re, s)}) + (${fmt(a.im, s)} + ${fmt(b.im, s)})i = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
     case "subtract": {
       const r = sub(a, b);
-      steps.push(`##Subtract Real and Imaginary Parts Separately\n$$z_1 - z_2 = (${fmt(a.re, s)} - ${fmt(b.re, s)}) + (${fmt(a.im, s)} - ${fmt(b.im, s)})i = ${czLatex(r, s)}$$`);
+      steps.push(`##Subtract Parts\n$$z_1 - z_2 = (${fmt(a.re, s)} - ${fmt(b.re, s)}) + (${fmt(a.im, s)} - ${fmt(b.im, s)})i = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
     case "multiply": {
       const r = mul(a, b);
       steps.push(`##FOIL, Using $i^2 = -1$\n$$(a+bi)(c+di) = (ac-bd) + (ad+bc)i$$`);
-      steps.push(`##Substitute the Values\n$$z_1 z_2 = (${fmt(a.re, s)}\\cdot ${fmt(b.re, s)} - ${fmt(a.im, s)}\\cdot ${fmt(b.im, s)}) + (${fmt(a.re, s)}\\cdot ${fmt(b.im, s)} + ${fmt(a.im, s)}\\cdot ${fmt(b.re, s)})i = ${czLatex(r, s)}$$`);
+      steps.push(`##Substitute\n$$z_1 z_2 = (${fmt(a.re, s)}\\cdot ${fmt(b.re, s)} - ${fmt(a.im, s)}\\cdot ${fmt(b.im, s)}) + (${fmt(a.re, s)}\\cdot ${fmt(b.im, s)} + ${fmt(a.im, s)}\\cdot ${fmt(b.re, s)})i = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
     case "divide": {
       const r = div(a, b);
       const denom = b.re * b.re + b.im * b.im;
-      steps.push(`##Multiply by the Conjugate\nMultiply top and bottom by $\\overline{z_2} = ${czLatex(conjugate(b), s)}$ to clear the imaginary part from the denominator:\n$$|z_2|^2 = ${fmt(denom, s)}$$`);
+      steps.push(`##Multiply by the Conjugate\n$$\\frac{z_1}{z_2} = \\frac{z_1\\,\\overline{z_2}}{z_2\\,\\overline{z_2}} = \\frac{z_1\\,\\overline{z_2}}{|z_2|^2}, \\qquad \\overline{z_2} = ${czLatex(conjugate(b), s)}$$`);
+      steps.push(`##Compute\n$$z_1\\,\\overline{z_2} = ${czLatex(mul(a, conjugate(b)), s)}, \\qquad |z_2|^2 = ${fmt(denom, s)}$$`);
       steps.push(`##Result\n$$\\frac{z_1}{z_2} = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
@@ -147,7 +148,7 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
       return { result: fmtComplex({ re, im }, s), steps };
     }
     case "conjugate": {
-      steps.push(`##Flip the Sign of the Imaginary Part\n$$\\overline{z_1} = ${czLatex(conjugate(a), s)}$$`);
+      steps.push(`##Conjugate\n$$\\overline{a+bi} = a - bi \\quad\\Rightarrow\\quad \\overline{z_1} = ${czLatex(conjugate(a), s)}$$`);
       return { result: fmtComplex(conjugate(a), s), steps };
     }
     case "modulus": {
@@ -163,7 +164,7 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
       const r = power(a, n);
       steps.push(`##De Moivre's Theorem\n$$\\left[r(\\cos\\theta + i\\sin\\theta)\\right]^n = r^n\\left(\\cos(n\\theta) + i\\sin(n\\theta)\\right)$$`);
       steps.push(`##Convert to Polar Form\n$$r = ${fmt(mod, s)}, \\qquad \\theta = ${fmtAngle(arg, s)}$$`);
-      steps.push(`##Raise to the $n$th Power\n$$r^{${n}} = ${fmt(Math.pow(mod, n), s)}, \\qquad n\\theta = ${n}\\times ${fmtAngle(arg, s)} = ${fmtAngle(nArg, s)}$$`);
+      steps.push(`##Raise to Power\n$$r^{${n}} = ${fmt(Math.pow(mod, n), s)}, \\qquad n\\theta = ${n}\\times ${fmtAngle(arg, s)} = ${fmtAngle(nArg, s)}$$`);
       steps.push(`##Result\n$$z_1^{${n}} = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }

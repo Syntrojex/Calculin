@@ -138,7 +138,7 @@ export function analyzeBreakpoint(pieces: Piece[], variable: string, x: number, 
     leftLimit = computeLimit(leftPiece.formula, variable, x.toString(), "left", fmt).numericValue ?? null;
     steps.push(`##Left-Hand Limit\n$f(${variable}) = ${exprToLatex(normalizeMathInput(leftPiece.formula))}$ for $${pieceDomainPhraseLatex(leftPiece, variable)}$:\n$$\\lim_{${variable}\\to ${xLatex}^-} f(${variable}) = ${leftLimit !== null ? exprToLatex(fmt(leftLimit)) : "\\text{DNE}"}$$`);
   } else {
-    steps.push(`##Left-Hand Limit\nNo piece is defined just left of $${variable} = ${xLatex}$.`);
+    steps.push(`##Left-Hand Limit\n$$\\lim_{${variable}\\to ${xLatex}^-} f(${variable}) = \\text{DNE}$$\nNo piece covers this side.`);
   }
 
   let rightLimit: number | null = null;
@@ -146,7 +146,7 @@ export function analyzeBreakpoint(pieces: Piece[], variable: string, x: number, 
     rightLimit = computeLimit(rightPiece.formula, variable, x.toString(), "right", fmt).numericValue ?? null;
     steps.push(`##Right-Hand Limit\n$f(${variable}) = ${exprToLatex(normalizeMathInput(rightPiece.formula))}$ for $${pieceDomainPhraseLatex(rightPiece, variable)}$:\n$$\\lim_{${variable}\\to ${xLatex}^+} f(${variable}) = ${rightLimit !== null ? exprToLatex(fmt(rightLimit)) : "\\text{DNE}"}$$`);
   } else {
-    steps.push(`##Right-Hand Limit\nNo piece is defined just right of $${variable} = ${xLatex}$.`);
+    steps.push(`##Right-Hand Limit\n$$\\lim_{${variable}\\to ${xLatex}^+} f(${variable}) = \\text{DNE}$$\nNo piece covers this side.`);
   }
 
   let atValue: number | null = null;
@@ -154,7 +154,7 @@ export function analyzeBreakpoint(pieces: Piece[], variable: string, x: number, 
     atValue = evalPieceAt(atPiece, variable, x);
     steps.push(`##Function Value\n$$f(${xLatex}) = ${atValue !== null ? exprToLatex(fmt(atValue)) : "\\text{undefined}"}$$`);
   } else {
-    steps.push(`##Function Value\n$f(${xLatex})$ is undefined \u2014 no piece's condition includes $${variable} = ${xLatex}$.`);
+    steps.push(`##Function Value\n$$f(${xLatex}) = \\text{undefined}$$\nNo piece includes $${variable} = ${xLatex}$.`);
   }
 
   const limitsAgree = leftLimit !== null && rightLimit !== null && Math.abs(leftLimit - rightLimit) < 1e-4;
@@ -163,16 +163,16 @@ export function analyzeBreakpoint(pieces: Piece[], variable: string, x: number, 
 
   if (leftLimit === null || rightLimit === null) {
     classification = "none-nearby";
-    conclusion = `A one-sided limit doesn't apply here (no piece covers that side), so continuity isn't defined at $${variable} = ${xLatex}$ either.`;
+    conclusion = `One side has no piece — continuity is not defined at $${variable} = ${xLatex}$.`;
   } else if (!limitsAgree) {
     classification = "jump";
-    conclusion = `Left limit $${exprToLatex(fmt(leftLimit))} \\ne$ right limit $${exprToLatex(fmt(rightLimit))}$ \u2014 **jump discontinuity** at $${variable} = ${xLatex}$.`;
+    conclusion = `$$${exprToLatex(fmt(leftLimit))} \\ne ${exprToLatex(fmt(rightLimit))}$$\n**Jump discontinuity** at $${variable} = ${xLatex}$.`;
   } else if (atValue === null || Math.abs(atValue - leftLimit) > 1e-4) {
     classification = "removable";
-    conclusion = `Both one-sided limits agree at $${exprToLatex(fmt(leftLimit))}$, but $f(${xLatex})$ ${atValue === null ? "is undefined" : `= ${exprToLatex(fmt(atValue))}$ doesn't match`} \u2014 **removable discontinuity**.`;
+    conclusion = `$$\\lim_{${variable}\\to ${xLatex}} f(${variable}) = ${exprToLatex(fmt(leftLimit))}, \\quad f(${xLatex}) = ${atValue === null ? "\\text{undefined}" : exprToLatex(fmt(atValue))}$$\n**Removable discontinuity** at $${variable} = ${xLatex}$.`;
   } else {
     classification = "continuous";
-    conclusion = `Left limit, right limit, and $f(${xLatex})$ all equal $${exprToLatex(fmt(leftLimit))}$ \u2014 **continuous** at $${variable} = ${xLatex}$.`;
+    conclusion = `$$\\lim_{${variable}\\to ${xLatex}^-} f = \\lim_{${variable}\\to ${xLatex}^+} f = f(${xLatex}) = ${exprToLatex(fmt(leftLimit))}$$\n**Continuous** at $${variable} = ${xLatex}$.`;
   }
   steps.push(`##Conclusion\n${conclusion}`);
 

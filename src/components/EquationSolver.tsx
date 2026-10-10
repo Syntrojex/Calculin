@@ -36,19 +36,19 @@ export function solveLinear(equation: string, fmt: (n: number) => string): Solve
     steps.push(`##Given\n$$${exprToLatex(parts[0].trim())} = ${exprToLatex(parts[1].trim())}$$`);
 
     const expr = `(${parts[0].trim()}) - (${parts[1].trim()})`;
-    steps.push(`##Rearrange to Standard Form\nMove everything to one side:\n$$${exprToLatex(expr)} = 0$$`);
+    steps.push(`##Rearrange to Standard Form\n$$${exprToLatex(expr)} = 0$$`);
 
     const f0 = evaluate(expr, { x: 0 }) as number;
     const f1 = evaluate(expr, { x: 1 }) as number;
     const slope = f1 - f0;
 
     if (Math.abs(slope) < 1e-10) {
-      if (Math.abs(f0) < 1e-10) return { roots: ["All real numbers"], steps: [...steps, "##Identity\nThis holds true for every value of $x$ — every real number is a solution."] };
-      return { roots: [], steps: [...steps, "##Contradiction\nThis simplifies to a false statement (e.g. $5 = 0$) — there is no solution."], error: "No solution" };
+      if (Math.abs(f0) < 1e-10) return { roots: ["All real numbers"], steps: [...steps, "##Identity\n$$0 = 0 \\;\\Rightarrow\\; x \\in \\mathbb{R}$$"] };
+      return { roots: [], steps: [...steps, `##Contradiction\n$$${exprToLatex(fmtNum2(f0))} = 0 \\;\\Rightarrow\\; \\text{no solution}$$`], error: "No solution" };
     }
 
     const root = -f0 / slope;
-    steps.push(`##Identify Slope and Intercept\nLinear form: $${exprToLatex(fmtNum2(slope))}x + ${exprToLatex(fmtNum2(f0))} = 0$.`);
+    steps.push(`##Linear Form\n$$${exprToLatex(fmtNum2(slope))}x + ${exprToLatex(fmtNum2(f0))} = 0$$`);
     steps.push(`##Solve for x\n$$x = \\frac{-(${exprToLatex(fmtNum2(f0))})}{${exprToLatex(fmtNum2(slope))}} = ${fmt(root)}$$`);
 
     return { roots: [root.toString()], steps, numericRoots: [root] };
@@ -74,16 +74,16 @@ export function solveQuadratic(a: number, b: number, c: number, fmt: (n: number)
   if (discriminant > 0) {
     const x1 = (-b + Math.sqrt(discriminant)) / (2 * a);
     const x2 = (-b - Math.sqrt(discriminant)) / (2 * a);
-    steps.push(`##Two Real Roots\n$D > 0$ — two real roots:\n$$x_1 = \\frac{-(${bL}) + \\sqrt{${fmtNum2(discriminant)}}}{${fmtNum2(2 * a)}} = ${fmt(x1)}$$\n$$x_2 = \\frac{-(${bL}) - \\sqrt{${fmtNum2(discriminant)}}}{${fmtNum2(2 * a)}} = ${fmt(x2)}$$`);
+    steps.push(`##Two Real Roots ($D > 0$)\n$$x_1 = \\frac{-(${bL}) + \\sqrt{${fmtNum2(discriminant)}}}{${fmtNum2(2 * a)}} = ${fmt(x1)}$$\n$$x_2 = \\frac{-(${bL}) - \\sqrt{${fmtNum2(discriminant)}}}{${fmtNum2(2 * a)}} = ${fmt(x2)}$$`);
     return { roots: [x1.toFixed(6), x2.toFixed(6)], steps, numericRoots: [x1, x2] };
   } else if (Math.abs(discriminant) < 1e-9) {
     const x = -b / (2 * a);
-    steps.push(`##One Repeated Root\n$D = 0$ — one repeated root:\n$$x = \\frac{-(${bL})}{${fmtNum2(2 * a)}} = ${fmt(x)}$$`);
+    steps.push(`##One Repeated Root ($D = 0$)\n$$x = \\frac{-(${bL})}{${fmtNum2(2 * a)}} = ${fmt(x)}$$`);
     return { roots: [x.toFixed(6)], steps, numericRoots: [x] };
   } else {
     const real = fmt(-b / (2 * a));
     const imag = fmt(Math.sqrt(-discriminant) / (2 * a));
-    steps.push(`##Two Complex Conjugate Roots\n$D < 0$ — complex conjugate roots:\n$$x_1 = ${real} + ${imag}i, \\qquad x_2 = ${real} - ${imag}i$$`);
+    steps.push(`##Complex Roots ($D < 0$)\n$$x_1 = ${real} + ${imag}i, \\qquad x_2 = ${real} - ${imag}i$$`);
     return { roots: [`${real} + ${imag}i`, `${real} - ${imag}i`], steps };
   }
 }
@@ -125,7 +125,7 @@ export function solveQuadraticFromEquation(equation: string, fmt: (n: number) =>
     return { roots: [], steps: [], error: "Coefficient of x² is 0 — this is linear, not quadratic. Use the Linear tab." };
   }
 
-  steps.push(`##Extract Coefficients\nIdentify $a$, $b$, $c$:\n$$a = ${fmtNum2(a)}, \\quad b = ${fmtNum2(b)}, \\quad c = ${fmtNum2(c)}$$`);
+  steps.push(`##Coefficients\n$$a = ${fmtNum2(a)}, \\quad b = ${fmtNum2(b)}, \\quad c = ${fmtNum2(c)}$$`);
   const quad = solveQuadratic(a, b, c, fmt);
   return { ...quad, steps: [...steps, ...quad.steps] };
 }

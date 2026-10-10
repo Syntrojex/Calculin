@@ -245,10 +245,10 @@ function ProveIdentity() {
     `##Right-Hand Side\n$$${exprToLatex(rhs)}$$`,
     ...result.rhsTrace.map((t, i) => `##Simplify RHS — Step ${i + 1}\n$$${exprToLatex(t)}$$`),
     result.converged
-      ? `##Conclusion\nBoth sides reduce to the same expression:\n$$${exprToLatex(result.lhsFinal)}$$\n✓ Identity proved.`
+      ? `##Conclusion\n$$${exprToLatex(result.lhsFinal)}$$\n✓ Both sides match — identity proved.`
       : result.match
-        ? `##Conclusion\nBoth sides are numerically equal across every test angle, though automatic simplification couldn't fully converge symbolically — this identity likely needs an extra algebraic step (e.g. cross-multiplying) beyond automatic rewriting.`
-        : `##Conclusion\nThe left-hand side and right-hand side do not match — this is **not** an identity.`,
+        ? `##Conclusion\nNumerically equal at every test angle, but not fully reduced symbolically — likely needs an extra algebraic step (e.g. cross-multiplying).`
+        : `##Conclusion\nLHS ≠ RHS — **not** an identity.`,
   ] : [];
 
   return (

@@ -90,7 +90,7 @@ function performBaseArithmetic(aStr: string, bStr: string, baseA: number, baseB:
 
   const steps: string[] = [];
   steps.push(`##Given\n$$${aClean}_{${base}} \\;${opLatex}\\; ${bClean}_{${base}}$$`);
-  steps.push(`##Convert Both Numbers to Decimal\nNon-decimal arithmetic is error-prone — convert to decimal first, then convert back:\n$$${aClean}_{${base}} = ${aDec}_{10}, \\qquad ${bClean}_{${base}} = ${bDec}_{10}$$`);
+  steps.push(`##Convert Both to Decimal\n$$${aClean}_{${base}} = ${aDec}_{10}, \\qquad ${bClean}_{${base}} = ${bDec}_{10}$$`);
 
   if (op === "divide" && bDec === 0) {
     return { result: "", steps, error: "Division by zero is not allowed." };
@@ -106,13 +106,13 @@ function performBaseArithmetic(aStr: string, bStr: string, baseA: number, baseB:
     remainder = aDec % bDec;
   }
 
-  steps.push(`##Perform the Operation in Decimal\n$$${aDec} \\;${opLatex}\\; ${bDec} = ${
+  steps.push(`##Operate in Decimal\n$$${aDec} \\;${opLatex}\\; ${bDec} = ${
     op === "divide" ? `${resultDec}\\text{ remainder }${remainder}` : resultDec
   }$$`);
 
   const resultBase = fromDecimal(resultDec, base);
   const remainderBase = remainder !== null ? fromDecimal(remainder, base) : null;
-  steps.push(`##Convert the Result Back to Base ${base}\n$$${resultDec}_{10} = ${resultBase}_{${base}}${remainderBase !== null ? `, \\qquad \\text{remainder } ${remainder}_{10} = ${remainderBase}_{${base}}` : ""}$$`);
+  steps.push(`##Back to Base ${base}\n$$${resultDec}_{10} = ${resultBase}_{${base}}${remainderBase !== null ? `, \\qquad \\text{remainder } ${remainder}_{10} = ${remainderBase}_{${base}}` : ""}$$`);
 
   return {
     result: remainderBase !== null ? `${resultBase} remainder ${remainderBase}` : resultBase,
@@ -161,7 +161,7 @@ export function NumberConversions() {
     const magnitudeStr = value.trim().toUpperCase().replace(/^-/, "");
 
     const steps: string[] = [];
-    if (isNegative) steps.push(`##Note\nThe value is negative — convert the magnitude first, then re-apply the sign.`);
+    if (isNegative) steps.push(`##Negative Number\nConvert $|x|$, then re-apply the sign.`);
 
     if (fb !== 10) {
       const digits = magnitudeStr.split("");
@@ -170,13 +170,13 @@ export function NumberConversions() {
         const digitVal = DIGITS.indexOf(d);
         return `${digitVal}\\times ${fb}^{${power}}`;
       });
-      steps.push(`##Step 1 — Convert to Decimal\nExpand each digit of $${magnitudeStr}_{${fb}}$ by its place value:\n$$${terms.join(" + ")} = ${absDecimal}_{10}${isNegative ? ` \\;\\to\\; ${decimalValue}_{10}` : ""}$$`);
+      steps.push(`##Step 1 — To Decimal\n$$${magnitudeStr}_{${fb}} = ${terms.join(" + ")} = ${absDecimal}_{10}${isNegative ? ` \\;\\to\\; ${decimalValue}_{10}` : ""}$$`);
     } else {
       steps.push(`##Step 1 — Already in Decimal\n$$${decimalValue}_{10}$$`);
     }
 
     if (tb !== 10) {
-      steps.push(`##Step 2 — Convert to Base ${tb}\nRepeatedly divide by ${tb}, recording each remainder:`);
+      steps.push(`##Step 2 — To Base ${tb} (repeated division)`);
       let n = absDecimal;
       const divisionSteps: string[] = [];
       if (n === 0) divisionSteps.push(`$$0 \\div ${tb} = 0 \\text{ remainder } 0$$`);
@@ -187,7 +187,7 @@ export function NumberConversions() {
         n = q;
       }
       steps.push(`##Division Steps\n${divisionSteps.join("\n\n")}`);
-      steps.push(`##Result\nReading the remainders bottom-to-top:\n$$${fromDecimal(decimalValue, tb)}_{${tb}}$$`);
+      steps.push(`##Result (remainders, bottom → top)\n$$${fromDecimal(decimalValue, tb)}_{${tb}}$$`);
     } else {
       steps.push(`##Step 2 — Target Base is Decimal\n$$${decimalValue}$$`);
     }
