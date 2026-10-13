@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { evaluate } from "mathjs";
+import { parse as mjParse } from "mathjs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -10,17 +10,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MathInput } from "./MathInput";
 import { MathTex } from "./MathTex";
 import { StepsReveal } from "./StepsReveal";
-import { GraphCanvas, type GraphSeries } from "./GraphCanvas";
+import { FunctionGraph, type PlotMarker } from "./FunctionGraph";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
 import { exprToLatex } from "@/lib/latex";
-import { normalizeMathInput } from "@/lib/text-normalize";
-import { computeLimit } from "./LimitsCalculator";
+import { cleanExpression, cleanVariable, parseNumericInput } from "@/lib/expression-clean";
+import { extractVariables } from "@/lib/math-solver";
+import { solveLimit } from "@/lib/limit-solver";
 import { GitBranch, Plus, Trash2, CheckCircle2, XCircle, CircleDot } from "lucide-react";
 
 // ── Data model ────────────────────────────────────────────────────────────────
-export type CondOp = "<" | "<=" | ">" | ">=" | "otherwise";
+export type CondOp = "<" | "<=" | ">" | ">=" | "=" | "!=" | "otherwise";
 
 export interface Piece {
   id: string;
@@ -34,84 +35,118 @@ export function newPiece(formula: string, op: CondOp, boundary: string): Piece {
   return { id: `p${pieceIdSeq++}`, formula, op, boundary };
 }
 
-const OP_LABEL: Record<CondOp, string> = { "<": "<", "<=": "\u2264", ">": ">", ">=": "\u2265", otherwise: "otherwise" };
-const OP_LATEX: Record<CondOp, string> = { "<": "<", "<=": "\\le", ">": ">", ">=": "\\ge", otherwise: "" };
+const OP_LABEL: Record<CondOp, string> = { "<": "<", "<=": "\u2264", ">": ">", ">=": "\u2265", "=": "=", "!=": "\u2260", otherwise: "otherwise" };
+const OP_LATEX: Record<CondOp, string> = { "<": "<", "<=": "\\le", ">": ">", ">=": "\\ge", "=": "=", "!=": "\\ne", otherwise: "" };
+
+// ── compiled evaluation (compiled once, reused thousands of times by the graph) ─
+const compileCache = new Map<string, ((x: number) => number) | null>();
+function compileFormula(formula: string, variable: string): (x: number) => number {
+  const key = `${variable}\u0000${formula}`;
+  let f = compileCache.get(key);
+  if (f === undefined) {
+    try {
+      const code = mjParse(cleanExpression(formula.trim() || "0")).compile();
+      const scope: Record<string, number> = {};
+      f = (x: number) => {
+        scope[variable] = x;
+        try {
+          const v = code.evaluate(scope);
+          return typeof v === "number" ? v : NaN;
+        } catch { return NaN; }
+      };
+    } catch { f = null; }
+    if (compileCache.size > 400) compileCache.clear();
+    compileCache.set(key, f);
+  }
+  return f ?? (() => NaN);
+}
 
 export function evalPieceAt(piece: Piece, variable: string, x: number): number | null {
-  try {
-    const v = evaluate(normalizeMathInput(piece.formula || "0"), { [variable]: x });
-    return typeof v === "number" && isFinite(v) ? v : null;
-  } catch {
-    return null;
+  const v = compileFormula(piece.formula, variable)(x);
+  return Number.isFinite(v) ? v : null;
+}
+
+function conditionHolds(op: CondOp, x: number, b: number): boolean {
+  switch (op) {
+    case "<": return x < b;
+    case "<=": return x <= b;
+    case ">": return x > b;
+    case ">=": return x >= b;
+    case "=": return x === b;
+    case "!=": return x !== b;
+    case "otherwise": return true;
   }
 }
 
-function conditionHolds(piece: Piece, x: number, boundary: number): boolean {
-  switch (piece.op) {
-    case "<": return x < boundary;
-    case "<=": return x <= boundary;
-    case ">": return x > boundary;
-    case ">=": return x >= boundary;
-    case "otherwise": return true;
+interface Prepared { piece: Piece; b: number }
+function prepare(pieces: Piece[]): Prepared[] {
+  return pieces.map((piece) => ({ piece, b: piece.op === "otherwise" ? NaN : parseNumericInput(piece.boundary) }));
+}
+function firstMatch(prep: Prepared[], x: number): Piece | null {
+  for (const { piece, b } of prep) {
+    if (piece.op === "otherwise") return piece;
+    if (!Number.isFinite(b)) continue;
+    if (conditionHolds(piece.op, x, b)) return piece;
   }
+  return null;
 }
 
 /** The first piece (in list order) whose condition holds at x — standard
  *  piecewise-definition semantics, so an earlier piece can deliberately
  *  shadow a later catch-all. */
 export function pieceForX(pieces: Piece[], x: number): Piece | null {
-  for (const p of pieces) {
-    if (p.op === "otherwise") return p;
-    const b = parseFloat(p.boundary);
-    if (!isFinite(b)) continue;
-    if (conditionHolds(p, x, b)) return p;
-  }
-  return null;
+  return firstMatch(prepare(pieces), x);
+}
+
+/** f(x) for the whole piecewise function (NaN where no piece applies). */
+export function makePiecewiseFn(pieces: Piece[], variable: string): (x: number) => number {
+  const prep = prepare(pieces);
+  return (x: number) => {
+    const piece = firstMatch(prep, x);
+    return piece ? compileFormula(piece.formula, variable)(x) : NaN;
+  };
+}
+
+function boundaryLatex(p: Piece): string {
+  const cleaned = cleanExpression(p.boundary.trim() || "0");
+  return exprToLatex(cleaned || "0");
 }
 
 function pieceConditionLatex(p: Piece, variable: string): string {
   if (p.op === "otherwise") return "\\text{otherwise}";
-  const b = p.boundary.trim() || "0";
-  return `${variable} ${OP_LATEX[p.op]} ${exprToLatex(normalizeMathInput(b))}`;
+  return `${variable} ${OP_LATEX[p.op]} ${boundaryLatex(p)}`;
 }
 
 /** Same condition, phrased for "governs x near ..." prose — avoids ever
- *  string-replacing inside already-built LaTeX (a naive replace of the
- *  variable name, e.g. "x", also matches the "x" inside "\text{...}" and
- *  corrupts the command). */
+ *  string-replacing inside already-built LaTeX. */
 function pieceDomainPhraseLatex(p: Piece, variable: string): string {
   if (p.op === "otherwise") return `\\text{every other } ${variable}`;
-  const b = p.boundary.trim() || "0";
-  return `${variable} \\text{ near } ${OP_LATEX[p.op]} ${exprToLatex(normalizeMathInput(b))}`;
+  return `${variable} \\text{ near } ${OP_LATEX[p.op]} ${boundaryLatex(p)}`;
 }
 
 function pieceRowLatex(p: Piece, variable: string): string {
-  const body = exprToLatex(normalizeMathInput(p.formula.trim() || "0"));
+  const body = exprToLatex(cleanExpression(p.formula.trim() || "0") || "0");
   return `${body} & ${pieceConditionLatex(p, variable)}`;
 }
 
 export function fullPiecewiseLatex(pieces: Piece[], variable: string): string {
   const rows = pieces.map((p) => pieceRowLatex(p, variable)).join(" \\\\ ");
-  // A piece's own formula can contain a fraction (e.g. "1/x"), which needs
-  // extra row height so it doesn't crowd into the row above/below it.
   return `\\def\\arraystretch{1.5}f(${variable}) = \\begin{cases} ${rows} \\end{cases}`;
 }
 
 /** Every boundary value used by a non-"otherwise" piece, deduplicated and
- *  sorted — these are the only points where continuity could possibly break,
- *  since every piece is smooth/continuous on the *interior* of its own
- *  domain (it's a single ordinary formula there). */
+ *  sorted — the only places continuity can possibly break. */
 export function getBreakpoints(pieces: Piece[]): number[] {
   const set = new Set<number>();
   for (const p of pieces) {
     if (p.op === "otherwise") continue;
-    const b = parseFloat(p.boundary);
-    if (isFinite(b)) set.add(b);
+    const b = parseNumericInput(p.boundary);
+    if (Number.isFinite(b)) set.add(b);
   }
   return Array.from(set).sort((a, b) => a - b);
 }
 
-type Classification = "continuous" | "jump" | "removable" | "none-nearby";
+type Classification = "continuous" | "jump" | "removable" | "infinite" | "dne" | "none-nearby";
 
 interface BreakpointAnalysis {
   x: number;
@@ -126,111 +161,97 @@ interface BreakpointAnalysis {
 }
 
 export function analyzeBreakpoint(pieces: Piece[], variable: string, x: number, fmt: (n: number) => string): BreakpointAnalysis {
-  const eps = 1e-6;
-  const leftPiece = pieceForX(pieces, x - eps);
-  const rightPiece = pieceForX(pieces, x + eps);
-  const atPiece = pieceForX(pieces, x);
-  const xLatex = exprToLatex(fmt(x));
+  const prep = prepare(pieces);
+  const eps = 1e-6 * (1 + Math.abs(x));
+  const leftPiece = firstMatch(prep, x - eps);
+  const rightPiece = firstMatch(prep, x + eps);
+  const atPiece = firstMatch(prep, x);
+  const xLatex = Number.isFinite(x) ? exprToLatex(fmt(x)) : "x";
   const steps: string[] = [];
+  const num = (v: number) => exprToLatex(fmt(v));
 
-  let leftLimit: number | null = null;
-  if (leftPiece) {
-    leftLimit = computeLimit(leftPiece.formula, variable, x.toString(), "left", fmt).numericValue ?? null;
-    steps.push(`##Left-Hand Limit\n$f(${variable}) = ${exprToLatex(normalizeMathInput(leftPiece.formula))}$ for $${pieceDomainPhraseLatex(leftPiece, variable)}$:\n$$\\lim_{${variable}\\to ${xLatex}^-} f(${variable}) = ${leftLimit !== null ? exprToLatex(fmt(leftLimit)) : "\\text{DNE}"}$$`);
-  } else {
-    steps.push(`##Left-Hand Limit\n$$\\lim_{${variable}\\to ${xLatex}^-} f(${variable}) = \\text{DNE}$$\nNo piece covers this side.`);
-  }
-
-  let rightLimit: number | null = null;
-  if (rightPiece) {
-    rightLimit = computeLimit(rightPiece.formula, variable, x.toString(), "right", fmt).numericValue ?? null;
-    steps.push(`##Right-Hand Limit\n$f(${variable}) = ${exprToLatex(normalizeMathInput(rightPiece.formula))}$ for $${pieceDomainPhraseLatex(rightPiece, variable)}$:\n$$\\lim_{${variable}\\to ${xLatex}^+} f(${variable}) = ${rightLimit !== null ? exprToLatex(fmt(rightLimit)) : "\\text{DNE}"}$$`);
-  } else {
-    steps.push(`##Right-Hand Limit\n$$\\lim_{${variable}\\to ${xLatex}^+} f(${variable}) = \\text{DNE}$$\nNo piece covers this side.`);
-  }
+  type Side = { value: number | null; kind: "finite" | "infinite" | "dne" | "none"; tex: string };
+  const sideLimit = (piece: Piece | null, side: "left" | "right"): Side => {
+    const sg = side === "left" ? "-" : "+";
+    if (!piece) {
+      steps.push(`##${side === "left" ? "Left" : "Right"}-Hand Limit\n$$\\lim_{${variable}\\to ${xLatex}^${sg}} f(${variable}) = \\text{DNE}$$\nNo piece covers this side.`);
+      return { value: null, kind: "none", tex: "\\text{DNE}" };
+    }
+    const r = solveLimit(piece.formula, variable, String(x), side, fmt);
+    let out: Side;
+    if (r.error) out = { value: null, kind: "dne", tex: "\\text{DNE}" };
+    else if (r.kind === "finite") out = { value: r.numericValue ?? null, kind: "finite", tex: r.exactTex ?? num(r.numericValue as number) };
+    else if (r.kind === "infinite") out = { value: r.limitValue ?? null, kind: "infinite", tex: (r.limitValue as number) > 0 ? "\\infty" : "-\\infty" };
+    else out = { value: null, kind: "dne", tex: "\\text{DNE}" };
+    steps.push(`##${side === "left" ? "Left" : "Right"}-Hand Limit\n$f(${variable}) = ${exprToLatex(cleanExpression(piece.formula))}$ for $${pieceDomainPhraseLatex(piece, variable)}$\n$$\\lim_{${variable}\\to ${xLatex}^${sg}} f(${variable}) = ${out.tex}$$`);
+    return out;
+  };
+  const L = sideLimit(leftPiece, "left");
+  const R = sideLimit(rightPiece, "right");
 
   let atValue: number | null = null;
   if (atPiece) {
     atValue = evalPieceAt(atPiece, variable, x);
-    steps.push(`##Function Value\n$$f(${xLatex}) = ${atValue !== null ? exprToLatex(fmt(atValue)) : "\\text{undefined}"}$$`);
+    steps.push(`##Function Value\n$$f(${xLatex}) = ${atValue !== null ? num(atValue) : "\\text{undefined}"}$$`);
   } else {
     steps.push(`##Function Value\n$$f(${xLatex}) = \\text{undefined}$$\nNo piece includes $${variable} = ${xLatex}$.`);
   }
 
-  const limitsAgree = leftLimit !== null && rightLimit !== null && Math.abs(leftLimit - rightLimit) < 1e-4;
   let classification: Classification;
   let conclusion: string;
+  const tol = (a: number, b: number) => 1e-6 * (1 + Math.abs(a) + Math.abs(b));
 
-  if (leftLimit === null || rightLimit === null) {
+  if (L.kind === "none" || R.kind === "none") {
     classification = "none-nearby";
     conclusion = `One side has no piece — continuity is not defined at $${variable} = ${xLatex}$.`;
-  } else if (!limitsAgree) {
+  } else if (L.kind === "infinite" || R.kind === "infinite") {
+    classification = "infinite";
+    conclusion = `$$\\lim_{${variable}\\to ${xLatex}^-} f = ${L.tex}, \\qquad \\lim_{${variable}\\to ${xLatex}^+} f = ${R.tex}$$\n**Infinite discontinuity** (vertical asymptote) at $${variable} = ${xLatex}$.`;
+  } else if (L.kind === "dne" || R.kind === "dne") {
+    classification = "dne";
+    conclusion = `A one-sided limit does not exist here (the formula oscillates or isn't real-valued), so $f$ is **not continuous** at $${variable} = ${xLatex}$.`;
+  } else if (Math.abs((L.value as number) - (R.value as number)) > tol(L.value as number, R.value as number)) {
     classification = "jump";
-    conclusion = `$$${exprToLatex(fmt(leftLimit))} \\ne ${exprToLatex(fmt(rightLimit))}$$\n**Jump discontinuity** at $${variable} = ${xLatex}$.`;
-  } else if (atValue === null || Math.abs(atValue - leftLimit) > 1e-4) {
+    conclusion = `$$${L.tex} \\ne ${R.tex}$$\n**Jump discontinuity** at $${variable} = ${xLatex}$ (jump of ${num((R.value as number) - (L.value as number))}).`;
+  } else if (atValue === null || Math.abs(atValue - (L.value as number)) > tol(atValue, L.value as number)) {
     classification = "removable";
-    conclusion = `$$\\lim_{${variable}\\to ${xLatex}} f(${variable}) = ${exprToLatex(fmt(leftLimit))}, \\quad f(${xLatex}) = ${atValue === null ? "\\text{undefined}" : exprToLatex(fmt(atValue))}$$\n**Removable discontinuity** at $${variable} = ${xLatex}$.`;
+    conclusion = `$$\\lim_{${variable}\\to ${xLatex}} f(${variable}) = ${L.tex}, \\quad f(${xLatex}) = ${atValue === null ? "\\text{undefined}" : num(atValue)}$$\n**Removable discontinuity** at $${variable} = ${xLatex}$.`;
   } else {
     classification = "continuous";
-    conclusion = `$$\\lim_{${variable}\\to ${xLatex}^-} f = \\lim_{${variable}\\to ${xLatex}^+} f = f(${xLatex}) = ${exprToLatex(fmt(leftLimit))}$$\n**Continuous** at $${variable} = ${xLatex}$.`;
+    conclusion = `$$\\lim_{${variable}\\to ${xLatex}^-} f = \\lim_{${variable}\\to ${xLatex}^+} f = f(${xLatex}) = ${L.tex}$$\n**Continuous** at $${variable} = ${xLatex}$.`;
   }
   steps.push(`##Conclusion\n${conclusion}`);
 
-  return { x, leftPiece, rightPiece, atPiece, leftLimit, rightLimit, atValue, classification, steps };
+  return {
+    x, leftPiece, rightPiece, atPiece,
+    leftLimit: L.kind === "finite" ? L.value : null,
+    rightLimit: R.kind === "finite" ? R.value : null,
+    atValue, classification, steps,
+  };
 }
 
-// ── Graph building ───────────────────────────────────────────────────────────
-export function buildPiecewiseSeries(pieces: Piece[], variable: string, xMin: number, xMax: number, samples = 500): GraphSeries[] {
-  const segments: { x: number; y: number }[][] = [];
-  let current: { x: number; y: number }[] = [];
-  let currentId: string | null = null;
-
-  for (let i = 0; i <= samples; i++) {
-    const x = xMin + ((xMax - xMin) * i) / samples;
-    const piece = pieceForX(pieces, x);
-    const y = piece ? evalPieceAt(piece, variable, x) : null;
-    if (!piece || y === null) {
-      if (current.length > 1) segments.push(current);
-      current = [];
-      currentId = null;
-      continue;
-    }
-    if (piece.id !== currentId && current.length > 1) {
-      segments.push(current);
-      current = [];
-    }
-    currentId = piece.id;
-    current.push({ x, y });
-  }
-  if (current.length > 1) segments.push(current);
-
-  return segments.map((points, i) => ({ expr: `piece ${i + 1}`, points, color: "#6366f1" }));
-}
-
-export function buildBreakpointMarkers(pieces: Piece[], variable: string, breakpoints: number[]): { x: number; y: number; filled?: boolean }[] {
-  const markers: { x: number; y: number; filled?: boolean }[] = [];
-  const eps = 1e-6;
-  for (const x of breakpoints) {
-    const leftPiece = pieceForX(pieces, x - eps);
-    const rightPiece = pieceForX(pieces, x + eps);
-    const atPiece = pieceForX(pieces, x);
-
-    if (leftPiece) {
-      const y = evalPieceAt(leftPiece, variable, x);
-      if (y !== null) markers.push({ x, y, filled: atPiece?.id === leftPiece.id });
-    }
-    if (rightPiece && rightPiece.id !== leftPiece?.id) {
-      const y = evalPieceAt(rightPiece, variable, x);
-      if (y !== null) markers.push({ x, y, filled: atPiece?.id === rightPiece.id });
+/** Open/closed dots at each breakpoint: the limit from each side (hollow unless f actually takes it) and f(x) itself. */
+export function markersFromAnalyses(analyses: BreakpointAnalysis[]): PlotMarker[] {
+  const out: PlotMarker[] = [];
+  for (const a of analyses) {
+    const tol = (v: number) => 1e-6 * (1 + Math.abs(v));
+    const holds = (y: number) => a.atValue !== null && Math.abs(a.atValue - y) <= tol(y);
+    if (a.leftLimit !== null) out.push({ x: a.x, y: a.leftLimit, filled: holds(a.leftLimit) });
+    if (a.rightLimit !== null && (a.leftLimit === null || Math.abs(a.rightLimit - a.leftLimit) > tol(a.rightLimit))) out.push({ x: a.x, y: a.rightLimit, filled: holds(a.rightLimit) });
+    if (a.atValue !== null) {
+      const matches = [a.leftLimit, a.rightLimit].some((y) => y !== null && Math.abs(a.atValue! - y) <= tol(y));
+      if (!matches) out.push({ x: a.x, y: a.atValue, filled: true });
     }
   }
-  return markers;
+  return out;
 }
 
 const CLASSIFICATION_STYLE: Record<Classification, { label: string; className: string; Icon: typeof CheckCircle2 }> = {
   continuous: { label: "Continuous", className: "bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30", Icon: CheckCircle2 },
   jump: { label: "Jump Discontinuity", className: "bg-destructive/15 text-destructive border-destructive/30", Icon: XCircle },
   removable: { label: "Removable Discontinuity", className: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30", Icon: CircleDot },
+  infinite: { label: "Infinite Discontinuity", className: "bg-destructive/15 text-destructive border-destructive/30", Icon: XCircle },
+  dne: { label: "Limit Doesn't Exist", className: "bg-destructive/15 text-destructive border-destructive/30", Icon: XCircle },
   "none-nearby": { label: "Not Defined Nearby", className: "bg-muted text-muted-foreground border-border", Icon: XCircle },
 };
 
@@ -250,8 +271,6 @@ export function PiecewiseCalculator() {
   ]);
   const [evalPoint, setEvalPoint] = useState("2");
   const [analyses, setAnalyses] = useState<BreakpointAnalysis[]>([]);
-  const [series, setSeries] = useState<GraphSeries[]>([]);
-  const [markers, setMarkers] = useState<{ x: number; y: number; filled?: boolean }[]>([]);
   const [graphRange, setGraphRange] = useState<{ lo: number; hi: number }>({ lo: -10, hi: 10 });
   const [showSteps, setShowSteps] = useState(settings.showSteps);
 
@@ -274,19 +293,31 @@ export function PiecewiseCalculator() {
       hi = breakpoints[breakpoints.length - 1] + pad;
     }
     setGraphRange({ lo, hi });
-    setSeries(buildPiecewiseSeries(pieces, variable, lo, hi));
-    setMarkers(buildBreakpointMarkers(pieces, variable, breakpoints));
   }, [pieces, variable, fmt]);
 
   useAutoRun([pieces, variable, settings.numberForm, settings.decimalPlaces], recompute, settings.autoCalculate);
 
   const evalResult = useMemo(() => {
-    const x = parseFloat(evalPoint);
-    if (!isFinite(x)) return null;
+    const x = parseNumericInput(evalPoint);
+    if (!Number.isFinite(x)) return null;
     const piece = pieceForX(pieces, x);
     if (!piece) return { piece: null, y: null, x };
     return { piece, y: evalPieceAt(piece, variable, x), x };
   }, [evalPoint, pieces, variable]);
+
+  const plotFn = useMemo(() => makePiecewiseFn(pieces, variable), [pieces, variable]);
+  const plotSeries = useMemo(() => [{ fn: plotFn, label: `f(${variable})` }], [plotFn, variable]);
+  const plotMarkers = useMemo(() => markersFromAnalyses(analyses), [analyses]);
+  const plotRange = useMemo<[number, number]>(() => [graphRange.lo, graphRange.hi], [graphRange]);
+
+  const problemFor = (p: Piece): string | null => {
+    const cleaned = cleanExpression(p.formula);
+    if (p.formula.trim() === "") return null;
+    try { mjParse(cleaned); } catch { return "I couldn't read this formula — check the brackets and operators."; }
+    const extra = extractVariables(cleaned).filter((v) => v !== cleanVariable(variable) && v !== "e");
+    if (extra.length > 0) return `Unknown variable ${extra.join(", ")} — use only ${cleanVariable(variable)} (and constants like pi, e).`;
+    return null;
+  };
 
   return (
     <div className="space-y-6">
@@ -303,7 +334,7 @@ export function PiecewiseCalculator() {
         <CardContent className="space-y-4">
           <div className="w-24 space-y-1">
             <Label className="text-xs">Variable</Label>
-            <Input value={variable} onChange={(e) => setVariable(e.target.value || "x")} className="text-center font-mono" />
+            <Input value={variable} onChange={(e) => setVariable(cleanVariable(e.target.value, "x"))} className="text-center font-mono" />
           </div>
 
           <div className="space-y-2.5">
@@ -319,6 +350,7 @@ export function PiecewiseCalculator() {
                   <div className="flex-1 min-w-[9rem] space-y-1">
                     <Label className="text-[11px] text-muted-foreground">Piece {i + 1}: f({variable}) =</Label>
                     <MathInput value={p.formula} onChange={(v) => updatePiece(p.id, { formula: v })} placeholder="e.g. x^2" withKeypad={false} />
+                    {problemFor(p) && <p className="text-[11px] text-destructive">{problemFor(p)}</p>}
                   </div>
                   <div className="w-32 space-y-1">
                     <Label className="text-[11px] text-muted-foreground">Condition</Label>
@@ -329,6 +361,8 @@ export function PiecewiseCalculator() {
                         <SelectItem value="<=">{variable} {OP_LABEL["<="]} a</SelectItem>
                         <SelectItem value=">">{variable} {OP_LABEL[">"]} a</SelectItem>
                         <SelectItem value=">=">{variable} {OP_LABEL[">="]} a</SelectItem>
+                        <SelectItem value="=">{variable} {OP_LABEL["="]} a</SelectItem>
+                        <SelectItem value="!=">{variable} {OP_LABEL["!="]} a</SelectItem>
                         <SelectItem value="otherwise">otherwise</SelectItem>
                       </SelectContent>
                     </Select>
@@ -336,7 +370,12 @@ export function PiecewiseCalculator() {
                   {p.op !== "otherwise" && (
                     <div className="w-20 space-y-1">
                       <Label className="text-[11px] text-muted-foreground">a =</Label>
-                      <Input value={p.boundary} onChange={(e) => updatePiece(p.id, { boundary: e.target.value })} className="text-center font-mono h-9" />
+                      <Input
+                        value={p.boundary}
+                        onChange={(e) => updatePiece(p.id, { boundary: e.target.value })}
+                        className={`text-center font-mono h-9 ${p.boundary.trim() !== "" && !Number.isFinite(parseNumericInput(p.boundary)) ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                        placeholder="2, 1/2, pi"
+                      />
                     </div>
                   )}
                   <Button variant="ghost" size="icon" onClick={() => removePiece(p.id)} disabled={pieces.length <= 1} className="h-9 w-9 text-muted-foreground hover:text-destructive shrink-0">
@@ -395,8 +434,8 @@ export function PiecewiseCalculator() {
           <p className="text-xs text-muted-foreground">A filled dot is part of the graph; a hollow ring is a value the curve approaches but doesn't reach.</p>
         </CardHeader>
         <CardContent>
-          {series.length > 0 ? (
-            <GraphCanvas series={series} xMin={graphRange.lo} xMax={graphRange.hi} markers={markers} title={`f(${variable})`} downloadFilename="piecewise-function" />
+          {pieces.some((p) => p.formula.trim() !== "" && !problemFor(p)) ? (
+            <FunctionGraph series={plotSeries} variable={variable} xRange={plotRange} markers={plotMarkers} title={`f(${variable})`} downloadFilename="piecewise-function" />
           ) : (
             <p className="text-sm text-muted-foreground py-8 text-center">Enter at least one valid piece to see its graph.</p>
           )}
