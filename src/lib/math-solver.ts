@@ -1,18 +1,20 @@
 import {
-  derivative, parse as _mathjsParse, simplify, evaluate as _mathjsEvaluate, type MathNode,
+  derivative, parse as _mathjsParse, simplify, rationalize, evaluate as _mathjsEvaluate, type MathNode,
 } from "mathjs";
-import { toFraction, formatNumber, type FormatSettings } from "./number-format";
-import { normalizeMathInput } from "./text-normalize";
+import { formatNumber, type FormatSettings } from "./number-format";
+import { integrate1D, integrate2D, recognizeConstant, type IntegralStatus } from "./numeric-integrate";
+import { cleanExpression, cleanVariable, parseNumericInput } from "./expression-clean";
 import { exprToLatex, derivativeLatex, integralLatex, deepCleanNode } from "./latex";
+import { stripParens } from "./expr-parens";
 
 // Defense-in-depth: every string a person can type/paste (x², √25, x×y,
 // sin(θ)…) is normalized to plain ASCII math before mathjs ever sees it,
 // even if it somehow bypassed the input-field-level normalization.
 function parse(expr: string): MathNode {
-  return _mathjsParse(normalizeMathInput(expr));
+  return _mathjsParse(cleanExpression(expr));
 }
 function evaluate(expr: string, scope?: Record<string, unknown>): unknown {
-  const normalized = normalizeMathInput(expr);
+  const normalized = cleanExpression(expr);
   return scope !== undefined ? _mathjsEvaluate(normalized, scope) : _mathjsEvaluate(normalized);
 }
 
@@ -100,6 +102,19 @@ function assertNonEmptyExpression(expression: string): void {
   }
   if (depth !== 0) {
     throw new MathInputError("Please check your parentheses — they don't look balanced.");
+  }
+  const t = expression.trim();
+  if (/[+\-*/^]$/.test(t)) {
+    throw new MathInputError("The expression looks incomplete — it ends with an operator.");
+  }
+  if (/^[*/^]/.test(t)) {
+    throw new MathInputError("The expression can't start with * / or ^.");
+  }
+  if (/\(\s*\)/.test(t) && !/[A-Za-z]\w*\s*\(\s*\)/.test(t)) {
+    throw new MathInputError("There are empty parentheses — put something inside ( ).");
+  }
+  if (/[*/^]\s*[*/^]|\+\s*[*/^]|-\s*[*/^]/.test(t)) {
+    throw new MathInputError("Two operators are in a row — please check the expression.");
   }
 }
 
@@ -202,16 +217,6 @@ function toSimpleFraction(value: number, maxDenominator = 5000): string {
  *  strings are built with lots of explicit parens, skipping this step would
  *  make every asOperator()/asFunctionNode()/asSymbol() check below silently
  *  fail the moment it hit a wrapped node. */
-function stripParens(node: MathNode): MathNode {
-  if (node.type === "ParenthesisNode") {
-    return stripParens((node as unknown as { content: MathNode }).content);
-  }
-  if (typeof (node as unknown as { map?: unknown }).map === "function") {
-    return (node as unknown as { map: (fn: (n: MathNode) => MathNode) => MathNode }).map((child) => stripParens(child));
-  }
-  return node;
-}
-
 /** A signed additive term extracted from a +/- expression tree. */
 interface SignedTerm { sign: 1 | -1; node: MathNode; }
 
@@ -244,7 +249,11 @@ function isPureLiteralSubtree(node: MathNode, variable: string): boolean {
   let pure = true;
   node.traverse((n: MathNode) => {
     if (n.type === "FunctionNode") pure = false;
-    if (n.type === "SymbolNode" && (n as unknown as { name: string }).name === variable) pure = false;
+    if (n.type === "SymbolNode") {
+      const nm = (n as unknown as { name: string }).name;
+      // pi and e stay symbolic ("pi*x", not "3.141593*x"); only plain numbers fold.
+      if (nm === variable || nm === "pi" || nm === "e") pure = false;
+    }
   });
   return pure;
 }
@@ -365,7 +374,26 @@ function formatSignedTerm(coeff: number, rest: MathNode | null): { sign: 1 | -1;
  * string if anything about the expression doesn't fit this shape.
  */
 
+/** Strips harmless artefacts that hand-built antiderivative strings pick up: "(x + 0)", "exp(1 * x)", ")^1", "/ 1". */
+function cleanupArtifacts(str: string): string {
+  let t = str;
+  for (let i = 0; i < 3; i++) {
+    t = t
+      .replace(/\(([A-Za-z_]\w*) \+ 0\)/g, "$1")
+      .replace(/log\(abs\(exp\(([^()]*)\)\)\)/g, "($1)")
+      .replace(/log\(exp\(([^()]*)\)\)/g, "($1)")
+      .replace(/ \+ 0(?=\))/g, "")
+      .replace(/\(1 \* ([A-Za-z_]\w*)\)/g, "($1)")
+      .replace(/\b1 \* (?=[A-Za-z(])/g, "")
+      .replace(/\)\s*\^\s*1(?![\d.])/g, ")")
+      .replace(/\s*\/\s*1(?![\d.])/g, "")
+      .replace(/\* 1(?![\d.])/g, "");
+  }
+  return t;
+}
+
 function prettifyResult(exprString: string, variable: string): string {
+  exprString = cleanupArtifacts(exprString);
   try {
     // Deliberately parse WITHOUT calling mathjs's simplify() here — simplify()
     // eagerly evaluates constant function calls like log(2) into a decimal
@@ -414,6 +442,9 @@ export interface MathResult {
   /** Raw numeric value (when the result is a single number) so the UI can apply
    *  the user's Decimal/Fraction/Scientific display settings instead of a fixed format. */
   numericResult?: number;
+  /** A recognised closed form of numericResult (e.g. "π/2"), when there is one. */
+  exactText?: string;
+  exactTex?: string;
 }
 
 // Derivative solver
@@ -819,51 +850,93 @@ interface SymbolicIntegralResult {
  *  instead of jumping straight to a numerical approximation whenever a
  *  closed form actually exists. Returns null if no closed form is found —
  *  callers fall back to Simpson's Rule in that case, exactly as before. */
+/** Tries the integrand as written AND in mathjs-simplified form (each can expose patterns the other hides). */
+function integrateWithVariants(raw: MathNode, variable: string, steps: string[], budgetMs = 4000): { piece: IntegralPiece; node: MathNode } {
+  return withIntegrationBudget(budgetMs, () => integrateWithVariantsInner(raw, variable, steps));
+}
+
+function integrateWithVariantsInner(raw: MathNode, variable: string, steps: string[]): { piece: IntegralPiece; node: MathNode } {
+  const variants: MathNode[] = [];
+  try { variants.push(simplify(raw)); } catch { /* ignore */ }
+  variants.push(raw);
+  for (const v of variants) {
+    const buf: string[] = [];
+    let piece: IntegralPiece = null;
+    try { piece = integrateNode(v, variable, buf); } catch { piece = null; }
+    if (piece) { steps.push(...buf); return { piece, node: v }; }
+  }
+  return { piece: null, node: raw };
+}
+
 function trySymbolicIntegral(node: MathNode, variable: string, label: string = "F"): SymbolicIntegralResult | null {
   const bodySteps: string[] = [];
-  const piece = integrateNode(node, variable, bodySteps);
+  const { piece } = integrateWithVariants(node, variable, bodySteps);
   if (!piece) return null;
   const steps: string[] = [];
-  const ruleNames = extractRuleNames(bodySteps);
-  if (ruleNames.length > 1) {
-    steps.push(`##Approach\nUsing **${ruleNames.join("**, **")}**.`);
-  }
   steps.push(...bodySteps);
   const antiderivativePretty = prettifyResult(piece.antiderivative, variable);
   steps.push(`##Antiderivative\n$$${label}(${variable}) = ${exprToLatex(antiderivativePretty)}$$`);
   return { antiderivativePretty, steps };
 }
 
-/** Scans already-generated steps for their "##Header" names and returns the
- *  like "Given" or "Final Answer") — used to build a one-line "Approach"
- *  overview before diving into the step-by-step work, the way a textbook
- *  solution names which rules it's about to use before applying them. */
-function extractRuleNames(steps: string[]): string[] {
-  const skip = new Set([
-    "Given", "Goal", "Final Answer", "Combine the Results", "Combine Everything",
-    "Add the Constant of Integration", "Verify", "Method: Simpson's Rule", "Result",
-    "Separate the Terms", "Beyond This Solver", "No Critical Points", "Step 1 — Find Critical Points",
-  ]);
-  // Internal mechanics of a single rule (the individual moves of a chain
-  // rule: name the composition, differentiate outer, differentiate inner,
-  // combine) are NOT separate rules — listing them in the "Approach" line
-  // just restated every upcoming step header back to the reader.
-  const chainRuleSubSteps = new Set([
-    "Differentiate the Outer Function", "Differentiate the Inner Function", "Combine via the Chain Rule",
-  ]);
-  const seen = new Set<string>();
-  const names: string[] = [];
-  for (const s of steps) {
-    if (!s.startsWith("##")) continue;
-    const nl = s.indexOf("\n");
-    let header = (nl === -1 ? s.slice(2) : s.slice(2, nl)).trim();
-    if (header.startsWith("Chain Rule")) header = "Chain Rule";
-    if (chainRuleSubSteps.has(header) || header.startsWith("Derivative of ") || header.startsWith("Differentiation ")) continue;
-    if (skip.has(header) || header.length > 60 || seen.has(header)) continue;
-    seen.add(header);
-    names.push(header);
-  }
-  return names;
+
+// ── differentiation pre-processing ───────────────────────────────────────────
+/** log10(u), log2(u), log(u, b)  →  ln(u)/ln(10), ln(u)/ln(2), ln(u)/ln(b): exact, differentiable forms. */
+function rewriteLogBases(node: MathNode): MathNode {
+  return node.transform((n: MathNode, path: string) => {
+    if (path === "fn") return n;
+    const fn = asFunctionNode(n);
+    if (!fn) return n;
+    if (fn.fn.name === "log10" && fn.args.length === 1) return parse(`log(${fn.args[0].toString()})/log(10)`);
+    if (fn.fn.name === "log2" && fn.args.length === 1) return parse(`log(${fn.args[0].toString()})/log(2)`);
+    if (fn.fn.name === "log" && fn.args.length === 2) return parse(`log(${fn.args[0].toString()})/log(${fn.args[1].toString()})`);
+    return n;
+  });
+}
+
+/** log(10), log(2), … are exact constants; keep them symbolic so simplify() doesn't turn 1/ln(10) into 0.4342…. */
+function maskLogConstants(node: MathNode, variable: string[]): { node: MathNode; map: Map<string, string> } {
+  const map = new Map<string, string>();
+  let counter = 0;
+  const masked = node.transform((n: MathNode, path: string) => {
+    if (path === "fn") return n;
+    const fn = asFunctionNode(n);
+    if (fn && fn.fn.name === "log" && fn.args.length === 1 && variable.every((v) => isConstantExpr(n, v))) {
+      const key = n.toString();
+      let sym = [...map.entries()].find(([, v]) => v === key)?.[0];
+      if (!sym) { sym = `LOGC${++counter}Z`; map.set(sym, key); }
+      return parse(sym);
+    }
+    return n;
+  });
+  return { node: masked, map };
+}
+
+const STEP_FUNCTIONS = new Set(["floor", "ceil", "round", "fix", "sign"]);
+
+/** Step functions (floor, ceil, round, sign) are flat between their jumps, so for
+ *  differentiation they behave like constants: swap them for placeholder symbols. */
+function maskStepFunctions(node: MathNode): { node: MathNode; map: Map<string, string>; used: boolean } {
+  const map = new Map<string, string>();
+  let counter = 0;
+  const masked = node.transform((n: MathNode, path: string) => {
+    if (path === "fn") return n;
+    const fn = asFunctionNode(n);
+    if (fn && STEP_FUNCTIONS.has(fn.fn.name) && fn.args.length >= 1) {
+      const key = n.toString();
+      let sym = [...map.entries()].find(([, v]) => v === key)?.[0];
+      if (!sym) { sym = `STEPFN${++counter}Z`; map.set(sym, key); }
+      return parse(sym);
+    }
+    return n;
+  });
+  return { node: masked, map, used: map.size > 0 };
+}
+
+function restoreStepFunctions(text: string, map: Map<string, string>, latex = false): string {
+  let out = text;
+  for (const [sym, original] of map) out = out.split(sym).join(latex ? exprToLatex(original) : `(${original.replace(/\blog\(/g, "ln(")})`);
+  return out;
 }
 
 export function solveDerivative(
@@ -871,20 +944,32 @@ export function solveDerivative(
   variable: string = "x"
 ): MathResult {
   try {
+    expression = cleanExpression(expression);
+    variable = cleanVariable(variable);
     assertNonEmptyExpression(expression);
-    const node = parse(expression);
+    const given = parse(expression);
     const steps: string[] = [];
     const bodySteps: string[] = [];
 
-    steps.push(`##Given\n$$f(${variable}) = ${exprToLatex(node.toString())}$$`);
+    steps.push(`##Given\n$$f(${variable}) = ${exprToLatex(given.toString())}$$`);
+
+    const logMask = maskLogConstants(rewriteLogBases(given), [variable]);
+    const masking = maskStepFunctions(logMask.node);
+    const node = masking.node;
+    if (masking.used) {
+      const final = restoreStepFunctions(restoreStepFunctions(prettifyResult(simplify(derivative(node, variable)).toString(), variable), masking.map), logMask.map);
+      steps.push(`##Step Function\nfloor, ceiling, round and sign are flat between their jumps, so their derivative is $0$ (undefined exactly at a jump).`);
+      steps.push(`##Final Answer\n$$f'(${variable}) = ${exprToLatex(final)}$$`);
+      return { input: expression, result: final, steps };
+    }
 
     narrateDerivativeTop(node, variable, bodySteps);
 
-    steps.push(...bodySteps);
+    steps.push(...bodySteps.map((st) => restoreStepFunctions(st, logMask.map, true)));
 
     const deriv = derivative(node, variable);
     const simplified = simplify(deriv);
-    const prettyFinal = prettifyResult(simplified.toString(), variable);
+    const prettyFinal = restoreStepFunctions(prettifyResult(simplified.toString(), variable), logMask.map);
 
     steps.push(`##Final Answer\n$$f'(${variable}) = ${exprToLatex(prettyFinal)}$$`);
 
@@ -901,23 +986,38 @@ export function solveNthDerivative(
   order: number = 1
 ): MathResult {
   try {
+    expression = cleanExpression(expression);
+    variable = cleanVariable(variable);
     assertNonEmptyExpression(expression);
     if (!Number.isInteger(order) || order < 1) {
       throw new MathInputError("Please enter a whole number order of 1 or higher.");
     }
     const steps: string[] = [];
-    let current = parse(expression);
-    steps.push(`##Given\n$$f(${variable}) = ${exprToLatex(current.toString())}$$`);
+    const givenN = parse(expression);
+    const logMaskN = maskLogConstants(rewriteLogBases(givenN), [variable]);
+    const maskedN = maskStepFunctions(logMaskN.node);
+    let current = maskedN.node;
+    steps.push(`##Given\n$$f(${variable}) = ${exprToLatex(givenN.toString())}$$`);
+    if (maskedN.used) {
+      let cur = current;
+      for (let i = 1; i <= order; i++) cur = simplify(derivative(cur, variable));
+      const final = restoreStepFunctions(restoreStepFunctions(prettifyResult(cur.toString(), variable), maskedN.map), logMaskN.map);
+      steps.push(`##Step Function\nfloor, ceiling, round and sign are flat between their jumps, so their derivative is $0$ (undefined exactly at a jump).`);
+      steps.push(`##Final Answer\n$$f^{(${order})}(${variable}) = ${exprToLatex(final)}$$`);
+      return { input: expression, result: final, steps };
+    }
 
     for (let i = 1; i <= order; i++) {
-      steps.push(`##Differentiation ${i} of ${order}\n$$f^{(${i - 1})}(${variable}) = ${exprToLatex(prettifyResult(current.toString(), variable))}$$`);
-      narrateDerivativeTop(current, variable, steps);
+      const buf: string[] = [];
+      buf.push(`##Differentiation ${i} of ${order}\n$$f^{(${i - 1})}(${variable}) = ${exprToLatex(prettifyResult(current.toString(), variable))}$$`);
+      narrateDerivativeTop(current, variable, buf);
+      steps.push(...buf.map((st) => restoreStepFunctions(st, logMaskN.map, true)));
       const deriv = derivative(current, variable);
       const simplified = simplify(deriv);
       current = simplified;
     }
 
-    const finalPretty = prettifyResult(current.toString(), variable);
+    const finalPretty = restoreStepFunctions(prettifyResult(current.toString(), variable), logMaskN.map);
     steps.push(`##Final Answer\n$$f^{(${order})}(${variable}) = ${exprToLatex(finalPretty)}$$`);
 
     return { input: expression, result: finalPretty, steps };
@@ -926,228 +1026,306 @@ export function solveNthDerivative(
   }
 }
 
-// Numerical integration using Simpson's rule
+// ─────────────────────────────────────────────────────────────────────────────
+// Definite & double integrals.
+//
+// Strategy: closed form first (rule-based antiderivative + Fundamental Theorem),
+// but ALWAYS cross-checked against an adaptive numerical integral so a wrong
+// closed form (e.g. an antiderivative that blows up inside the interval) is
+// never shown as the answer. Improper integrals (infinite limits, endpoint
+// singularities) and integrals with no elementary antiderivative are handled
+// by the numerical engine, which also reports honestly when an integral
+// diverges or has no real value.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const KNOWN_CONSTANTS = new Set(["pi", "e", "tau", "Infinity", "NaN"]);
+
+/** Throws a friendly error if the expression uses a symbol other than `allowed` (and constants like pi, e). */
+function assertOnlyKnownSymbols(node: MathNode, allowed: string[]): void {
+  const bad = new Set<string>();
+  node.traverse((n: MathNode, path: string) => {
+    if (n.type !== "SymbolNode") return;
+    const name = (n as unknown as { name: string }).name;
+    if (path === "fn") return;
+    if (!allowed.includes(name) && !KNOWN_CONSTANTS.has(name)) bad.add(name);
+  });
+  if (bad.size > 0) {
+    const list = [...bad].join(", ");
+    throw new MathInputError(
+      `Unknown symbol${bad.size > 1 ? "s" : ""} "${list}". A numeric integral can only contain the variable${allowed.length > 1 ? "s" : ""} ${allowed.join(", ")} (and constants like pi, e).`,
+    );
+  }
+}
+
+/** Compiles a node into a plain numeric function; anything non-real becomes NaN. */
+function compileReal(node: MathNode, vars: string[]): (...xs: number[]) => number {
+  const code = node.compile();
+  const scope: Record<string, number> = {};
+  return (...xs: number[]) => {
+    vars.forEach((v, i) => { scope[v] = xs[i]; });
+    let r: unknown;
+    try { r = code.evaluate(scope); } catch { return NaN; }
+    return typeof r === "number" ? r : NaN;
+  };
+}
+
+function boundLatex(b: number, label?: string): string {
+  if (label && label.trim()) {
+    const cleaned = cleanExpression(label);
+    if (cleaned && !/^[+-]?\d+(\.\d+)?$/.test(cleaned)) {
+      try { return exprToLatex(cleaned); } catch { /* fall through */ }
+    }
+  }
+  if (b === Infinity) return "\\infty";
+  if (b === -Infinity) return "-\\infty";
+  const rec = Number.isFinite(b) ? recognizeConstant(b) : null;
+  return rec && /pi|e/.test(rec.tex) ? rec.tex : fmtNum(b);
+}
+
+/** Replaces a whole-word variable by a full-precision numeric value (for evaluation). */
+function substituteForEval(exprStr: string, varName: string, value: number): string {
+  const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return exprStr.replace(new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_(])`, "g"), `(${Number.isFinite(value) ? value.toPrecision(17) : String(value)})`);
+}
+
+/** Replaces a whole-word variable by an arbitrary expression string. */
+function substituteExpr(exprStr: string, varName: string, replacement: string): string {
+  const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return exprStr.replace(new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_(])`, "g"), `(${replacement})`);
+}
+
+interface ValueSummary {
+  step: string;
+  result: string;
+  numericResult: number;
+  exactTex?: string;
+  exactText?: string;
+}
+
+/** Formats the final number: closed-form recognition (π/2, 1 − π/4, …) plus the user's number format. */
+function summarizeValue(value: number, trustedExact: boolean, settings: FormatSettings): ValueSummary {
+  const v = Math.abs(value) < 1e-12 ? 0 : value;
+  const rounded = Math.round(v * EPS_ROUND) / EPS_ROUND;
+  const rec = trustedExact ? recognizeConstant(v) : null;
+  const shown = formatNumber(rounded, settings);
+  const isInt = rec && /^-?\d+$/.test(rec.text);
+  let step: string;
+  if (rec && isInt) step = `##Result\n$$${rec.tex}$$`;
+  else if (rec) step = `##Result\n$$${rec.tex} \\approx ${shown}$$`;
+  else step = `##Result\n$$${trustedExact ? "" : "\\approx "}${shown}$$`;
+  return {
+    step,
+    result: rounded.toString(),
+    numericResult: rounded,
+    exactTex: rec && !isInt ? rec.tex : undefined,
+    exactText: rec && !isInt ? rec.text : undefined,
+  };
+}
+
+function numericProblem(status: IntegralStatus, context: string): MathInputError | null {
+  if (status === "ok") return null;
+  if (status === "diverges") return new MathInputError(`${context} diverges — it grows without bound, so it has no finite value.`);
+  if (status === "undefined") return new MathInputError(`${context} isn't a real number on this range (for example the square root or logarithm of a negative number).`);
+  return new MathInputError(`${context} doesn't converge — the integrand oscillates or decays too slowly for a finite value to be found.`);
+}
+
 export function solveDefiniteIntegral(
   expression: string,
   variable: string = "x",
   lower: number,
   upper: number,
-  n: number = 1000,
-  settings: FormatSettings = DEFAULT_FORMAT_SETTINGS
+  _n: number = 1000,
+  settings: FormatSettings = DEFAULT_FORMAT_SETTINGS,
+  labels?: { lower?: string; upper?: string },
 ): MathResult {
   try {
+    expression = cleanExpression(expression);
+    variable = cleanVariable(variable);
     assertNonEmptyExpression(expression);
-    assertFiniteBound(lower, "lower bound");
-    assertFiniteBound(upper, "upper bound");
+    if (typeof lower !== "number" || Number.isNaN(lower)) throw new MathInputError("Please enter a valid lower bound (a number, or something like pi/2, 1/3, -inf).");
+    if (typeof upper !== "number" || Number.isNaN(upper)) throw new MathInputError("Please enter a valid upper bound (a number, or something like pi/2, 1/3, inf).");
+
+    const node = parse(expression);
+    assertOnlyKnownSymbols(node, [variable]);
+    const lowL = boundLatex(lower, labels?.lower);
+    const upL = boundLatex(upper, labels?.upper);
+    const improper = !Number.isFinite(lower) || !Number.isFinite(upper);
 
     const steps: string[] = [];
-    steps.push(`##Given\n$$\\int_{${fmtNum(lower)}}^{${fmtNum(upper)}} ${exprToLatex(expression)}\\,d${variable}$$`);
+    steps.push(`##Given\n$$\\int_{${lowL}}^{${upL}} ${exprToLatex(expression)}\\,d${variable}$$`);
 
-    // Try for an exact answer first: find a closed-form antiderivative with
-    // the same rule-based integrator behind Indefinite Integration, then
-    // apply the Fundamental Theorem of Calculus. Simpson's Rule below is a
-    // fallback for integrals with no elementary closed form — not the
-    // default for every integral.
-    const node = simplify(parse(expression));
-    const symbolic = trySymbolicIntegral(node, variable);
-    if (symbolic) {
-      const atUpperStr = substituteNumeric(symbolic.antiderivativePretty, variable, upper);
-      const atLowerStr = substituteNumeric(symbolic.antiderivativePretty, variable, lower);
-      let atUpperVal = NaN, atLowerVal = NaN;
-      try { atUpperVal = evaluate(atUpperStr) as number; } catch { /* domain issue — fall back below */ }
-      try { atLowerVal = evaluate(atLowerStr) as number; } catch { /* domain issue — fall back below */ }
-
-      if (typeof atUpperVal === "number" && typeof atLowerVal === "number" && isFinite(atUpperVal) && isFinite(atLowerVal)) {
-        const result = atUpperVal - atLowerVal;
-        assertUsableNumber(result, "This integral");
-        steps.push(...symbolic.steps);
-        steps.push(`##Apply the Fundamental Theorem of Calculus\n$$\\int_{${fmtNum(lower)}}^{${fmtNum(upper)}} ${exprToLatex(expression)}\\,d${variable} = F(${fmtNum(upper)}) - F(${fmtNum(lower)})$$`);
-        steps.push(`##Evaluate at the Bounds\n$$F(${fmtNum(upper)}) - F(${fmtNum(lower)}) = ${exprToLatex(atUpperStr)} - \\left(${exprToLatex(atLowerStr)}\\right) = ${fmtNum(atUpperVal)} - (${fmtNum(atLowerVal)})$$`);
-
-        const rounded = Math.round(result * EPS_ROUND) / EPS_ROUND;
-        if (Math.abs(result - Math.round(result)) < EPS) {
-          steps.push(`##Result\n$$${formatNumber(Math.round(result), settings)} \\quad \\text{(exact)}$$`);
-        } else {
-          const frac = toFraction(result, 1000);
-          const isNiceFraction = frac.includes("/") && Math.abs(evaluateFractionString(frac) - result) < 1e-5;
-          steps.push(`##Result\n$$${formatNumber(rounded, settings)}${isNiceFraction ? `\\quad(= ${frac})` : ""}$$`);
-        }
-
-        return { input: expression, result: rounded.toString(), steps, numericResult: rounded };
-      }
+    if (lower === upper) {
+      steps.push(`##Equal Bounds\n$$\\int_{a}^{a} f\\,d${variable} = 0$$`);
+      const s = summarizeValue(0, true, settings);
+      steps.push(s.step);
+      return { input: expression, result: s.result, steps, numericResult: 0 };
     }
 
-    // Fallback: no elementary closed form was found (or it hits a domain
-    // issue at one of the bounds) — approximate numerically instead.
-    if (n % 2 !== 0) n++;
-    const h = (upper - lower) / n;
+    const f = compileReal(node, [variable]);
+    const num = integrate1D(f, lower, upper);
+    const trouble = numericProblem(num.status, "This integral");
 
-    let sum = 0;
-    const scope: Record<string, number> = {};
-
-    for (let i = 0; i <= n; i++) {
-      const xi = lower + i * h;
-      scope[variable] = xi;
-      const fxi = evaluate(expression, scope) as number;
-      if (i === 0 || i === n) sum += fxi;
-      else if (i % 2 === 0) sum += 2 * fxi;
-      else sum += 4 * fxi;
-    }
-
-    const result = (h / 3) * sum;
-    assertUsableNumber(result, "This integral");
-
-    steps.push(`##No Elementary Antiderivative\nNo closed-form antiderivative exists — approximate with Simpson's Rule: split $[${fmtNum(lower)}, ${fmtNum(upper)}]$ into $n=${n}$ strips of width $h=${h.toFixed(6)}$, fitting a parabola through each triple of points.\n$$\\int_a^b f(${variable})\\,d${variable} \\approx \\frac{h}{3}\\Big[f(a) + 4f(x_1) + 2f(x_2) + \\cdots + f(b)\\Big]$$`);
-
-    const rounded = Math.round(result * EPS_ROUND) / EPS_ROUND;
-    if (Math.abs(result - Math.round(result)) < EPS) {
-      steps.push(`##Result\n$$${formatNumber(Math.round(result), settings)} \\quad \\text{(exact)}$$`);
-    } else {
-      const frac = toFraction(result, 1000);
-      const isNiceFraction = frac.includes("/") && Math.abs(evaluateFractionString(frac) - result) < 1e-5;
-      steps.push(`##Result\n$$\\approx ${formatNumber(rounded, settings)}${isNiceFraction ? `\\quad(= ${frac})` : ""}$$`);
-    }
-
-    return { input: expression, result: rounded.toString(), steps, numericResult: rounded };
-  } catch (e: unknown) {
-    return { input: expression, result: "", steps: [], error: describeError(e) };
-  }
-}
-
-function evaluateFractionString(frac: string): number {
-  try {
-    const parts = frac.trim().split(" ");
-    if (parts.length === 2) {
-      const whole = parseFloat(parts[0]);
-      const [n, d] = parts[1].split("/").map(Number);
-      return whole + n / d;
-    }
-    if (frac.includes("/")) {
-      const [n, d] = frac.split("/").map(Number);
-      return n / d;
-    }
-    return parseFloat(frac);
-  } catch {
-    return NaN;
-  }
-}
-
-// Double integral: try a fully symbolic iterated integral first (inner
-// integral w.r.t. y treating x as a constant, substitute the y-bounds, then
-// the outer integral w.r.t. x) — reusing the same rule-based integrator and
-// step narration as Indefinite Integration. Falls back to 2D Simpson's Rule
-// only when a closed form genuinely isn't found at either stage.
-export function solveDoubleIntegral(
-  expression: string,
-  varX: string,
-  varY: string,
-  xLower: number,
-  xUpper: number,
-  yLower: number,
-  yUpper: number,
-  n: number = 100,
-  settings: FormatSettings = DEFAULT_FORMAT_SETTINGS
-): MathResult {
-  try {
-    assertNonEmptyExpression(expression);
-    assertFiniteBound(xLower, `${varX || "x"} lower bound`);
-    assertFiniteBound(xUpper, `${varX || "x"} upper bound`);
-    assertFiniteBound(yLower, `${varY || "y"} lower bound`);
-    assertFiniteBound(yUpper, `${varY || "y"} upper bound`);
-    if (!varX.trim() || !varY.trim()) {
-      throw new MathInputError("Please enter both variable names.");
-    }
-    if (varX.trim() === varY.trim()) {
-      throw new MathInputError("The two variables must be different (e.g. x and y).");
-    }
-
-    const steps: string[] = [];
-    steps.push(`##Given\n$$\\iint_R ${exprToLatex(expression)}\\;d${varY}\\,d${varX}$$\nRegion: $${varX} \\in [${fmtNum(xLower)}, ${fmtNum(xUpper)}]$, $${varY} \\in [${fmtNum(yLower)}, ${fmtNum(yUpper)}]$.`);
-    steps.push(`##Set Up as an Iterated Integral\nIntegrate with respect to $${varY}$ first (holding $${varX}$ fixed), then $${varX}$:\n$$\\int_{${fmtNum(xLower)}}^{${fmtNum(xUpper)}}\\left(\\int_{${fmtNum(yLower)}}^{${fmtNum(yUpper)}} ${exprToLatex(expression)}\\,d${varY}\\right)d${varX}$$`);
-
-    const node = simplify(parse(expression));
-    const innerSymbolic = trySymbolicIntegral(node, varY);
-
-    if (innerSymbolic) {
-      let gPretty: string | null = null;
-      try {
-        const atUpperStr = substituteNumeric(innerSymbolic.antiderivativePretty, varY, yUpper);
-        const atLowerStr = substituteNumeric(innerSymbolic.antiderivativePretty, varY, yLower);
-        const gNode = simplify(parse(`(${atUpperStr}) - (${atLowerStr})`));
-        gPretty = prettifyResult(gNode.toString(), varX);
-
-        steps.push(`##Inner Integral (with respect to ${varY})\nTreat $${varX}$ as a constant:`);
-        steps.push(...innerSymbolic.steps);
-        steps.push(`##Evaluate at the ${varY}-Bounds\n$$\\Big[F(${varX},${varY})\\Big]_{${varY}=${fmtNum(yLower)}}^{${varY}=${fmtNum(yUpper)}} = ${exprToLatex(gPretty)}$$`);
-      } catch {
-        gPretty = null;
-      }
-
-      if (gPretty !== null) {
-        const outerSymbolic = trySymbolicIntegral(simplify(parse(gPretty)), varX, "G");
-        if (outerSymbolic) {
-          try {
-            const atXUpperStr = substituteNumeric(outerSymbolic.antiderivativePretty, varX, xUpper);
-            const atXLowerStr = substituteNumeric(outerSymbolic.antiderivativePretty, varX, xLower);
-            const atXUpperVal = evaluate(atXUpperStr) as number;
-            const atXLowerVal = evaluate(atXLowerStr) as number;
-            if (typeof atXUpperVal === "number" && typeof atXLowerVal === "number" && isFinite(atXUpperVal) && isFinite(atXLowerVal)) {
-              const result = atXUpperVal - atXLowerVal;
-              assertUsableNumber(result, "This double integral");
-              const rounded = Math.round(result * EPS_ROUND) / EPS_ROUND;
-
-              steps.push(`##Outer Integral (with respect to ${varX})`);
-              steps.push(...outerSymbolic.steps);
-              steps.push(`##Evaluate at the ${varX}-Bounds\n$$G(${fmtNum(xUpper)}) - G(${fmtNum(xLower)}) = ${exprToLatex(atXUpperStr)} - \\left(${exprToLatex(atXLowerStr)}\\right) = ${fmtNum(atXUpperVal)} - (${fmtNum(atXLowerVal)})$$`);
-              if (Math.abs(result - Math.round(result)) < EPS) {
-                steps.push(`##Result\n$$${formatNumber(Math.round(result), settings)} \\quad \\text{(exact)}$$`);
-              } else {
-                steps.push(`##Result\n$$${formatNumber(rounded, settings)}$$`);
-              }
-
-              return { input: expression, result: rounded.toString(), steps, numericResult: rounded };
-            }
-          } catch {
-            // domain issue evaluating the outer bounds — fall through to numeric
+    // 1) Closed form (finite bounds only), validated against the numeric value.
+    if (!improper) {
+      const symbolic = trySymbolicIntegral(node, variable);
+      if (symbolic) {
+        const atUpperStr = substituteForEval(symbolic.antiderivativePretty, variable, upper);
+        const atLowerStr = substituteForEval(symbolic.antiderivativePretty, variable, lower);
+        let atUpperVal = NaN, atLowerVal = NaN;
+        try { atUpperVal = evaluate(atUpperStr) as number; } catch { /* domain issue */ }
+        try { atLowerVal = evaluate(atLowerStr) as number; } catch { /* domain issue */ }
+        if (typeof atUpperVal === "number" && typeof atLowerVal === "number" && isFinite(atUpperVal) && isFinite(atLowerVal)) {
+          const value = atUpperVal - atLowerVal;
+          const agrees = num.status === "ok" && Math.abs(value - num.value) <= 1e-6 * Math.max(1, Math.abs(num.value));
+          if (agrees) {
+            const upDisp = substituteExpr(symbolic.antiderivativePretty, variable, cleanExpression(labels?.upper || "") || fmtNum(upper));
+            const loDisp = substituteExpr(symbolic.antiderivativePretty, variable, cleanExpression(labels?.lower || "") || fmtNum(lower));
+            steps.push(...symbolic.steps);
+            steps.push(`##Fundamental Theorem of Calculus\n$$\\int_{${lowL}}^{${upL}} f\\,d${variable} = F(${upL}) - F(${lowL})$$`);
+            steps.push(`##Evaluate at the Bounds\n$$F(${upL}) - F(${lowL}) = ${exprToLatex(upDisp)} - \\left(${exprToLatex(loDisp)}\\right)$$`);
+            const s = summarizeValue(num.value !== 0 ? value : 0, true, settings);
+            steps.push(s.step);
+            return { input: expression, result: s.result, steps, numericResult: s.numericResult, exactTex: s.exactTex, exactText: s.exactText };
           }
         }
       }
     }
 
-    // Fallback: 2D Simpson's Rule, for integrands with no elementary closed
-    // form (or where evaluating a closed form hits a domain issue).
-    const numericSteps: string[] = [...steps, `##No Elementary Antiderivative\nAt least one stage has no closed form — approximate numerically with Simpson's Rule on both $${varX}$ and $${varY}$.`];
+    if (trouble) throw trouble;
 
-    if (n % 2 !== 0) n++;
-    const hx = (xUpper - xLower) / n;
-    const hy = (yUpper - yLower) / n;
+    // 2) Numerical (no closed form, improper, or the closed form disagreed with the numeric check).
+    if (improper) {
+      const lim = (b: number, tex: string) => (Number.isFinite(b) ? "" : tex);
+      const definition = !Number.isFinite(lower) && !Number.isFinite(upper)
+        ? `\\lim_{A\\to-\\infty}\\lim_{B\\to\\infty}\\int_{A}^{B} f\\,d${variable}`
+        : !Number.isFinite(upper)
+          ? `\\lim_{B\\to\\infty}\\int_{${lowL}}^{B} f\\,d${variable}`
+          : `\\lim_{A\\to-\\infty}\\int_{A}^{${upL}} f\\,d${variable}`;
+      void lim;
+      steps.push(`##Improper Integral\n$$\\int_{${lowL}}^{${upL}} f\\,d${variable} = ${definition}$$`);
+      steps.push(`##Converges\nThe limit exists, so the integral converges. Evaluated numerically (adaptive Gauss–Kronrod).`);
+    } else {
+      steps.push(`##${num.status === "ok" ? "No Closed Form — " : ""}Numerical Integration\n$$\\int_{${lowL}}^{${upL}} f\\,d${variable} \\approx \\sum_i w_i\\, f(x_i)$$\nAdaptive Gauss–Kronrod, error ≈ ${num.error < 1e-14 ? "10⁻¹⁴" : num.error.toExponential(1)}.`);
+    }
+    const trusted = num.error < 1e-8 * (1 + Math.abs(num.value));
+    const s = summarizeValue(num.value, trusted, settings);
+    steps.push(s.step);
+    return { input: expression, result: s.result, steps, numericResult: s.numericResult, exactTex: s.exactTex, exactText: s.exactText };
+  } catch (e: unknown) {
+    return { input: expression, result: "", steps: [], error: describeError(e) };
+  }
+}
 
-    let totalSum = 0;
-    const scope: Record<string, number> = {};
+type YBound = { kind: "const"; value: number; label: string } | { kind: "expr"; str: string; node: MathNode };
 
-    for (let i = 0; i <= n; i++) {
-      const xi = xLower + i * hx;
-      scope[varX] = xi;
-      const wx = i === 0 || i === n ? 1 : i % 2 === 0 ? 2 : 4;
+// Double integral ∬ f dy dx over a region: x from a to b (constants), y from
+// g1(x) to g2(x) (constants or expressions in x). Closed form first (inner
+// integral in y, then outer in x), cross-checked against nested adaptive
+// quadrature; numerical fallback handles everything else, including infinite
+// regions such as the Gaussian.
+export function solveDoubleIntegral(
+  expression: string,
+  varX: string,
+  varY: string,
+  xLower: number | string,
+  xUpper: number | string,
+  yLower: number | string,
+  yUpper: number | string,
+  _n: number = 100,
+  settings: FormatSettings = DEFAULT_FORMAT_SETTINGS,
+): MathResult {
+  try {
+    expression = cleanExpression(expression);
+    varX = cleanVariable(varX, "x");
+    varY = cleanVariable(varY, "y");
+    assertNonEmptyExpression(expression);
+    if (varX === varY) throw new MathInputError("The two variables must be different (e.g. x and y).");
 
-      for (let j = 0; j <= n; j++) {
-        const yj = yLower + j * hy;
-        scope[varY] = yj;
-        const wy = j === 0 || j === n ? 1 : j % 2 === 0 ? 2 : 4;
+    const asNumber = (b: number | string, label: string): number => {
+      const v = typeof b === "number" ? b : parseNumericInput(b);
+      if (Number.isNaN(v)) throw new MathInputError(`Please enter a valid ${label} (a number, or something like pi/2, 1/3, inf).`);
+      return v;
+    };
+    const xLo = asNumber(xLower, `${varX} lower bound`);
+    const xHi = asNumber(xUpper, `${varX} upper bound`);
 
-        const fval = evaluate(expression, scope) as number;
-        totalSum += wx * wy * fval;
+    const asYBound = (b: number | string, label: string): YBound => {
+      if (typeof b === "number") {
+        if (Number.isNaN(b)) throw new MathInputError(`Please enter a valid ${label}.`);
+        return { kind: "const", value: b, label: "" };
+      }
+      const constant = parseNumericInput(b);
+      if (!Number.isNaN(constant)) return { kind: "const", value: constant, label: b };
+      const cleaned = cleanExpression(b);
+      if (!cleaned) throw new MathInputError(`Please enter a valid ${label}.`);
+      let n: MathNode;
+      try { n = parse(cleaned); } catch { throw new MathInputError(`Please enter a valid ${label}.`); }
+      assertOnlyKnownSymbols(n, [varX]);
+      return { kind: "expr", str: cleaned, node: n };
+    };
+    const yLo = asYBound(yLower, `${varY} lower bound`);
+    const yHi = asYBound(yUpper, `${varY} upper bound`);
+
+    const node = parse(expression);
+    assertOnlyKnownSymbols(node, [varX, varY]);
+
+    const ybLatex = (b: YBound) => (b.kind === "const" ? boundLatex(b.value, b.label) : exprToLatex(b.str));
+    const ybStr = (b: YBound) => (b.kind === "const" ? (Number.isFinite(b.value) ? fmtNum(b.value) : String(b.value)) : b.str);
+    const xLoL = boundLatex(xLo, typeof xLower === "string" ? xLower : undefined);
+    const xHiL = boundLatex(xHi, typeof xUpper === "string" ? xUpper : undefined);
+    const yLoL = ybLatex(yLo);
+    const yHiL = ybLatex(yHi);
+
+    const steps: string[] = [];
+    steps.push(`##Given\n$$\\iint_R ${exprToLatex(expression)}\\;d${varY}\\,d${varX}$$\n$${varX} \\in [${xLoL}, ${xHiL}],\\quad ${varY} \\text{ from } ${yLoL} \\text{ to } ${yHiL}$`);
+    steps.push(`##Iterated Integral\n$$\\int_{${xLoL}}^{${xHiL}}\\left(\\int_{${yLoL}}^{${yHiL}} ${exprToLatex(expression)}\\,d${varY}\\right)d${varX}$$`);
+
+    const yAt = (b: YBound): ((x: number) => number) => (b.kind === "const" ? () => b.value : compileReal(b.node, [varX]));
+    const fn2 = compileReal(node, [varX, varY]);
+    const infinite = [xLo, xHi].some((v) => !Number.isFinite(v)) || [yLo, yHi].some((b) => b.kind === "const" && !Number.isFinite(b.value));
+    const num = integrate2D((x, y) => fn2(x, y), xLo, xHi, yAt(yLo), yAt(yHi));
+
+    // Closed form (finite regions only).
+    const innerSymbolic = !infinite ? trySymbolicIntegral(node, varY) : null;
+    if (innerSymbolic) {
+      try {
+        const upSub = yHi.kind === "const" ? substituteForEval(innerSymbolic.antiderivativePretty, varY, yHi.value) : substituteExpr(innerSymbolic.antiderivativePretty, varY, yHi.str);
+        const loSub = yLo.kind === "const" ? substituteForEval(innerSymbolic.antiderivativePretty, varY, yLo.value) : substituteExpr(innerSymbolic.antiderivativePretty, varY, yLo.str);
+        const gPretty = prettifyResult(simplify(parse(`(${upSub}) - (${loSub})`)).toString(), varX);
+        const outerSymbolic = trySymbolicIntegral(parse(gPretty), varX, "G");
+        if (outerSymbolic) {
+          const atXUpperStr = substituteForEval(outerSymbolic.antiderivativePretty, varX, xHi);
+          const atXLowerStr = substituteForEval(outerSymbolic.antiderivativePretty, varX, xLo);
+          const hi = evaluate(atXUpperStr) as number;
+          const lo = evaluate(atXLowerStr) as number;
+          if (typeof hi === "number" && typeof lo === "number" && isFinite(hi) && isFinite(lo)) {
+            const value = hi - lo;
+            if (num.status === "ok" && Math.abs(value - num.value) <= 1e-6 * Math.max(1, Math.abs(num.value))) {
+              steps.push(`##Inner Integral — d${varY} ($${varX}$ constant)`);
+              steps.push(...innerSymbolic.steps);
+              steps.push(`##Evaluate at the ${varY}-Bounds\n$$\\Big[F(${varX},${varY})\\Big]_{${varY}=${yLoL}}^{${varY}=${yHiL}} = ${exprToLatex(gPretty)}$$`);
+              steps.push(`##Outer Integral (with respect to ${varX})`);
+              steps.push(...outerSymbolic.steps);
+              steps.push(`##Evaluate at the ${varX}-Bounds\n$$G(${xHiL}) - G(${xLoL})$$`);
+              const s = summarizeValue(value, true, settings);
+              steps.push(s.step);
+              return { input: expression, result: s.result, steps, numericResult: s.numericResult, exactTex: s.exactTex, exactText: s.exactText };
+            }
+          }
+        }
+      } catch {
+        // domain issue in the closed form — use the numerical value
       }
     }
 
-    const result = (hx * hy / 9) * totalSum;
-    assertUsableNumber(result, "This double integral");
-    const rounded = Math.round(result * EPS_ROUND) / EPS_ROUND;
-
-    numericSteps.push(`##Method: Double Simpson's Rule\nUse a $${n}\\times${n}$ grid, step sizes $h_{${varX}} = ${hx.toFixed(6)}$ and $h_{${varY}} = ${hy.toFixed(6)}$:\n$$\\iint_R f\\,d${varY}\\,d${varX} \\approx \\frac{h_{${varX}}h_{${varY}}}{9}\\sum_{i,j} w_i w_j\\, f(x_i, y_j)$$`);
-    numericSteps.push(`##Result\n$$\\approx ${formatNumber(rounded, settings)}$$`);
-
-    return { input: expression, result: rounded.toString(), steps: numericSteps, numericResult: rounded };
+    const trouble = numericProblem(num.status, "This double integral");
+    if (trouble) throw trouble;
+    void ybStr;
+    steps.push(`##${infinite ? "Improper Region — " : "No Closed Form — "}Numerical Integration\n$$\\iint_R f\\,d${varY}\\,d${varX} \\approx \\int \\left(\\sum_j w_j\\, f(x, y_j)\\right) dx$$\nNested adaptive Gauss–Kronrod.`);
+    const trusted = num.error < 1e-7 * (1 + Math.abs(num.value));
+    const s = summarizeValue(num.value, trusted, settings);
+    steps.push(s.step);
+    return { input: expression, result: s.result, steps, numericResult: s.numericResult, exactTex: s.exactTex, exactText: s.exactText };
   } catch (e: unknown) {
     return { input: expression, result: "", steps: [], error: describeError(e) };
   }
@@ -1164,7 +1342,11 @@ export function solveDoubleIntegral(
 type IntegralPiece = { antiderivative: string; rule: string } | null;
 
 function isConstantExpr(node: MathNode, variable: string): boolean {
-  return !node.toString().includes(variable);
+  let has = false;
+  node.traverse((n: MathNode, path: string) => {
+    if (n.type === "SymbolNode" && path !== "fn" && (n as unknown as { name: string }).name === variable) has = true;
+  });
+  return !has;
 }
 
 // Detects expr as (coefficient * variable + constant), e.g. "2*x + 3" → {a:2, b:3}
@@ -1366,18 +1548,17 @@ function tryGeneralUSub(node: MathNode, variable: string, steps: string[]): Inte
     const derivL = exprToLatex(innerDeriv.toString());
     const kL = fmtNum(ratio);
 
-    steps.push(`##Choose the Substitution\n$${innerL}$ sits inside another function, and the rest is a constant multiple of its derivative — a u-substitution. Let\n$$u = ${innerL}$$`);
-    steps.push(`##Differentiate the Substitution\n$$\\frac{du}{d${variable}} = ${derivL} \\quad\\Longrightarrow\\quad du = ${derivL}\\,d${variable}$$`);
+    steps.push(`##u-Substitution\n$$u = ${innerL}, \\quad du = ${derivL}\\,d${variable}$$`);
     const integrandInU =
       form.kind === "recip" ? "\\frac{1}{u}"
       : form.kind === "pow" ? `u^{${fmtNum(form.exponent)}}`
       : form.kind === "identity" ? "u"
       : `${form.name === "log" ? "\\ln" : `\\${form.name}`}(u)`;
-    steps.push(`##Rewrite the Integral in Terms of u\nThe leftover factor $${exprToLatex(restStr)}$ equals $${kL}\\cdot\\left(${derivL}\\right) = ${kL}\\,du$:\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${ratio === 1 ? "" : kL}\\int ${integrandInU}\\,du$$`);
-    steps.push(`##Integrate with Respect to u\nUsing the standard rule $${anti.latexRule}$:\n$$${ratio === 1 ? "" : kL}\\int \\ldots\\,du = ${ratio === 1 ? "" : kL}\\left[${exprToLatex(anti.expr.replace(/u/g, "u"))}\\right]$$`);
+    steps.push(`##Rewrite in Terms of u\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${ratio === 1 ? "" : kL}\\int ${integrandInU}\\,du$$`);
+    steps.push(`##Integrate\n$$${ratio === 1 ? "" : kL}\\int ${integrandInU}\\,du = ${ratio === 1 ? "" : kL}${ratio === 1 ? exprToLatex(anti.expr) : `\\left[${exprToLatex(anti.expr)}\\right]`}$$`);
     const backStr = anti.expr.replace(/\bu\b/g, `(${inner.toString()})`);
     const finalStr = ratio === 1 ? backStr : `(${kL})*(${backStr})`;
-    steps.push(`##Substitute Back ($u = ${innerL}$)\n$$= ${exprToLatex(finalStr)}$$`);
+    steps.push(`##Substitute Back\n$$u = ${innerL} \\;\\Rightarrow\\; ${exprToLatex(finalStr)}$$`);
 
     return { antiderivative: finalStr, rule: "u-substitution" };
   }
@@ -1452,9 +1633,9 @@ function tryIntegrationByParts(node: MathNode, variable: string, steps: string[]
   const vL = exprToLatex(vStr);
   const duL = exprToLatex(duNode.toString());
 
-  steps.push(`##Integration by Parts — Choose $u$ and $dv$\nA product of two different function types — use $\\int u\\,dv = uv - \\int v\\,du$. By LIATE, let $u$ = ${otherIsLog ? "the logarithm" : "the polynomial"} (its derivative is simpler):\n$$u = ${uL}, \\qquad dv = ${dvL}\\,d${variable}$$`);
-  steps.push(`##Differentiate $u$ and Integrate $dv$\n$$du = ${duL}\\,d${variable}, \\qquad v = \\int ${dvL}\\,d${variable} = ${vL}$$`);
-  steps.push(`##Apply the Formula\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${uL}\\cdot ${vL} - \\int ${vL}\\cdot ${duL}\\,d${variable}$$`);
+  steps.push(`##Integration by Parts\n$$\\int u\\,dv = uv - \\int v\\,du$$\n$$u = ${uL}, \\qquad dv = ${dvL}\\,d${variable}$$`);
+  steps.push(`##Find $du$ and $v$\n$$du = ${duL}\\,d${variable}, \\qquad v = \\int ${dvL}\\,d${variable} = ${vL}$$`);
+  steps.push(`##Substitute\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${uL}\\cdot ${vL} - \\int ${vL}\\cdot ${duL}\\,d${variable}$$`);
 
   const remainderStr = `(${vStr})*(${duNode.toString()})`;
   let remainderNode: MathNode;
@@ -1476,7 +1657,7 @@ function tryIntegrationByParts(node: MathNode, variable: string, steps: string[]
   steps.push(...innerSteps);
 
   const finalStr = tidyExpr(`(${uNode.toString()})*(${vStr}) - (${remainderPiece.antiderivative})`);
-  steps.push(`##Put the Pieces Together\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${exprToLatex(finalStr)}$$`);
+  steps.push(`##Combine\n$$\\int ${exprToLatex(node.toString())}\\,d${variable} = ${exprToLatex(finalStr)}$$`);
 
   return { antiderivative: finalStr, rule: "integration by parts" };
 }
@@ -1500,8 +1681,8 @@ function tryArctanForm(node: MathNode, variable: string, steps: string[]): Integ
     const aStr = fmtNum(a);
     const argStr = a === 1 ? variable : `${variable}/(${aStr})`;
     const coef = k / (c * a);
-    steps.push(`##Recognize the Arctangent Form\nDenominator is a sum of squares: $${exprToLatex(den.toString())} = ${fmtNum(c)}\\left(${variable}^2 + ${fmtNum(a * a)}\\right)$ — matches $\\int\\frac{du}{u^2+a^2} = \\frac{1}{a}\\arctan\\!\\left(\\frac{u}{a}\\right)$, $a = ${fmtNum(a)}$.`);
-    steps.push(`##Apply the Standard Rule\n$$\\int \\frac{${fmtNum(k)}}{${exprToLatex(den.toString())}}\\,d${variable} = \\frac{${fmtNum(k)}}{${fmtNum(c)}\\cdot ${fmtNum(a)}}\\arctan\\!\\left(\\frac{${variable}}{${fmtNum(a)}}\\right)$$`);
+    steps.push(`##Arctangent Form\n$$${c === 1 ? "" : `${exprToLatex(den.toString())} = ${fmtNum(c)}\\left(${variable}^2 + ${fmtNum(a * a)}\\right), \\quad `}a = ${fmtNum(a)}$$\n$$\\int\\frac{du}{u^2+a^2} = \\frac{1}{a}\\arctan\\!\\left(\\frac{u}{a}\\right)$$`);
+    steps.push(`##Substitute\n$$\\int \\frac{${fmtNum(k)}}{${exprToLatex(den.toString())}}\\,d${variable} = \\frac{${fmtNum(k)}}{${c === 1 ? "" : `${fmtNum(c)}\\cdot `}${fmtNum(a)}}\\arctan\\!\\left(\\frac{${variable}}{${fmtNum(a)}}\\right)$$`);
     return {
       antiderivative: coef === 1 ? `atan(${argStr})` : `(${fmtNum(coef)})*atan(${argStr})`,
       rule: "arctangent rule",
@@ -1511,7 +1692,1721 @@ function tryArctanForm(node: MathNode, variable: string, steps: string[]): Integ
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Extra integration strategies.
+//
+// integrateNode() (the original rule-based integrator, now integrateNodeCore)
+// handles sums, constant multiples, the power rule, simple trig/exp/log and
+// linear u-substitution. The strategies below widen coverage for what a
+// student actually meets: polynomial products, rational functions (partial
+// fractions), powers/products of sin & cos, tan/sec/cot/csc powers, inverse
+// trig and hyperbolic functions, radicals of quadratics, x·(ax+b)^p,
+// e^{ax}·sin(bx), ln(x)^n and algebraic-derivative integration by parts.
+//
+// Every strategy writes into its own step buffer, and every result produced
+// here is verified numerically (d/dx of the answer must reproduce the
+// integrand at several sample points) before it is accepted — so a strategy
+// that misfires simply returns null instead of showing a wrong antiderivative.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type Poly = number[]; // coefficients, ascending powers
+
+function trimPoly(p: Poly): Poly {
+  const q = [...p];
+  while (q.length > 1 && Math.abs(q[q.length - 1]) < 1e-12) q.pop();
+  return q;
+}
+function polyAdd(a: Poly, b: Poly): Poly {
+  const n = Math.max(a.length, b.length);
+  return trimPoly(Array.from({ length: n }, (_, i) => (a[i] ?? 0) + (b[i] ?? 0)));
+}
+function polyMul(a: Poly, b: Poly): Poly {
+  const out = new Array(a.length + b.length - 1).fill(0);
+  a.forEach((x, i) => b.forEach((y, j) => { out[i + j] += x * y; }));
+  return trimPoly(out);
+}
+function polyScale(a: Poly, k: number): Poly { return trimPoly(a.map((x) => x * k)); }
+function polyDeg(a: Poly): number { return trimPoly(a).length - 1; }
+function polyEvalAt(a: Poly, x: number): number { return a.reduceRight((acc, c) => acc * x + c, 0); }
+
+function polyDivide(num: Poly, den: Poly): { q: Poly; r: Poly } {
+  const n = trimPoly(num);
+  const d = trimPoly(den);
+  let r = [...n];
+  const q = new Array(Math.max(n.length - d.length + 1, 1)).fill(0);
+  const lead = d[d.length - 1];
+  for (let k = n.length - d.length; k >= 0; k--) {
+    const c = r[k + d.length - 1] / lead;
+    q[k] = c;
+    for (let j = 0; j < d.length; j++) r[k + j] -= c * d[j];
+  }
+  r = trimPoly(r.slice(0, Math.max(d.length - 1, 1)));
+  return { q: trimPoly(q), r };
+}
+
+/** A clean numeric literal for building expression strings. */
+function numLit(v: number): string {
+  if (Number.isInteger(v)) return String(v);
+  const f = toSimpleFraction(v, 2000);
+  if (f.includes("/")) {
+    const ok = Math.abs((evaluate(f) as number) - v) < 1e-9 * Math.max(1, Math.abs(v));
+    if (ok) return `(${f})`;
+  }
+  return String(Number(v.toPrecision(12)));
+}
+
+function polyToString(p: Poly, variable: string): string {
+  const terms: string[] = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const c = p[i];
+    if (Math.abs(c) < 1e-12) continue;
+    const mag = Math.abs(c);
+    const coef = Math.abs(mag - 1) < 1e-12 && i > 0 ? "" : numLit(mag);
+    const mono = i === 0 ? "" : i === 1 ? variable : `${variable}^${i}`;
+    const body = coef && mono ? `${coef}*${mono}` : coef || mono;
+    terms.push(`${c < 0 ? "-" : "+"} ${body}`);
+  }
+  if (terms.length === 0) return "0";
+  const s = terms.join(" ");
+  return s.startsWith("+ ") ? s.slice(2) : s.startsWith("- ") ? `-${s.slice(2)}` : s;
+}
+
+/** If `node` is a polynomial in `variable` with numeric coefficients, returns its coefficients. */
+function polyFromNode(node: MathNode, variable: string): Poly | null {
+  const n = unwrapParens(node);
+  if (isConstantExpr(n, variable)) {
+    try {
+      const v = evaluate(n.toString());
+      return typeof v === "number" && Number.isFinite(v) ? [v] : null;
+    } catch { return null; }
+  }
+  const sym = asSymbol(n);
+  if (sym) return sym.name === variable ? [0, 1] : null;
+  const op = asOperator(n);
+  if (!op) return null;
+  if (op.fn === "unaryMinus" && op.args.length === 1) {
+    const a = polyFromNode(op.args[0], variable);
+    return a ? polyScale(a, -1) : null;
+  }
+  if (op.fn === "unaryPlus" && op.args.length === 1) return polyFromNode(op.args[0], variable);
+  if ((op.fn === "add" || op.fn === "subtract") && op.args.length === 2) {
+    const a = polyFromNode(op.args[0], variable);
+    const b = polyFromNode(op.args[1], variable);
+    if (!a || !b) return null;
+    return polyAdd(a, op.fn === "add" ? b : polyScale(b, -1));
+  }
+  if (op.fn === "multiply") {
+    let acc: Poly = [1];
+    for (const a of op.args) {
+      const pa = polyFromNode(a, variable);
+      if (!pa) return null;
+      acc = polyMul(acc, pa);
+    }
+    return acc;
+  }
+  if (op.fn === "divide" && op.args.length === 2) {
+    const a = polyFromNode(op.args[0], variable);
+    const d = polyFromNode(op.args[1], variable);
+    if (!a || !d || d.length !== 1 || Math.abs(d[0]) < 1e-14) return null;
+    return polyScale(a, 1 / d[0]);
+  }
+  if (op.fn === "pow" && op.args.length === 2 && isConstantExpr(op.args[1], variable)) {
+    const base = polyFromNode(op.args[0], variable);
+    let e: unknown;
+    try { e = evaluate(op.args[1].toString()); } catch { return null; }
+    if (!base || typeof e !== "number" || !Number.isInteger(e) || e < 0 || e > 24) return null;
+    let acc: Poly = [1];
+    for (let i = 0; i < e; i++) acc = polyMul(acc, base);
+    return acc;
+  }
+  return null;
+}
+
+// ── numeric verification ──────────────────────────────────────────────────────
+const VERIFY_POINTS = [-2.7, -1.3, -0.6, -0.15, 0.05, 0.15, 0.31, 0.55, 0.7, 0.85, 1.4, 2.2, 3.1, 5.3, 8.4];
+
+/** Does d/dx of `antiderivative` reproduce `integrand` at several sample points? */
+function verifyAntiderivative(integrand: MathNode, antiderivative: string, variable: string): boolean {
+  try {
+    const f = compileReal(integrand, [variable]);
+    const F = compileReal(parse(antiderivative), [variable]);
+    let valid = 0;
+    for (const x of VERIFY_POINTS) {
+      const fx = f(x);
+      if (!Number.isFinite(fx)) continue;
+      const h = 1e-5 * Math.max(1, Math.abs(x));
+      const f1 = F(x + h), f0 = F(x - h), f2 = F(x + 2 * h), fm2 = F(x - 2 * h);
+      if (![f1, f0, f2, fm2].every(Number.isFinite)) continue;
+      const d = (-f2 + 8 * f1 - 8 * f0 + fm2) / (12 * h);
+      if (Math.abs(d - fx) > 1e-4 * Math.max(1, Math.abs(fx), Math.abs(d))) return false;
+      valid++;
+    }
+    return valid >= 2;
+  } catch {
+    return false;
+  }
+}
+
+// ── flatten a product into (numeric coefficient, factor list) ────────────────
+function collectFactors(node: MathNode, variable: string): { coeff: number; factors: MathNode[] } {
+  const n = unwrapParens(node);
+  const op = asOperator(n);
+  if (op?.fn === "unaryMinus" && op.args.length === 1) {
+    const inner = collectFactors(op.args[0], variable);
+    return { coeff: -inner.coeff, factors: inner.factors };
+  }
+  if (op?.fn === "multiply") {
+    let coeff = 1;
+    const factors: MathNode[] = [];
+    for (const a of op.args) {
+      const inner = collectFactors(a, variable);
+      coeff *= inner.coeff;
+      factors.push(...inner.factors);
+    }
+    return { coeff, factors };
+  }
+  if (op?.fn === "divide" && op.args.length === 2) {
+    const num = collectFactors(op.args[0], variable);
+    const den = unwrapParens(op.args[1]);
+    if (isConstantExpr(den, variable)) {
+      try {
+        const v = evaluate(den.toString());
+        if (typeof v === "number" && v !== 0 && Number.isFinite(v)) return { coeff: num.coeff / v, factors: num.factors };
+      } catch { /* opaque */ }
+    }
+    // dividing by e^u / exp(u) is multiplying by e^(-u)
+    const dop = asOperator(den);
+    const dfn = asFunctionNode(den);
+    if (dfn && dfn.fn.name === "exp" && dfn.args.length === 1) return { coeff: num.coeff, factors: [...num.factors, parse(`exp(-(${dfn.args[0].toString()}))`)] };
+    if (dop?.fn === "pow" && dop.args.length === 2 && asSymbol(unwrapParens(dop.args[0]))?.name === "e") {
+      return { coeff: num.coeff, factors: [...num.factors, parse(`exp(-(${dop.args[1].toString()}))`)] };
+    }
+    if (asSymbol(den)?.name === "e") return { coeff: num.coeff, factors: [...num.factors, parse("exp(-1)")] };
+    if (dop?.fn === "pow" && dop.args.length === 2 && isConstantExpr(dop.args[1], variable)) {
+      const ev = evaluate(dop.args[1].toString());
+      if (typeof ev === "number") return { coeff: num.coeff, factors: [...num.factors, parse(`(${dop.args[0].toString()})^(${-ev})`)] };
+    }
+    if (dfn && dfn.fn.name === "sqrt" && dfn.args.length === 1) return { coeff: num.coeff, factors: [...num.factors, parse(`(${dfn.args[0].toString()})^(-1/2)`)] };
+    return { coeff: num.coeff, factors: [...num.factors, parse(`(${den.toString()})^(-1)`)] };
+  }
+  if (isConstantExpr(n, variable)) {
+    try {
+      const v = evaluate(n.toString());
+      if (typeof v === "number" && Number.isFinite(v)) return { coeff: v, factors: [] };
+    } catch { /* keep as a factor */ }
+  }
+  return { coeff: 1, factors: [n] };
+}
+
+// ── complex numbers (tiny) for the sin/cos product expansion ─────────────────
+interface Cx { re: number; im: number }
+const cxMul = (a: Cx, b: Cx): Cx => ({ re: a.re * b.re - a.im * b.im, im: a.re * b.im + a.im * b.re });
+
+/** Fourier terms {freq → complex coeff} of sin(a x + b) or cos(a x + b). */
+function trigTerms(kind: "sin" | "cos", a: number, b: number): Map<number, Cx> {
+  const m = new Map<number, Cx>();
+  if (kind === "sin") {
+    m.set(a, { re: Math.sin(b) / 2, im: -Math.cos(b) / 2 });
+    m.set(-a, { re: Math.sin(b) / 2, im: Math.cos(b) / 2 });
+  } else {
+    m.set(a, { re: Math.cos(b) / 2, im: Math.sin(b) / 2 });
+    m.set(-a, { re: Math.cos(b) / 2, im: -Math.sin(b) / 2 });
+  }
+  return m;
+}
+function mulTerms(A: Map<number, Cx>, B: Map<number, Cx>): Map<number, Cx> {
+  const out = new Map<number, Cx>();
+  const key = (w: number) => Number(w.toFixed(9));
+  for (const [w1, c1] of A) {
+    for (const [w2, c2] of B) {
+      const w = key(w1 + w2);
+      const c = cxMul(c1, c2);
+      const prev = out.get(w) ?? { re: 0, im: 0 };
+      out.set(w, { re: prev.re + c.re, im: prev.im + c.im });
+    }
+  }
+  return out;
+}
+
+/** sin^m·cos^n·… of linear arguments → Σ c·cos(ωx) + s·sin(ωx), as an expression string. */
+function trigProductToSum(node: MathNode, variable: string): string | null {
+  const { coeff, factors } = collectFactors(node, variable);
+  if (factors.length === 0) return null;
+  let acc: Map<number, Cx> = new Map([[0, { re: coeff, im: 0 }]]);
+  let count = 0;
+  for (const f of factors) {
+    let base = f;
+    let power = 1;
+    const op = asOperator(f);
+    if (op?.fn === "pow" && op.args.length === 2 && isConstantExpr(op.args[1], variable)) {
+      const e = evaluate(op.args[1].toString());
+      if (typeof e !== "number" || !Number.isInteger(e) || e < 1 || e > 12) return null;
+      base = unwrapParens(op.args[0]);
+      power = e;
+    }
+    const fn = asFunctionNode(base);
+    if (!fn || fn.args.length !== 1 || (fn.fn.name !== "sin" && fn.fn.name !== "cos")) return null;
+    const lin = tryLinear(fn.args[0], variable);
+    if (!lin || Math.abs(lin.a) < 1e-12) return null;
+    const t = trigTerms(fn.fn.name as "sin" | "cos", lin.a, lin.b);
+    for (let i = 0; i < power; i++) {
+      acc = mulTerms(acc, t);
+      count++;
+      if (count > 12) return null;
+    }
+  }
+  const parts: string[] = [];
+  const freqs = [...acc.keys()].filter((w) => w >= -1e-9).sort((a, b) => a - b);
+  for (const w of freqs) {
+    const c = acc.get(w)!;
+    if (Math.abs(w) < 1e-9) {
+      if (Math.abs(c.re) > 1e-12) parts.push(numLit(c.re));
+      continue;
+    }
+    const cosC = 2 * c.re;
+    const sinC = -2 * c.im;
+    const arg = Math.abs(w - 1) < 1e-12 ? variable : `${numLit(w)}*${variable}`;
+    if (Math.abs(cosC) > 1e-12) parts.push(`${numLit(cosC)}*cos(${arg})`);
+    if (Math.abs(sinC) > 1e-12) parts.push(`${numLit(sinC)}*sin(${arg})`);
+  }
+  if (parts.length === 0) return "0";
+  return parts.join(" + ").replace(/\+ -/g, "- ");
+}
+
+// ── tan / sec / cot / csc powers ──────────────────────────────────────────────
+function tanPowInt(n: number, u: string): string {
+  if (n === 0) return u;
+  if (n === 1) return `(-log(abs(cos(${u}))))`;
+  return `(tan(${u})^${n - 1}/${n - 1} - ${tanPowInt(n - 2, u)})`;
+}
+function cotPowInt(n: number, u: string): string {
+  if (n === 0) return u;
+  if (n === 1) return `log(abs(sin(${u})))`;
+  return `(-cot(${u})^${n - 1}/${n - 1} - ${cotPowInt(n - 2, u)})`;
+}
+function secPowInt(n: number, u: string): string {
+  if (n === 0) return u;
+  if (n === 1) return `log(abs(sec(${u}) + tan(${u})))`;
+  if (n === 2) return `tan(${u})`;
+  return `(sec(${u})^${n - 2}*tan(${u})/${n - 1} + ${(n - 2) / (n - 1)}*${secPowInt(n - 2, u)})`;
+}
+function cscPowInt(n: number, u: string): string {
+  if (n === 0) return u;
+  if (n === 1) return `(-log(abs(csc(${u}) + cot(${u}))))`;
+  if (n === 2) return `(-cot(${u}))`;
+  return `(-csc(${u})^${n - 2}*cot(${u})/${n - 1} + ${(n - 2) / (n - 1)}*${cscPowInt(n - 2, u)})`;
+}
+
+/** ∫ sec^m tan^n  (m even, or n odd) and ∫ csc^m cot^n, via w = tan/sec (or cot/csc). */
+function secTanMixed(m: number, n: number, u: string, co: boolean): string | null {
+  const [A, B] = co ? ["csc", "cot"] : ["sec", "tan"];
+  const sign = co ? -1 : 1;
+  if (m >= 2 && m % 2 === 0) {
+    // w = B, A^2 = 1 + w^2:  ∫ (1+w^2)^((m-2)/2) w^n dw
+    let poly: Poly = [1];
+    for (let i = 0; i < (m - 2) / 2; i++) poly = polyMul(poly, [1, 0, 1]);
+    poly = polyMul(poly, [...new Array(n).fill(0), 1]);
+    const w = `${B}(${u})`;
+    const terms = poly.map((c, k) => (Math.abs(c) < 1e-12 ? "" : `${numLit(sign * c / (k + 1))}*${w}^${k + 1}`)).filter(Boolean);
+    return `(${terms.join(" + ")})`;
+  }
+  if (n % 2 === 1 && m >= 1) {
+    // w = A, B^2 = A^2 - 1:  ∫ w^(m-1) (w^2-1)^((n-1)/2) dw
+    let poly: Poly = [1];
+    for (let i = 0; i < (n - 1) / 2; i++) poly = polyMul(poly, [-1, 0, 1]);
+    poly = polyMul(poly, [...new Array(m - 1).fill(0), 1]);
+    const w = `${A}(${u})`;
+    const terms = poly.map((c, k) => (Math.abs(c) < 1e-12 ? "" : `${numLit(sign * c / (k + 1))}*${w}^${k + 1}`)).filter(Boolean);
+    return `(${terms.join(" + ")})`;
+  }
+  return null;
+}
+
+// ── root finding for partial fractions ───────────────────────────────────────
+function integerScale(p: Poly): Poly | null {
+  for (const mult of [1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 30, 36, 60, 100, 120, 360, 720, 1000, 10000, 100000, 1000000]) {
+    const q = p.map((c) => c * mult);
+    if (q.every((c) => Math.abs(c - Math.round(c)) < 1e-9)) return q.map(Math.round);
+  }
+  return null;
+}
+
+function divisors(n: number): number[] {
+  const a = Math.abs(Math.round(n));
+  if (a === 0) return [0];
+  const out: number[] = [];
+  for (let i = 1; i * i <= a && i <= 5000; i++) if (a % i === 0) { out.push(i); if (i * i !== a) out.push(a / i); }
+  return out;
+}
+
+function syntheticDiv(p: Poly, r: number): Poly {
+  // divide by (x - r), p ascending
+  const n = p.length - 1;
+  const out = new Array(n).fill(0);
+  let carry = 0;
+  for (let i = n; i >= 1; i--) { carry = p[i] + carry * r; out[i - 1] = carry; }
+  return out;
+}
+
+/** Durand–Kerner complex roots of a monic polynomial (ascending coeffs). */
+function durandKerner(monic: Poly): Cx[] {
+  const n = monic.length - 1;
+  let roots: Cx[] = Array.from({ length: n }, (_, k) => {
+    const ang = (2 * Math.PI * k) / n + 0.4;
+    const rad = 1 + Math.max(...monic.slice(0, n).map(Math.abs));
+    return { re: rad * Math.cos(ang) * 0.7, im: rad * Math.sin(ang) * 0.7 };
+  });
+  const evalP = (z: Cx): Cx => {
+    let acc: Cx = { re: 0, im: 0 };
+    for (let i = n; i >= 0; i--) acc = { re: cxMul(acc, z).re + monic[i], im: cxMul(acc, z).im };
+    return acc;
+  };
+  const cxDiv = (a: Cx, b: Cx): Cx => {
+    const d = b.re * b.re + b.im * b.im;
+    return { re: (a.re * b.re + a.im * b.im) / d, im: (a.im * b.re - a.re * b.im) / d };
+  };
+  for (let it = 0; it < 500; it++) {
+    let maxStep = 0;
+    roots = roots.map((z, i) => {
+      let denom: Cx = { re: 1, im: 0 };
+      roots.forEach((w, j) => { if (j !== i) denom = cxMul(denom, { re: z.re - w.re, im: z.im - w.im }); });
+      if (denom.re === 0 && denom.im === 0) denom = { re: 1e-12, im: 0 };
+      const step = cxDiv(evalP(z), denom);
+      maxStep = Math.max(maxStep, Math.hypot(step.re, step.im));
+      return { re: z.re - step.re, im: z.im - step.im };
+    });
+    if (maxStep < 1e-14) break;
+  }
+  return roots;
+}
+
+interface RealFactorization {
+  lead: number;
+  lin: { r: number; m: number; exact: boolean }[];
+  quad: { p: number; q: number; m: number }[];
+}
+
+function polyDerivative(p: Poly): Poly { return p.length > 1 ? trimPoly(p.slice(1).map((c, i) => c * (i + 1))) : [0]; }
+function polyIsZero(p: Poly, scale = 1): boolean { return p.every((c) => Math.abs(c) < 1e-9 * scale); }
+function polyMonic(p: Poly): Poly { const q = trimPoly(p); const l = q[q.length - 1]; return q.map((c) => c / l); }
+function polyGcd(a: Poly, b: Poly): Poly {
+  let x = trimPoly(a), y = trimPoly(b);
+  const scale = Math.max(...x.map(Math.abs), ...y.map(Math.abs), 1);
+  for (let it = 0; it < 40 && !polyIsZero(y, scale); it++) {
+    const r = polyDivide(x, y).r;
+    x = y;
+    y = polyIsZero(r, scale) ? [0] : polyMonic(r);
+    x = polyMonic(x);
+  }
+  return polyMonic(x);
+}
+/** Yun's algorithm: Q = Π f_k^k with each f_k square-free. */
+function squarefreeDecomp(Q: Poly): { f: Poly; k: number }[] | null {
+  const q = polyMonic(Q);
+  const dq = polyDerivative(q);
+  if (polyIsZero(dq)) return null;
+  const c = polyGcd(q, dq);
+  let w = polyDivide(q, c).q;
+  let y = polyDivide(dq, c).q;
+  const out: { f: Poly; k: number }[] = [];
+  for (let i = 1; i <= 12 && polyDeg(w) >= 1; i++) {
+    const z = polyAdd(y, polyScale(polyDerivative(w), -1));
+    const g = polyIsZero(z) ? w : polyGcd(w, z);
+    if (polyDeg(g) >= 1) out.push({ f: polyMonic(g), k: i });
+    w = polyDivide(w, g).q;
+    y = polyDivide(z, g).q;
+  }
+  const check = out.reduce((acc, f) => { let t = acc; for (let i = 0; i < f.k; i++) t = polyMul(t, f.f); return t; }, [1] as Poly);
+  if (check.length !== q.length || check.some((cc, i) => Math.abs(cc - q[i]) > 1e-6 * (1 + Math.abs(q[i])))) return null;
+  return out;
+}
+
+function factorRealPoly(Q: Poly): RealFactorization | null {
+  const dec = polyDeg(Q) >= 2 ? squarefreeDecomp(Q) : null;
+  if (dec && dec.some((d) => d.k > 1)) {
+    const lead = trimPoly(Q)[trimPoly(Q).length - 1];
+    const lin: RealFactorization["lin"] = [];
+    const quad: RealFactorization["quad"] = [];
+    for (const { f, k } of dec) {
+      const sub = factorRealPoly(f.length > 1 ? f : [1, 1]);
+      if (!sub) return null;
+      sub.lin.forEach((l) => lin.push({ ...l, m: l.m * k }));
+      sub.quad.forEach((qd) => quad.push({ ...qd, m: qd.m * k }));
+    }
+    return { lead, lin, quad };
+  }
+  const q0 = trimPoly(Q);
+  const lead = q0[q0.length - 1];
+  let rem = q0.map((c) => c / lead);
+  const lin: RealFactorization["lin"] = [];
+  const quad: RealFactorization["quad"] = [];
+
+  // exact rational roots
+  const scaled = integerScale(rem);
+  if (scaled) {
+    let cur = rem;
+    let guard = 0;
+    while (polyDeg(cur) >= 1 && guard++ < 20) {
+      const sc = integerScale(cur);
+      if (!sc) break;
+      const a0 = sc[0];
+      const an = sc[sc.length - 1];
+      let found: number | null = null;
+      if (a0 === 0) found = 0;
+      else {
+        outer: for (const p of divisors(a0)) for (const q of divisors(an)) for (const s of [1, -1]) {
+          const r = (s * p) / q;
+          if (Math.abs(polyEvalAt(cur, r)) < 1e-9 * (1 + Math.abs(a0))) { found = r; break outer; }
+        }
+      }
+      if (found === null) break;
+      const existing = lin.find((l) => Math.abs(l.r - found!) < 1e-12);
+      if (existing) existing.m++; else lin.push({ r: found, m: 1, exact: true });
+      cur = syntheticDiv(cur, found);
+    }
+    rem = cur;
+  }
+
+  const d = polyDeg(rem);
+  if (d >= 1) {
+    if (d === 1) {
+      lin.push({ r: -rem[0] / rem[1], m: 1, exact: false });
+    } else if (d === 2) {
+      const [c, b] = [rem[0], rem[1]];
+      const disc = b * b - 4 * c;
+      if (disc > 1e-12) {
+        const sq = Math.sqrt(disc);
+        lin.push({ r: (-b + sq) / 2, m: 1, exact: false }, { r: (-b - sq) / 2, m: 1, exact: false });
+      } else if (Math.abs(disc) <= 1e-12) lin.push({ r: -b / 2, m: 2, exact: false });
+      else quad.push({ p: b, q: c, m: 1 });
+    } else {
+      const roots = durandKerner(rem);
+      const used = new Array(roots.length).fill(false);
+      for (let i = 0; i < roots.length; i++) {
+        if (used[i]) continue;
+        used[i] = true;
+        const z = roots[i];
+        if (Math.abs(z.im) < 1e-6) {
+          let m = 1;
+          for (let j = i + 1; j < roots.length; j++) if (!used[j] && Math.abs(roots[j].im) < 1e-5 && Math.abs(roots[j].re - z.re) < 1e-4 * (1 + Math.abs(z.re))) { used[j] = true; m++; }
+          lin.push({ r: z.re, m, exact: false });
+        } else if (z.im > 0) {
+          let m = 1;
+          for (let j = i + 1; j < roots.length; j++) if (!used[j] && roots[j].im > 0 && Math.hypot(roots[j].re - z.re, roots[j].im - z.im) < 1e-4 * (1 + Math.abs(z.re))) { used[j] = true; m++; }
+          // remove conjugates
+          let removed = 0;
+          for (let j = 0; j < roots.length && removed < m; j++) if (!used[j] && roots[j].im < 0 && Math.hypot(roots[j].re - z.re, roots[j].im + z.im) < 1e-4 * (1 + Math.abs(z.re))) { used[j] = true; removed++; }
+          quad.push({ p: -2 * z.re, q: z.re * z.re + z.im * z.im, m });
+        }
+      }
+    }
+  }
+  // check reconstruction
+  let prod: Poly = [1];
+  for (const l of lin) for (let i = 0; i < l.m; i++) prod = polyMul(prod, [-l.r, 1]);
+  for (const qd of quad) for (let i = 0; i < qd.m; i++) prod = polyMul(prod, [qd.q, qd.p, 1]);
+  const orig = q0.map((c) => c / lead);
+  if (prod.length !== orig.length) return null;
+  for (let i = 0; i < orig.length; i++) if (Math.abs(prod[i] - orig[i]) > 1e-5 * (1 + Math.abs(orig[i]))) return null;
+  return { lead, lin, quad };
+}
+
+function solveLinearSystem(M: number[][], b: number[]): number[] | null {
+  const n = b.length;
+  const A = M.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    if (Math.abs(A[piv][c]) < 1e-12) return null;
+    [A[c], A[piv]] = [A[piv], A[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = A[r][c] / A[c][c];
+      for (let k = c; k <= n; k++) A[r][k] -= f * A[c][k];
+    }
+  }
+  return A.map((row, i) => row[n] / row[i]);
+}
+
+/** Writes a rational expression (built from polynomials with + - * / and integer powers) as P/Q. */
+function rationalFromNode(node: MathNode, variable: string): { P: Poly; Q: Poly } | null {
+  const n = unwrapParens(node);
+  const pl = polyFromNode(n, variable);
+  if (pl) return { P: pl, Q: [1] };
+  const op = asOperator(n);
+  if (!op) return null;
+  if (op.fn === "unaryMinus" && op.args.length === 1) {
+    const a = rationalFromNode(op.args[0], variable);
+    return a ? { P: polyScale(a.P, -1), Q: a.Q } : null;
+  }
+  if ((op.fn === "add" || op.fn === "subtract") && op.args.length === 2) {
+    const a = rationalFromNode(op.args[0], variable);
+    const b = rationalFromNode(op.args[1], variable);
+    if (!a || !b) return null;
+    const sgn = op.fn === "add" ? 1 : -1;
+    return { P: polyAdd(polyMul(a.P, b.Q), polyScale(polyMul(b.P, a.Q), sgn)), Q: polyMul(a.Q, b.Q) };
+  }
+  if (op.fn === "multiply") {
+    let P: Poly = [1], Q: Poly = [1];
+    for (const arg of op.args) {
+      const r = rationalFromNode(arg, variable);
+      if (!r) return null;
+      P = polyMul(P, r.P); Q = polyMul(Q, r.Q);
+    }
+    return { P, Q };
+  }
+  if (op.fn === "divide" && op.args.length === 2) {
+    const a = rationalFromNode(op.args[0], variable);
+    const b = rationalFromNode(op.args[1], variable);
+    if (!a || !b) return null;
+    if (polyDeg(b.P) === 0 && Math.abs(b.P[0]) < 1e-14) return null;
+    return { P: polyMul(a.P, b.Q), Q: polyMul(a.Q, b.P) };
+  }
+  if (op.fn === "pow" && op.args.length === 2 && isConstantExpr(op.args[1], variable)) {
+    const e = evaluate(op.args[1].toString());
+    const base = rationalFromNode(op.args[0], variable);
+    if (!base || typeof e !== "number" || !Number.isInteger(e) || Math.abs(e) > 12) return null;
+    const k = Math.abs(e);
+    let P: Poly = [1], Q: Poly = [1];
+    for (let i = 0; i < k; i++) { P = polyMul(P, base.P); Q = polyMul(Q, base.Q); }
+    return e >= 0 ? { P, Q } : { P: Q, Q: P };
+  }
+  return null;
+}
+
+/** Antiderivative of rational function P/Q via partial fractions. */
+function tryRationalFunction(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const fr = rationalFromNode(node, variable);
+  if (!fr) return null;
+  const P = fr.P;
+  const Q = fr.Q;
+  if (polyDeg(Q) < 1) return null;
+  if (polyFromNode(node, variable)) return null;
+  if (polyDeg(P) > 14 || polyDeg(Q) > 8) return null;
+
+  const { q: S, r: R } = polyDivide(P, Q);
+  const hasPoly = polyDeg(S) > 0 || Math.abs(S[0]) > 1e-12;
+  const fac = factorRealPoly(Q);
+  if (!fac) return null;
+  const { lead, lin, quad } = fac;
+  const Qm = trimPoly(Q).map((c) => c / lead);
+  const Rm = polyScale(R, 1 / lead);
+
+  // basis polynomials
+  type Term = { kind: "lin"; r: number; k: number; exact: boolean } | { kind: "q0"; p: number; q: number; k: number } | { kind: "q1"; p: number; q: number; k: number };
+  const terms: Term[] = [];
+  const basis: Poly[] = [];
+  const divideExactly = (num: Poly, den: Poly): Poly | null => {
+    const { q, r } = polyDivide(num, den);
+    return r.every((c) => Math.abs(c) < 1e-6 * (1 + Math.abs(num[num.length - 1]))) ? q : null;
+  };
+  for (const l of lin) for (let k = 1; k <= l.m; k++) {
+    let den: Poly = [1];
+    for (let i = 0; i < k; i++) den = polyMul(den, [-l.r, 1]);
+    const b = divideExactly(Qm, den);
+    if (!b) return null;
+    terms.push({ kind: "lin", r: l.r, k, exact: l.exact });
+    basis.push(b);
+  }
+  for (const qd of quad) for (let k = 1; k <= qd.m; k++) {
+    let den: Poly = [1];
+    for (let i = 0; i < k; i++) den = polyMul(den, [qd.q, qd.p, 1]);
+    const b = divideExactly(Qm, den);
+    if (!b) return null;
+    terms.push({ kind: "q0", p: qd.p, q: qd.q, k });
+    basis.push(b);
+    terms.push({ kind: "q1", p: qd.p, q: qd.q, k });
+    basis.push(polyMul(b, [0, 1]));
+  }
+  const n = polyDeg(Qm);
+  if (basis.length !== n) return null;
+  const M: number[][] = Array.from({ length: n }, (_, row) => basis.map((b) => b[row] ?? 0));
+  const rhs = Array.from({ length: n }, (_, row) => Rm[row] ?? 0);
+  const u = solveLinearSystem(M, rhs);
+  if (!u) return null;
+
+  // Build decomposition and antiderivative
+  const decomp: string[] = [];
+  const anti: string[] = [];
+  if (hasPoly) {
+    decomp.push(polyToString(S, variable));
+    const integ: Poly = [0, ...S.map((c, i) => c / (i + 1))];
+    anti.push(polyToString(integ, variable));
+  }
+  const rStr = (r: number) => (Math.abs(r) < 1e-12 ? variable : `${variable} ${r < 0 ? "+" : "-"} ${numLit(Math.abs(r))}`);
+  const used = new Set<number>();
+  terms.forEach((t, i) => {
+    if (used.has(i)) return;
+    const A = u[i];
+    if (t.kind === "lin") {
+      if (Math.abs(A) < 1e-10) return;
+      const base = `(${rStr(t.r)})`;
+      decomp.push(`${numLit(A)}/${t.k === 1 ? base : `${base}^${t.k}`}`);
+      anti.push(t.k === 1 ? `${numLit(A)}*log(abs${base})` : `${numLit(A / (1 - t.k))}*${base}^(${1 - t.k})`);
+    } else if (t.kind === "q0") {
+      const j = terms.findIndex((x, idx) => idx !== i && x.kind === "q1" && Math.abs(x.p - t.p) < 1e-12 && Math.abs(x.q - t.q) < 1e-12 && x.k === t.k);
+      const B = j >= 0 ? u[j] : 0;
+      if (j >= 0) used.add(j);
+      const C = A;
+      if (Math.abs(B) < 1e-10 && Math.abs(C) < 1e-10) return;
+      const quadStr = `(${variable}^2 ${t.p < 0 ? "-" : "+"} ${numLit(Math.abs(t.p))}*${variable} ${t.q < 0 ? "-" : "+"} ${numLit(Math.abs(t.q))})`;
+      decomp.push(`(${numLit(B)}*${variable} ${C < 0 ? "-" : "+"} ${numLit(Math.abs(C))})/${t.k === 1 ? quadStr : `${quadStr}^${t.k}`}`);
+      const kk = t.q - (t.p * t.p) / 4;
+      if (kk <= 0) { anti.push("NaN"); return; }
+      const sk = Math.sqrt(kk);
+      if (t.k !== 1) {
+        // (Bx+C)/Q^k = (B/2)(2x+p)/Q^k + (C - Bp/2)/Q^k ; first part is a direct power rule,
+        // second via the reduction I_k = s/(2a²(k-1)(s²+a²)^(k-1)) + (2k-3)/(2a²(k-1)) I_{k-1}
+        const k = t.k;
+        const sArg = `(${variable} ${t.p / 2 < 0 ? "-" : "+"} ${numLit(Math.abs(t.p / 2))})`;
+        const Qs = `(${variable}^2 ${t.p < 0 ? "-" : "+"} ${numLit(Math.abs(t.p))}*${variable} ${t.q < 0 ? "-" : "+"} ${numLit(Math.abs(t.q))})`;
+        const Ik = (kk2: number): string => {
+          if (kk2 === 1) return `atan(${sArg}/${numLit(sk)})/${numLit(sk)}`;
+          const a2 = kk;
+          return `(${sArg}/(${numLit(2 * a2 * (kk2 - 1))}*${Qs}^${kk2 - 1}) + ${numLit((2 * kk2 - 3) / (2 * a2 * (kk2 - 1)))}*${Ik(kk2 - 1)})`;
+        };
+        const parts: string[] = [];
+        if (Math.abs(B) > 1e-10) parts.push(`${numLit(-B / (2 * (k - 1)))}/${Qs}^${k - 1}`);
+        const Cp = C - (B * t.p) / 2;
+        if (Math.abs(Cp) > 1e-10) parts.push(`${numLit(Cp)}*${Ik(k)}`);
+        anti.push(parts.join(" + "));
+        return;
+      }
+      const logPart = Math.abs(B) > 1e-10 ? `${numLit(B / 2)}*log${quadStr}` : "";
+      const atanCoef = (C - (B * t.p) / 2) / sk;
+      const atanPart = Math.abs(atanCoef) > 1e-10 ? `${numLit(atanCoef)}*atan((${variable} ${t.p / 2 < 0 ? "-" : "+"} ${numLit(Math.abs(t.p / 2))})/${numLit(sk)})` : "";
+      anti.push([logPart, atanPart].filter(Boolean).join(" + "));
+    }
+  });
+  if (anti.includes("NaN")) return null;
+  if (anti.length === 0) return null;
+  const antiStr = anti.join(" + ").replace(/\+ -/g, "- ");
+  const decompStr = decomp.join(" + ").replace(/\+ -/g, "- ");
+  steps.push(`##Partial Fractions\n$$${integralLatex(node.toString(), variable)}\\;:\\quad ${exprToLatex(node.toString())} = ${exprToLatex(decompStr)}$$`);
+  steps.push(`##Integrate Each Term\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(antiStr, variable))}$$`);
+  return { antiderivative: antiStr, rule: "partial fractions" };
+}
+
+// ── radicals of a quadratic: 1/√Q and √Q ─────────────────────────────────────
+function tryQuadraticRadical(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const n = unwrapParens(node);
+  let inner: MathNode | null = null;
+  let power = 0;
+  let cNum = 1;
+  const fn = asFunctionNode(n);
+  const op = asOperator(n);
+  if (fn && fn.fn.name === "sqrt" && fn.args.length === 1) { inner = fn.args[0]; power = 1; }
+  else if (op?.fn === "pow" && op.args.length === 2 && isConstantExpr(op.args[1], variable)) {
+    const e = evaluate(op.args[1].toString());
+    if (e === 0.5) { inner = op.args[0]; power = 1; }
+    else if (e === -0.5) { inner = op.args[0]; power = -1; }
+  } else if (op?.fn === "divide" && op.args.length === 2 && isConstantExpr(op.args[0], variable)) {
+    const c = evaluate(op.args[0].toString());
+    const d = unwrapParens(op.args[1]);
+    const df = asFunctionNode(d);
+    const dop = asOperator(d);
+    if (typeof c === "number" && df && df.fn.name === "sqrt" && df.args.length === 1) { inner = df.args[0]; power = -1; cNum = c; }
+    else if (typeof c === "number" && dop?.fn === "pow" && dop.args.length === 2 && isConstantExpr(dop.args[1], variable) && evaluate(dop.args[1].toString()) === 0.5) { inner = dop.args[0]; power = -1; cNum = c; }
+  }
+  if (!inner) return null;
+  const Q = polyFromNode(inner, variable);
+  if (!Q || polyDeg(Q) !== 2) return null;
+  const [g, b, a] = Q;
+  const h = b / (2 * a);
+  const k = g / a - h * h;
+  const sh = Math.abs(h) < 1e-12 ? variable : `(${variable} ${h < 0 ? "-" : "+"} ${numLit(Math.abs(h))})`;
+  const innerLatex = exprToLatex(inner.toString());
+  const sa = Math.sqrt(Math.abs(a));
+  let anti: string;
+  let label: string;
+  if (a < 0) {
+    const R2 = k < 0 ? -k : NaN; // Q = |a|(R² − (x+h)²), R² = -k ... derived below
+    // Q = a((x+h)^2 + k) = |a|(-(x+h)^2 - k) → R² = -k
+    if (!(R2 > 0)) return null;
+    const R = Math.sqrt(R2);
+    if (power === -1) { anti = `(1/${numLit(sa)})*asin(${sh}/${numLit(R)})`; label = "1/\\sqrt{R^2-u^2} = \\arcsin(u/R)"; }
+    else anti = `${numLit(sa)}*(${sh}/2*sqrt(${numLit(R2)} - ${sh}^2) + ${numLit(R2 / 2)}*asin(${sh}/${numLit(R)}))`;
+    label = "Complete the square, then \\arcsin form";
+  } else if (k > 0) {
+    if (power === -1) anti = `(1/${numLit(sa)})*log(${sh} + sqrt(${sh}^2 + ${numLit(k)}))`;
+    else anti = `${numLit(sa)}*(${sh}/2*sqrt(${sh}^2 + ${numLit(k)}) + ${numLit(k / 2)}*log(${sh} + sqrt(${sh}^2 + ${numLit(k)})))`;
+    label = "Complete the square, then \\sinh^{-1} form";
+  } else if (k < 0) {
+    const m2 = -k;
+    if (power === -1) anti = `(1/${numLit(sa)})*log(abs(${sh} + sqrt(${sh}^2 - ${numLit(m2)})))`;
+    else anti = `${numLit(sa)}*(${sh}/2*sqrt(${sh}^2 - ${numLit(m2)}) - ${numLit(m2 / 2)}*log(abs(${sh} + sqrt(${sh}^2 - ${numLit(m2)}))))`;
+    label = "Complete the square, then \\cosh^{-1} form";
+  } else return null;
+  steps.push(`##Quadratic Under a Root\n$$${innerLatex} = ${exprToLatex(`${numLit(a)}*(${sh}^2 + ${numLit(k)})`)}$$\n$${label}$`);
+  if (cNum !== 1) anti = `${numLit(cNum)}*(${anti})`;
+  steps.push(`##Result\n$$${integralLatex(n.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "radical of a quadratic" };
+}
+
+// ── P(x)·(ax+b)^p  (p rational, positive or negative), incl. x^p alone ───────
+interface PowFactor { base: MathNode; exp: number }
+
+/** Splits a product/quotient into (coefficient, base^exponent factors); roots become fractional exponents. */
+function powerFactors(node: MathNode, variable: string): { coeff: number; pf: PowFactor[] } | null {
+  const out: PowFactor[] = [];
+  let coeff = 1;
+  let ok = true;
+  const walk = (m: MathNode, sign: number) => {
+    if (!ok) return;
+    const n = unwrapParens(m);
+    const op = asOperator(n);
+    const fn = asFunctionNode(n);
+    if (isConstantExpr(n, variable)) {
+      try {
+        const v = evaluate(n.toString());
+        if (typeof v === "number" && Number.isFinite(v) && v !== 0) { coeff *= sign === 1 ? v : 1 / v; return; }
+      } catch { /* fall through */ }
+      ok = false; return;
+    }
+    if (op?.fn === "unaryMinus" && op.args.length === 1) { coeff *= -1; walk(op.args[0], sign); return; }
+    if (op?.fn === "multiply") { op.args.forEach((a) => walk(a, sign)); return; }
+    if (op?.fn === "divide" && op.args.length === 2) { walk(op.args[0], sign); walk(op.args[1], -sign); return; }
+    if (op?.fn === "pow" && op.args.length === 2 && isConstantExpr(op.args[1], variable)) {
+      const e = evaluate(op.args[1].toString());
+      if (typeof e !== "number") { ok = false; return; }
+      out.push({ base: unwrapParens(op.args[0]), exp: sign * e });
+      return;
+    }
+    if (fn && fn.fn.name === "sqrt" && fn.args.length === 1) { out.push({ base: unwrapParens(fn.args[0]), exp: sign * 0.5 }); return; }
+    if (fn && fn.fn.name === "cbrt" && fn.args.length === 1) { out.push({ base: unwrapParens(fn.args[0]), exp: sign / 3 }); return; }
+    out.push({ base: n, exp: sign });
+  };
+  walk(node, 1);
+  if (!ok) return null;
+  // merge identical bases
+  const merged: PowFactor[] = [];
+  for (const f of out) {
+    const key = f.base.toString();
+    const ex = merged.find((m) => m.base.toString() === key);
+    if (ex) ex.exp += f.exp; else merged.push({ ...f });
+  }
+  return { coeff, pf: merged.filter((f) => Math.abs(f.exp) > 1e-12) };
+}
+
+function tryLinearPowerTimesPoly(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const pfs = powerFactors(node, variable);
+  if (!pfs) return null;
+  let polyPart: Poly = [pfs.coeff];
+  let lin: { a: number; b: number } | null = null;
+  let p = 0;
+  for (const f of pfs.pf) {
+    const bp = polyFromNode(f.base, variable);
+    if (bp && Number.isInteger(f.exp) && f.exp >= 0) {
+      let acc: Poly = [1];
+      for (let i = 0; i < f.exp; i++) acc = polyMul(acc, bp);
+      polyPart = polyMul(polyPart, acc);
+      continue;
+    }
+    const l = tryLinear(f.base, variable);
+    if (!l || Math.abs(l.a) < 1e-12) return null;
+    if (lin && (Math.abs(lin.a - l.a) > 1e-9 || Math.abs(lin.b - l.b) > 1e-9)) return null;
+    lin = l;
+    p += f.exp;
+  }
+  if (!lin) return null;
+  if (polyDeg(polyPart) > 12) return null;
+  // x = (u - b)/a  →  polynomial in u
+  const inv: Poly = [-lin.b / lin.a, 1 / lin.a];
+  let acc: Poly = [0];
+  let power: Poly = [1];
+  for (let k = 0; k < polyPart.length; k++) {
+    acc = polyAdd(acc, polyScale(power, polyPart[k]));
+    power = polyMul(power, inv);
+  }
+  const u = `(${lin.a === 1 ? variable : `${numLit(lin.a)}*${variable}`} ${lin.b < 0 ? "-" : "+"} ${numLit(Math.abs(lin.b))})`;
+  const parts: string[] = [];
+  for (let k = 0; k < acc.length; k++) {
+    const c = acc[k];
+    if (Math.abs(c) < 1e-12) continue;
+    const ex = k + p + 1;
+    if (Math.abs(ex) < 1e-12) parts.push(`${numLit(c / lin.a)}*log(abs${u})`);
+    else parts.push(`${numLit(c / (lin.a * ex))}*${u}^${numLit(ex)}`);
+  }
+  if (parts.length === 0) return null;
+  const anti = parts.join(" + ").replace(/\+ -/g, "- ");
+  steps.push(`##Substitute $u = ${exprToLatex(u)}$\n$$${integralLatex(node.toString(), variable)} = \\frac{1}{${fmtNum(lin.a)}}\\int \\left(\\text{polynomial in } u\\right) u^{${fmtNum(p)}}\\,du$$`);
+  steps.push(`##Integrate Term by Term\n$$= ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "linear substitution" };
+}
+
+// ── P(x) · {e^{ax+b}, sin, cos, sinh, cosh}(ax+b): tabular integration by parts ─
+function tryPolyTimesTranscendental(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const { coeff, factors } = collectFactors(node, variable);
+  let poly: Poly = [coeff];
+  let g: { kind: "exp" | "sin" | "cos" | "sinh" | "cosh"; a: number; b: number } | null = null;
+  for (const f of factors) {
+    const pl = polyFromNode(f, variable);
+    if (pl) { poly = polyMul(poly, pl); continue; }
+    if (g) return null;
+    const fn = asFunctionNode(f);
+    const op = asOperator(f);
+    if (fn && ["sin", "cos", "sinh", "cosh", "exp"].includes(fn.fn.name) && fn.args.length === 1) {
+      const l = tryLinear(fn.args[0], variable);
+      if (!l || Math.abs(l.a) < 1e-12) return null;
+      g = { kind: fn.fn.name as "exp", a: l.a, b: l.b };
+    } else if (op?.fn === "pow" && op.args.length === 2 && asSymbol(unwrapParens(op.args[0]))?.name === "e") {
+      const l = tryLinear(op.args[1], variable);
+      if (!l || Math.abs(l.a) < 1e-12) return null;
+      g = { kind: "exp", a: l.a, b: l.b };
+    } else return null;
+  }
+  if (!g || polyDeg(poly) < 1 || polyDeg(poly) > 10) return null;
+  const arg = `${numLit(g.a)}*${variable} ${g.b < 0 ? "-" : "+"} ${numLit(Math.abs(g.b))}`;
+  // j-th antiderivative of g
+  const G = (j: number): string => {
+    const div = `${numLit(Math.pow(g!.a, j))}`;
+    switch (g!.kind) {
+      case "exp": return `exp(${arg})/${div}`;
+      case "sinh": return `${j % 2 === 1 ? "cosh" : "sinh"}(${arg})/${div}`;
+      case "cosh": return `${j % 2 === 1 ? "sinh" : "cosh"}(${arg})/${div}`;
+      case "sin": { const cyc = ["sin", "-cos", "-sin", "cos"]; const t = cyc[(j) % 4]; return `${t.startsWith("-") ? "-" : ""}${t.replace("-", "")}(${arg})/${div}`; }
+      case "cos": { const cyc = ["cos", "sin", "-cos", "-sin"]; const t = cyc[(j) % 4]; return `${t.startsWith("-") ? "-" : ""}${t.replace("-", "")}(${arg})/${div}`; }
+    }
+  };
+  // derivatives of poly
+  const terms: string[] = [];
+  let cur = poly;
+  for (let k = 0; k <= polyDeg(poly); k++) {
+    if (!(cur.length === 1 && Math.abs(cur[0]) < 1e-14)) {
+      terms.push(`${k % 2 === 0 ? "+" : "-"} (${polyToString(cur, variable)})*(${G(k + 1)})`);
+    }
+    cur = cur.length > 1 ? trimPoly(cur.slice(1).map((c, i) => c * (i + 1))) : [0];
+  }
+  const anti = terms.join(" ").replace(/^\+ /, "");
+  steps.push(`##Integration by Parts (tabular)\n$$\\int P(x)\\,g(x)\\,dx = P G_1 - P' G_2 + P'' G_3 - \\cdots$$`);
+  steps.push(`##Result\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "tabular integration by parts" };
+}
+
+// ── P(x)·|ax+b| ──────────────────────────────────────────────────────────────
+function tryPolyTimesAbs(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const { coeff, factors } = collectFactors(node, variable);
+  let poly: Poly = [coeff];
+  let lin: { a: number; b: number } | null = null;
+  for (const f of factors) {
+    const pl = polyFromNode(f, variable);
+    if (pl) { poly = polyMul(poly, pl); continue; }
+    const fn = asFunctionNode(f);
+    if (lin || !fn || fn.fn.name !== "abs" || fn.args.length !== 1) return null;
+    const l = tryLinear(fn.args[0], variable);
+    if (!l || Math.abs(l.a) < 1e-12) return null;
+    lin = l;
+  }
+  if (!lin || polyDeg(poly) < 1) return null;
+  const uPoly: Poly = [lin.b, lin.a];
+  const prod = polyMul(poly, uPoly);
+  const H: Poly = [0, ...prod.map((c, i) => c / (i + 1))];
+  const r = -lin.b / lin.a;
+  const u = `(${numLit(lin.a)}*${variable} ${lin.b < 0 ? "-" : "+"} ${numLit(Math.abs(lin.b))})`;
+  const anti = `sign${u}*((${polyToString(H, variable)}) - (${numLit(polyEvalAt(H, r))}))`;
+  steps.push(`##Split at the Sign Change\n$$|u| = u\,\\operatorname{sgn}(u) \\;\\Rightarrow\\; \\int P(x)\\,|u|\\,dx = \\operatorname{sgn}(u)\\int P(x)\\,u\\,dx$$`);
+  steps.push(`##Result\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "polynomial times absolute value" };
+}
+
+// ── general u-substitution:  f(x) = h(g(x))·g'(x) ────────────────────────────
+function pickSubVariable(node: MathNode): string {
+  const text = node.toString();
+  for (const c of ["u", "w", "v", "t", "s", "z"]) if (!new RegExp(`(?<![A-Za-z0-9_])${c}(?![A-Za-z0-9_])`).test(text)) return c;
+  return "u_";
+}
+
+function collectSubCandidates(node: MathNode, variable: string): MathNode[] {
+  const seen = new Set<string>();
+  const out: MathNode[] = [];
+  const add = (m: MathNode) => {
+    const u = unwrapParens(m);
+    if (isConstantExpr(u, variable)) return;
+    if (asSymbol(u)?.name === variable) return;
+    const k = u.toString();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(u);
+  };
+  node.traverse((n: MathNode) => {
+    const fn = asFunctionNode(n);
+    const op = asOperator(n);
+    if (fn) fn.args.forEach(add);
+    if (op?.fn === "pow" && op.args.length === 2) { add(op.args[0]); if (!isConstantExpr(op.args[1], variable)) add(op.args[1]); }
+    if (op?.fn === "divide" && op.args.length === 2) add(op.args[1]);
+  });
+  // simplest candidates first
+  return out.sort((a, b) => a.toString().length - b.toString().length).slice(0, 8);
+}
+
+/** Replaces every occurrence of the subtree `target` inside `node` by the symbol `sym`. */
+function replaceSubtree(node: MathNode, target: MathNode, sym: string): MathNode {
+  const key = target.toString();
+  return node.transform((n: MathNode) => (unwrapParens(n).toString() === key ? parse(sym) : n));
+}
+
+function tryUSubstitution(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 3) return null;
+  const cands = collectSubCandidates(node, variable);
+  const uName = pickSubVariable(node);
+  for (const g of cands) {
+    let gp: MathNode;
+    try { gp = simplify(derivative(g, variable)); } catch { continue; }
+    if (isConstantExpr(gp, variable) && Math.abs(Number(evaluate(gp.toString()))) < 1e-14) continue;
+    let ratio: MathNode;
+    try { ratio = simplify(replaceSubtree(parse(`(${node.toString()})/(${gp.toString()})`), g, uName)); } catch { continue; }
+    if (!isConstantExpr(ratio, variable)) continue;
+    const sub: string[] = [];
+    let H: IntegralPiece = null;
+    try { H = integrateNode(ratio, uName, sub, depth + 1); } catch { H = null; }
+    if (!H) continue;
+    const anti = substituteExpr(H.antiderivative, uName, g.toString());
+    steps.push(`##u-Substitution\n$u = ${exprToLatex(g.toString())},\\quad du = ${exprToLatex(gp.toString())}\\,d${variable}$\n$$${integralLatex(node.toString(), variable)} = \\int ${exprToLatex(ratio.toString())}\\,d${uName}$$`);
+    steps.push(...sub);
+    steps.push(`##Substitute Back\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+    return { antiderivative: anti, rule: "u-substitution" };
+  }
+  return null;
+}
+
+// ── table rules (inverse trig, hyperbolic, cot/csc, sec², …) with linear u ──
+function tryTableRules(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const n = unwrapParens(node);
+  const fn = asFunctionNode(n);
+  const op = asOperator(n);
+  const done = (anti: string, name: string, latexForm: string): IntegralPiece => {
+    steps.push(`##${name}\n$$${integralLatex(n.toString(), variable)} = ${latexForm}$$`);
+    return { antiderivative: anti, rule: name };
+  };
+
+  if (fn && fn.args.length === 1) {
+    const lin = tryLinear(fn.args[0], variable);
+    if (lin && Math.abs(lin.a) > 1e-12) {
+      const u = wrapLinearArg(lin.a, lin.b, variable);
+      const a = fmtNum(lin.a);
+      const uL = exprToLatex(u);
+      const nm = fn.fn.name;
+      const table: Record<string, [string, string, string]> = {
+        cot: [`log(abs(sin(${u})))/(${a})`, "Cotangent Rule", `\\frac{\\ln\\left|\\sin(${uL})\\right|}{${a}}`],
+        csc: [`-log(abs(csc(${u}) + cot(${u})))/(${a})`, "Cosecant Rule", `\\frac{-\\ln\\left|\\csc(${uL})+\\cot(${uL})\\right|}{${a}}`],
+        sinh: [`cosh(${u})/(${a})`, "Hyperbolic Rule", `\\frac{\\cosh(${uL})}{${a}}`],
+        cosh: [`sinh(${u})/(${a})`, "Hyperbolic Rule", `\\frac{\\sinh(${uL})}{${a}}`],
+        tanh: [`log(cosh(${u}))/(${a})`, "Hyperbolic Rule", `\\frac{\\ln\\cosh(${uL})}{${a}}`],
+        coth: [`log(abs(sinh(${u})))/(${a})`, "Hyperbolic Rule", `\\frac{\\ln\\left|\\sinh(${uL})\\right|}{${a}}`],
+        sech: [`2*atan(tanh((${u})/2))/(${a})`, "Hyperbolic Rule", `\\frac{2\\arctan\\left(\\tanh(${uL}/2)\\right)}{${a}}`],
+        asin: [`((${u})*asin(${u}) + sqrt(1 - (${u})^2))/(${a})`, "Integration by Parts (arcsin)", `\\frac{u\\arcsin u + \\sqrt{1-u^2}}{${a}}`],
+        acos: [`((${u})*acos(${u}) - sqrt(1 - (${u})^2))/(${a})`, "Integration by Parts (arccos)", `\\frac{u\\arccos u - \\sqrt{1-u^2}}{${a}}`],
+        atan: [`((${u})*atan(${u}) - log(1 + (${u})^2)/2)/(${a})`, "Integration by Parts (arctan)", `\\frac{u\\arctan u - \\tfrac12\\ln(1+u^2)}{${a}}`],
+        asinh: [`((${u})*asinh(${u}) - sqrt((${u})^2 + 1))/(${a})`, "Integration by Parts (arsinh)", `\\frac{u\\,\\mathrm{arsinh}\\,u - \\sqrt{u^2+1}}{${a}}`],
+        abs: [`(${u})*abs(${u})/(2*${a})`, "Absolute Value Rule", `\\frac{u\\,|u|}{2\\cdot ${a}}`],
+        sign: [`abs(${u})/(${a})`, "Sign Rule", `\\frac{|u|}{${a}}`],
+      };
+      if (table[nm]) {
+        const [anti, name, tex] = table[nm];
+        if (name.startsWith("Integration")) {
+          steps.push(`##${name}\n$u = ${uL}$\n$$${integralLatex(n.toString(), variable)} = ${tex}$$`);
+          return { antiderivative: anti, rule: name };
+        }
+        return done(anti, name, tex);
+      }
+    }
+  }
+
+  // fn(u)^2 for sec, csc, sech, csch, cosh ... (squares with a linear argument)
+  if (op?.fn === "pow" && op.args.length === 2 && isConstantExpr(op.args[1], variable)) {
+    const e = evaluate(op.args[1].toString());
+    const inner = asFunctionNode(unwrapParens(op.args[0]));
+    if (typeof e === "number" && Number.isInteger(e) && e >= 1 && inner && inner.args.length === 1) {
+      const lin = tryLinear(inner.args[0], variable);
+      if (lin && Math.abs(lin.a) > 1e-12) {
+        const u = wrapLinearArg(lin.a, lin.b, variable);
+        const a = `(${fmtNum(lin.a)})`;
+        const nm = inner.fn.name;
+        const uL = exprToLatex(u);
+        if (e >= 2 && ["tan", "sec", "cot", "csc"].includes(nm)) {
+          const body = nm === "tan" ? tanPowInt(e, u) : nm === "sec" ? secPowInt(e, u) : nm === "cot" ? cotPowInt(e, u) : cscPowInt(e, u);
+          const anti = `${body}/${a}`;
+          steps.push(`##Reduction Formula for $\\${nm}^{${e}}$\n$$${integralLatex(n.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+          return { antiderivative: anti, rule: "trig power reduction" };
+        }
+        if (e === 2 && nm === "sech") return done(`tanh(${u})/${a}`, "Hyperbolic Rule", `\\frac{\\tanh(${uL})}{${a}}`);
+        if (e === 2 && nm === "csch") return done(`-coth(${u})/${a}`, "Hyperbolic Rule", `\\frac{-\\coth(${uL})}{${a}}`);
+        if (e === 2 && nm === "tanh") return done(`((${u}) - tanh(${u}))/${a}`, "Hyperbolic Rule", `\\frac{u-\\tanh u}{${a}}`);
+        if (e === 2 && nm === "sinh") return done(`(sinh(2*(${u}))/4 - (${u})/2)/${a}`, "Hyperbolic Power Reduction", `\\frac{\\sinh(2u)/4 - u/2}{${a}}`);
+        if (e === 2 && nm === "cosh") return done(`(sinh(2*(${u}))/4 + (${u})/2)/${a}`, "Hyperbolic Power Reduction", `\\frac{\\sinh(2u)/4 + u/2}{${a}}`);
+      }
+    }
+  }
+
+  // sec·tan and csc·cot, general sec^m tan^n / csc^m cot^n
+  const { coeff, factors } = collectFactors(n, variable);
+  if (factors.length >= 1) {
+    const exps: Record<string, number> = {};
+    let argStr: string | null = null;
+    let linGlobal: { a: number; b: number } | null = null;
+    let ok = true;
+    for (const f of factors) {
+      let base = f;
+      let e = 1;
+      const fop = asOperator(f);
+      if (fop?.fn === "pow" && fop.args.length === 2 && isConstantExpr(fop.args[1], variable)) {
+        const ev = evaluate(fop.args[1].toString());
+        if (typeof ev !== "number" || !Number.isInteger(ev) || ev < 1) { ok = false; break; }
+        e = ev;
+        base = unwrapParens(fop.args[0]);
+      }
+      const ff = asFunctionNode(base);
+      if (!ff || ff.args.length !== 1 || !["sec", "tan", "csc", "cot"].includes(ff.fn.name)) { ok = false; break; }
+      const l = tryLinear(ff.args[0], variable);
+      if (!l || Math.abs(l.a) < 1e-12) { ok = false; break; }
+      if (linGlobal && (Math.abs(linGlobal.a - l.a) > 1e-9 || Math.abs(linGlobal.b - l.b) > 1e-9)) { ok = false; break; }
+      linGlobal = l;
+      argStr = wrapLinearArg(l.a, l.b, variable);
+      exps[ff.fn.name] = (exps[ff.fn.name] ?? 0) + e;
+    }
+    if (ok && linGlobal && argStr) {
+      const keys = Object.keys(exps);
+      const aS = `(${fmtNum(linGlobal.a)})`;
+      const hasSec = "sec" in exps || "tan" in exps;
+      const hasCsc = "csc" in exps || "cot" in exps;
+      if (hasSec && !hasCsc && keys.length === 2 || (hasSec && !hasCsc && keys.length === 1 && "sec" in exps)) {
+        const m = exps.sec ?? 0;
+        const t = exps.tan ?? 0;
+        let anti: string | null = null;
+        if (t === 0 && m >= 3) anti = `${secPowInt(m, argStr)}`;
+        else if (m >= 1 && t >= 1) anti = secTanMixed(m, t, argStr, false);
+        if (!anti && m >= 1 && t >= 2 && t % 2 === 0) {
+          // sec^m (sec^2 - 1)^(t/2) = Σ c_j sec^(m+2j)
+          let pp: Poly = [1];
+          for (let i = 0; i < t / 2; i++) pp = polyMul(pp, [-1, 0, 1]);
+          anti = `(${pp.map((c, j) => (Math.abs(c) < 1e-12 ? "" : `${numLit(c)}*${secPowInt(m + j, argStr)}`)).filter(Boolean).join(" + ")})`;
+        }
+        if (anti) {
+          const full = `${numLit(coeff)}*${anti}/${aS}`;
+          steps.push(`##Trig Substitution\n$$${integralLatex(n.toString(), variable)} = ${exprToLatex(prettifyResult(full, variable))}$$`);
+          return { antiderivative: full, rule: "sec/tan powers" };
+        }
+      }
+      if (hasCsc && !hasSec && (keys.length === 2 || ("csc" in exps && keys.length === 1))) {
+        const m = exps.csc ?? 0;
+        const t = exps.cot ?? 0;
+        let anti: string | null = null;
+        if (t === 0 && m >= 3) anti = `${cscPowInt(m, argStr)}`;
+        else if (m >= 1 && t >= 1) anti = secTanMixed(m, t, argStr, true);
+        if (!anti && m >= 1 && t >= 2 && t % 2 === 0) {
+          let pp: Poly = [1];
+          for (let i = 0; i < t / 2; i++) pp = polyMul(pp, [-1, 0, 1]);
+          anti = `(${pp.map((c, j) => (Math.abs(c) < 1e-12 ? "" : `${numLit(c)}*${cscPowInt(m + j, argStr)}`)).filter(Boolean).join(" + ")})`;
+        }
+        if (anti) {
+          const full = `${numLit(coeff)}*${anti}/${aS}`;
+          steps.push(`##Trig Substitution\n$$${integralLatex(n.toString(), variable)} = ${exprToLatex(prettifyResult(full, variable))}$$`);
+          return { antiderivative: full, rule: "csc/cot powers" };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// ── trigonometric rewrites: 1/cos → sec, sin/cos → tan, cos^-n → sec^n … ────
+function rewriteTrigReciprocals(node: MathNode): MathNode {
+  const pairOf = (m: MathNode): { name: string; arg: MathNode } | null => {
+    const f = asFunctionNode(unwrapParens(m));
+    return f && f.args.length === 1 ? { name: f.fn.name, arg: f.args[0] } : null;
+  };
+  const recip: Record<string, string> = { cos: "sec", sin: "csc", tan: "cot", sec: "cos", csc: "sin", cot: "tan" };
+  return node.transform((n: MathNode) => {
+    const op = asOperator(n);
+    if (op?.fn === "divide" && op.args.length === 2) {
+      const [num, den] = op.args;
+      const dn = pairOf(den);
+      const nn = pairOf(num);
+      if (nn && dn && nn.arg.toString() === dn.arg.toString()) {
+        if (nn.name === "sin" && dn.name === "cos") return parse(`tan(${nn.arg.toString()})`);
+        if (nn.name === "cos" && dn.name === "sin") return parse(`cot(${nn.arg.toString()})`);
+      }
+      if (dn && recip[dn.name]) return parse(`(${num.toString()})*${recip[dn.name]}(${dn.arg.toString()})`);
+      const dop = asOperator(unwrapParens(den));
+      if (dop?.fn === "pow" && dop.args.length === 2) {
+        const b = pairOf(dop.args[0]);
+        if (b && recip[b.name]) return parse(`(${num.toString()})*${recip[b.name]}(${b.arg.toString()})^(${dop.args[1].toString()})`);
+      }
+    }
+    if (op?.fn === "pow" && op.args.length === 2) {
+      const b = pairOf(op.args[0]);
+      let e: unknown;
+      try { e = evaluate(op.args[1].toString()); } catch { e = null; }
+      if (b && recip[b.name] && typeof e === "number" && e < 0 && Number.isInteger(e)) {
+        return parse(`${recip[b.name]}(${b.arg.toString()})^${-e}`);
+      }
+    }
+    return n;
+  });
+}
+
+// ── e^{ax+c}·sin/cos(bx+d)  (cyclic integration by parts, closed form) ──────
+function tryExpTrig(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const { coeff, factors } = collectFactors(node, variable);
+  if (factors.length !== 2) return null;
+  let expLin: { a: number; b: number } | null = null;
+  let trig: { name: "sin" | "cos"; a: number; b: number } | null = null;
+  for (const f of factors) {
+    const op = asOperator(f);
+    const fn = asFunctionNode(f);
+    if (fn && fn.fn.name === "exp" && fn.args.length === 1) {
+      const l = tryLinear(fn.args[0], variable);
+      if (!l) return null;
+      expLin = l;
+    } else if (op?.fn === "pow" && op.args.length === 2 && asSymbol(unwrapParens(op.args[0]))?.name === "e") {
+      const l = tryLinear(op.args[1], variable);
+      if (!l) return null;
+      expLin = l;
+    } else if (fn && (fn.fn.name === "sin" || fn.fn.name === "cos") && fn.args.length === 1) {
+      const l = tryLinear(fn.args[0], variable);
+      if (!l) return null;
+      trig = { name: fn.fn.name, a: l.a, b: l.b };
+    } else return null;
+  }
+  if (!expLin || !trig || Math.abs(trig.a) < 1e-12 || Math.abs(expLin.a) < 1e-12 && false) return null;
+  const A = expLin.a;
+  const B = trig.a;
+  const den = A * A + B * B;
+  const E = `exp(${numLit(A)}*${variable} ${expLin.b < 0 ? "-" : "+"} ${numLit(Math.abs(expLin.b))})`;
+  const T = `${numLit(B)}*${variable} ${trig.b < 0 ? "-" : "+"} ${numLit(Math.abs(trig.b))}`;
+  const anti = trig.name === "sin"
+    ? `${numLit(coeff / den)}*${E}*(${numLit(A)}*sin(${T}) - ${numLit(B)}*cos(${T}))`
+    : `${numLit(coeff / den)}*${E}*(${numLit(A)}*cos(${T}) + ${numLit(B)}*sin(${T}))`;
+  steps.push(`##Integration by Parts (twice, cyclic)\n$$I = \\int ${exprToLatex(node.toString())}\\,d${variable}$$\n$$I = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "cyclic integration by parts" };
+}
+
+// ── ln(x)^n and x^m ln(x)^n ──────────────────────────────────────────────────
+function lnPowAnti(n: number, u: string): string {
+  if (n === 0) return u;
+  return `((${u})*log(${u})^${n} - ${n}*${lnPowAnti(n - 1, u)})`;
+}
+
+function tryLogPowers(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const { coeff, factors } = collectFactors(node, variable);
+  if (factors.length === 0 || factors.length > 2) return null;
+  let m = 0;
+  let nPow = 0;
+  let logArg: { a: number; b: number } | null = null;
+  for (const f of factors) {
+    const pl = polyFromNode(f, variable);
+    if (pl && polyDeg(pl) >= 0 && pl.length === 1) { m += 0; continue; }
+    const sym = asSymbol(f);
+    const op = asOperator(f);
+    if (sym && sym.name === variable) { m += 1; continue; }
+    if (op?.fn === "pow" && op.args.length === 2 && asSymbol(unwrapParens(op.args[0]))?.name === variable && isConstantExpr(op.args[1], variable)) {
+      const e = evaluate(op.args[1].toString());
+      if (typeof e !== "number") return null;
+      m += e;
+      continue;
+    }
+    const fn = asFunctionNode(f);
+    if (fn && fn.fn.name === "log" && fn.args.length === 1) {
+      const l = tryLinear(fn.args[0], variable);
+      if (!l) return null;
+      logArg = l; nPow = 1; continue;
+    }
+    if (op?.fn === "pow" && op.args.length === 2) {
+      const lf = asFunctionNode(unwrapParens(op.args[0]));
+      if (lf && lf.fn.name === "log" && lf.args.length === 1 && isConstantExpr(op.args[1], variable)) {
+        const e = evaluate(op.args[1].toString());
+        const l = tryLinear(lf.args[0], variable);
+        if (!l || typeof e !== "number" || !Number.isInteger(e) || e < 1) return null;
+        logArg = l; nPow = e; continue;
+      }
+    }
+    return null;
+  }
+  if (!logArg || nPow < 1) return null;
+  const u = `(${logArg.a === 1 ? variable : `${numLit(logArg.a)}*${variable}`} ${logArg.b < 0 ? "-" : "+"} ${numLit(Math.abs(logArg.b))})`;
+  // pure ln(u)^n
+  if (Math.abs(m) < 1e-12) {
+    const anti = `${numLit(coeff / logArg.a)}*${lnPowAnti(nPow, u)}`;
+    steps.push(`##Reduction for $\\ln^{${nPow}}$\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+    return { antiderivative: anti, rule: "ln power reduction" };
+  }
+  // x^m ln(x)^n (argument must be exactly x)
+  if (!(Math.abs(logArg.a - 1) < 1e-12 && Math.abs(logArg.b) < 1e-12)) return null;
+  const rec = (k: number): string => {
+    if (Math.abs(m + 1) < 1e-12) return `log(abs(${variable}))^${k + 1}/${k + 1}`;
+    if (k === 0) return `${variable}^${numLit(m + 1)}/${numLit(m + 1)}`;
+    return `(${variable}^${numLit(m + 1)}*log(${variable})^${k}/${numLit(m + 1)} - ${k}/${numLit(m + 1)}*${rec(k - 1)})`;
+  };
+  const anti = `${numLit(coeff)}*${rec(nPow)}`;
+  steps.push(`##Integration by Parts (repeated)\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "x^m ln^n" };
+}
+
+// ── P(x)·g(x) where g' is algebraic (arctan, arcsin, arccos, …) ─────────────
+function tryPartsAlgebraicDerivative(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 3) return null;
+  const { coeff, factors } = collectFactors(node, variable);
+  if (factors.length < 1 || factors.length > 2) return null;
+  let g: MathNode | null = null;
+  let poly: Poly = [coeff];
+  for (const f of factors) {
+    const fn = asFunctionNode(f);
+    const pl = polyFromNode(f, variable);
+    if (pl) { poly = polyMul(poly, pl); continue; }
+    if (fn && ["atan", "asin", "acos", "asinh", "acosh", "atanh", "acot", "log"].includes(fn.fn.name) && fn.args.length === 1 && !g) { g = f; continue; }
+    return null;
+  }
+  if (!g || polyDeg(poly) > 8) return null;
+  const V: Poly = [0, ...poly.map((c, i) => c / (i + 1))];
+  const vStr = polyToString(V, variable);
+  let dg: MathNode;
+  try { dg = simplify(derivative(g, variable)); } catch { return null; }
+  const remainingStr = `(${vStr})*(${dg.toString()})`;
+  let remNode: MathNode;
+  try { remNode = parse(remainingStr); } catch { return null; }
+  const sub: string[] = [];
+  const rem = integrateNode(simplify(remNode), variable, sub, depth + 1);
+  if (!rem) return null;
+  const anti = `(${vStr})*(${g.toString()}) - (${rem.antiderivative})`;
+  steps.push(`##Integration by Parts\n$$u = ${exprToLatex(g.toString())}, \\quad dv = ${exprToLatex(polyToString(poly, variable))}\\,d${variable}$$\n$$v = ${exprToLatex(vStr)}, \\quad du = ${exprToLatex(dg.toString())}\\,d${variable}$$`);
+  steps.push(`##Remaining Integral\n$$\\int v\\,du = ${integralLatex(simplify(remNode).toString(), variable)}$$`);
+  steps.push(...sub);
+  steps.push(`##Combine\n$$uv - \\int v\\,du = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "integration by parts (algebraic derivative)" };
+}
+
+// ── P(x)/√Q(x) with Q quadratic (Ostrogradsky: R(x)·√Q + λ∫1/√Q) ───────────
+function tryPolyOverQuadraticRadical(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const pfs = powerFactors(node, variable);
+  if (!pfs) return null;
+  let P: Poly = [pfs.coeff];
+  let Q: Poly | null = null;
+  let radExp = 0;
+  for (const f of pfs.pf) {
+    const bp = polyFromNode(f.base, variable);
+    if (bp && Number.isInteger(f.exp) && f.exp >= 0) {
+      let acc: Poly = [1];
+      for (let i = 0; i < f.exp; i++) acc = polyMul(acc, bp);
+      P = polyMul(P, acc);
+      continue;
+    }
+    if (bp && polyDeg(bp) === 2 && Math.abs(Math.abs(f.exp) - 0.5) < 1e-12 && !Q) { Q = bp; radExp = f.exp; continue; }
+    return null;
+  }
+  if (!Q) return null;
+  // √Q numerator → P·Q / √Q
+  if (radExp > 0) P = polyMul(P, Q);
+  const n = polyDeg(P);
+  if (n < 1 || n > 7) return null;
+  // P = R'·Q + R·Q'/2 + λ  with R of degree n-1
+  const Qd: Poly = [Q[1], 2 * Q[2]];
+  const unknown = n + 1; // r_0..r_{n-1}, λ
+  const M: number[][] = Array.from({ length: n + 1 }, () => new Array(unknown).fill(0));
+  for (let j = 0; j < n; j++) {
+    const Rj: Poly = [...new Array(j).fill(0), 1];
+    const dR: Poly = j === 0 ? [0] : [...new Array(j - 1).fill(0), j];
+    const term = polyAdd(polyMul(dR, Q), polyScale(polyMul(Rj, Qd), 0.5));
+    for (let r = 0; r <= n; r++) M[r][j] = term[r] ?? 0;
+  }
+  M[0][n] = 1;
+  const rhs = Array.from({ length: n + 1 }, (_, r) => P[r] ?? 0);
+  const sol = solveLinearSystem(M, rhs);
+  if (!sol) return null;
+  const R: Poly = sol.slice(0, n);
+  const lambda = sol[n];
+  const radNode = parse(`1/sqrt(${polyToString(Q, variable)})`);
+  const radSteps: string[] = [];
+  let tail = "";
+  if (Math.abs(lambda) > 1e-10) {
+    const t = tryQuadraticRadical(radNode, variable, radSteps);
+    if (!t) return null;
+    tail = ` + ${numLit(lambda)}*(${t.antiderivative})`;
+  }
+  const anti = `(${polyToString(R, variable)})*sqrt(${polyToString(Q, variable)})${tail}`.replace(/\+ -/g, "- ");
+  steps.push(`##Reduce to $\\int \\frac{dx}{\\sqrt{Q}}$\n$$\\int \\frac{P(x)}{\\sqrt{Q}}\\,dx = R(x)\\sqrt{Q} + \\lambda\\int \\frac{dx}{\\sqrt{Q}}$$`);
+  steps.push(...radSteps);
+  steps.push(`##Result\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "polynomial over a quadratic radical" };
+}
+
+// ── rational functions of e^{ax}: substitute u = e^{ax} ──────────────────────
+function tryExpSubstitution(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 3) return null;
+  const exps: { c: number; d: number }[] = [];
+  let fail = false;
+  node.traverse((n: MathNode, path: string) => {
+    if (fail || path === "fn") return;
+    const fn = asFunctionNode(n);
+    const op = asOperator(n);
+    let arg: MathNode | null = null;
+    if (fn && fn.fn.name === "exp" && fn.args.length === 1) arg = fn.args[0];
+    else if (op?.fn === "pow" && op.args.length === 2 && asSymbol(unwrapParens(op.args[0]))?.name === "e" && !isConstantExpr(op.args[1], variable)) arg = op.args[1];
+    if (arg) {
+      const l = tryLinear(arg, variable);
+      if (!l || Math.abs(l.a) < 1e-12) { fail = true; return; }
+      exps.push({ c: l.a, d: l.b });
+    }
+  });
+  if (fail || exps.length === 0) return null;
+  const a = Math.min(...exps.map((e) => Math.abs(e.c)));
+  if (exps.some((e) => Math.abs(e.c / a - Math.round(e.c / a)) > 1e-9 || Math.abs(Math.round(e.c / a)) > 8)) return null;
+  const uName = pickSubVariable(node);
+  const replaced = node.transform((n: MathNode) => {
+    const fn = asFunctionNode(n);
+    const op = asOperator(n);
+    let arg: MathNode | null = null;
+    if (fn && fn.fn.name === "exp" && fn.args.length === 1) arg = fn.args[0];
+    else if (op?.fn === "pow" && op.args.length === 2 && asSymbol(unwrapParens(op.args[0]))?.name === "e") arg = op.args[1];
+    if (!arg) return n;
+    const l = tryLinear(arg, variable);
+    if (!l) return n;
+    const k = Math.round(l.a / a);
+    return parse(`exp(${numLit(l.b)})*${uName}^(${k})`);
+  });
+  let ratio: MathNode;
+  try { ratio = simplify(parse(`(${replaced.toString()})/(${numLit(a)}*${uName})`)); } catch { return null; }
+  if (!isConstantExpr(ratio, variable)) return null;
+  const sub: string[] = [];
+  const H = integrateNode(ratio, uName, sub, depth + 1);
+  if (!H) return null;
+  const anti = substituteExpr(H.antiderivative, uName, a === 1 ? `exp(${variable})` : `exp(${numLit(a)}*${variable})`);
+  steps.push(`##Substitute $${uName} = e^{${a === 1 ? "" : numLit(a)}${variable}}$\n$$${integralLatex(node.toString(), variable)} = \\int ${exprToLatex(ratio.toString())}\\,d${uName}$$`);
+  steps.push(...sub);
+  steps.push(`##Substitute Back\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "exponential substitution" };
+}
+
+// ── generic parts:  P(x)·h(x)  →  P·v − ∫P'·v  with v = ∫h  ─────────────────
+function tryPartsPolyTimesAny(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 2) return null;
+  const { coeff, factors } = collectFactors(node, variable);
+  let poly: Poly = [coeff];
+  const rest: MathNode[] = [];
+  for (const f of factors) {
+    const pl = polyFromNode(f, variable);
+    if (pl) poly = polyMul(poly, pl); else rest.push(f);
+  }
+  if (rest.length === 0 || polyDeg(poly) < 1 || polyDeg(poly) > 6) return null;
+  const hStr = rest.map((r) => `(${r.toString()})`).join("*");
+  const hNode = parse(hStr);
+  const vSteps: string[] = [];
+  const v = integrateNode(hNode, variable, vSteps, depth + 2);
+  if (!v) return null;
+  const dP: Poly = poly.length > 1 ? trimPoly(poly.slice(1).map((c, i) => c * (i + 1))) : [0];
+  const remStr = `(${polyToString(dP, variable)})*(${v.antiderivative})`;
+  const remSteps: string[] = [];
+  let rem: IntegralPiece = null;
+  try { rem = integrateNode(simplify(parse(remStr)), variable, remSteps, depth + 2); } catch { rem = null; }
+  if (!rem) return null;
+  const anti = `(${polyToString(poly, variable)})*(${v.antiderivative}) - (${rem.antiderivative})`;
+  steps.push(`##Integration by Parts\n$$u = ${exprToLatex(polyToString(poly, variable))}, \\quad dv = ${exprToLatex(hStr)}\\,d${variable}$$\n$$du = ${exprToLatex(polyToString(dP, variable))}\\,d${variable}, \\quad v = ${exprToLatex(prettifyResult(v.antiderivative, variable))}$$`);
+  steps.push(...remSteps);
+  steps.push(`##Combine\n$$uv - \\int v\\,du = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "integration by parts (generic)" };
+}
+
+// ── expand with function atoms treated as symbols:  (1+cos x)^2,  e^x(x+1) … ─
+function tryExpandAtoms(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 3) return null;
+  const atoms = new Map<string, string>();
+  let counter = 0;
+  const abstracted = node.transform((n: MathNode, path: string) => {
+    if (path === "fn") return n;
+    const fn = asFunctionNode(n);
+    if (fn && !isConstantExpr(n, variable)) {
+      const key = n.toString();
+      if (!atoms.has(key)) atoms.set(key, `AT${++counter}Z`);
+      return parse(atoms.get(key)!);
+    }
+    return n;
+  });
+  if (atoms.size === 0) return null;
+  let expanded: MathNode;
+  try { expanded = rationalize(abstracted); } catch { return null; }
+  let text = expanded.toString();
+  for (const [key, sym] of atoms) text = text.split(sym).join(`(${key})`);
+  let result: MathNode;
+  try { result = parse(text); } catch { return null; }
+  const before = flattenSum(simplify(result)).length;
+  const original = flattenSum(node).length;
+  if (before <= original && result.toString() === node.toString()) return null;
+  // must have become a sum of >1 terms or at least changed shape
+  const terms = flattenSum(result);
+  if (terms.length < 2 && result.toString().replace(/\s/g, "") === node.toString().replace(/\s/g, "")) return null;
+  const sub: string[] = [];
+  const piece = integrateNode(result, variable, sub, depth + 1);
+  if (!piece) return null;
+  steps.push(`##Expand\n$$${exprToLatex(node.toString())} = ${exprToLatex(result.toString())}$$`);
+  steps.push(...sub);
+  return piece;
+}
+
+// ── e^{ax} × (trig product) → e^{ax} × Σ sinusoids ───────────────────────────
+function tryExpTimesTrigProduct(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 3) return null;
+  const { coeff, factors } = collectFactors(node, variable);
+  const expF: MathNode[] = [];
+  const trigF: MathNode[] = [];
+  for (const f of factors) {
+    const fn = asFunctionNode(f);
+    const op = asOperator(f);
+    const isExp = (fn && fn.fn.name === "exp") || (op?.fn === "pow" && asSymbol(unwrapParens(op.args[0]))?.name === "e");
+    if (isExp) expF.push(f); else trigF.push(f);
+  }
+  if (expF.length !== 1 || trigF.length === 0) return null;
+  const sum = trigProductToSum(parse(trigF.map((t) => `(${t.toString()})`).join("*")), variable);
+  if (!sum) return null;
+  const isSingle = trigF.length === 1 && asFunctionNode(trigF[0]) !== null;
+  if (isSingle) return null;
+  const expr = `(${numLit(coeff)})*(${expF[0].toString()})*(${sum})`;
+  const sub: string[] = [];
+  let piece: IntegralPiece = null;
+  try { piece = integrateNode(simplify(parse(expr)), variable, sub, depth + 1); } catch { piece = null; }
+  if (!piece) {
+    try { piece = integrateNode(parse(expr), variable, sub, depth + 1); } catch { piece = null; }
+  }
+  if (!piece) return null;
+  steps.push(`##Power-Reduction\n$$${integralLatex(node.toString(), variable)} = ${integralLatex(expr, variable)}$$`);
+  steps.push(...sub);
+  return piece;
+}
+
+// ── hyperbolic → exponentials ────────────────────────────────────────────────
+function tryHyperbolicRewrite(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 3) return null;
+  let changed = false;
+  const rewritten = node.transform((n: MathNode, path: string) => {
+    if (path === "fn") return n;
+    const fn = asFunctionNode(n);
+    if (!fn || fn.args.length !== 1) return n;
+    const u = fn.args[0].toString();
+    if (fn.fn.name === "sinh") { changed = true; return parse(`(exp(${u}) - exp(-(${u})))/2`); }
+    if (fn.fn.name === "cosh") { changed = true; return parse(`(exp(${u}) + exp(-(${u})))/2`); }
+    if (fn.fn.name === "tanh") { changed = true; return parse(`(exp(${u}) - exp(-(${u})))/(exp(${u}) + exp(-(${u})))`); }
+    return n;
+  });
+  if (!changed) return null;
+  const sub: string[] = [];
+  let piece: IntegralPiece = null;
+  try { piece = integrateNode(rewritten, variable, sub, depth + 1); } catch { piece = null; }
+  if (!piece) return null;
+  steps.push(`##Rewrite Hyperbolics as Exponentials\n$$${integralLatex(node.toString(), variable)} = ${integralLatex(rewritten.toString(), variable)}$$`);
+  steps.push(...sub);
+  return piece;
+}
+
+// ── √(ax+b) substitution:  u = √(ax+b), x = (u²−b)/a ─────────────────────────
+function trySqrtLinearSubstitution(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 3) return null;
+  let target: { l: { a: number; b: number }; text: string } | null = null;
+  node.traverse((n: MathNode, path: string) => {
+    if (target || path === "fn") return;
+    const fn = asFunctionNode(n);
+    if (fn && fn.fn.name === "sqrt" && fn.args.length === 1) {
+      const l = tryLinear(fn.args[0], variable);
+      if (l && Math.abs(l.a) > 1e-12) target = { l, text: n.toString() };
+    }
+  });
+  const t = target as { l: { a: number; b: number }; text: string } | null;
+  if (!t) return null;
+  const uName = pickSubVariable(node);
+  const xOfU = `((${uName}^2 - ${numLit(t.l.b)})/${numLit(t.l.a)})`;
+  let replaced: MathNode;
+  try {
+    replaced = node.transform((n: MathNode, path: string) => {
+      if (path === "fn") return n;
+      if (n.toString() === t.text) return parse(uName);
+      if (asSymbol(n)?.name === variable) return parse(xOfU);
+      return n;
+    });
+  } catch { return null; }
+  let integrand: MathNode;
+  try { integrand = simplify(parse(`(${replaced.toString()})*(2*${uName}/${numLit(t.l.a)})`)); } catch { return null; }
+  if (!isConstantExpr(integrand, variable)) return null;
+  const sub: string[] = [];
+  const H = integrateNode(integrand, uName, sub, depth + 1);
+  if (!H) return null;
+  const anti = substituteExpr(H.antiderivative, uName, t.text);
+  steps.push(`##Substitute $${uName} = ${exprToLatex(t.text)}$\n$$${variable} = ${exprToLatex(xOfU)}, \\quad ${variable === "x" ? "dx" : `d${variable}`} = ${exprToLatex(`2*${uName}/${numLit(t.l.a)}`)}\\,d${uName}$$\n$$${integralLatex(node.toString(), variable)} = \\int ${exprToLatex(integrand.toString())}\\,d${uName}$$`);
+  steps.push(...sub);
+  steps.push(`##Substitute Back\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "radical substitution" };
+}
+
+// ── rational functions of sin/cos: Weierstrass t = tan(u/2) ─────────────────
+function tryWeierstrass(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 3) return null;
+  let lin: { a: number; b: number } | null = null;
+  let ok = true;
+  let sawTrig = false;
+  node.traverse((n: MathNode, path: string) => {
+    if (!ok || path === "fn") return;
+    const fn = asFunctionNode(n);
+    if (!fn) {
+      if (asSymbol(n)?.name === variable) {
+        // bare variable allowed only inside trig args
+      }
+      return;
+    }
+    if (!["sin", "cos", "tan", "sec", "csc", "cot"].includes(fn.fn.name) || fn.args.length !== 1) { ok = false; return; }
+    const l = tryLinear(fn.args[0], variable);
+    if (!l || Math.abs(l.a) < 1e-12) { ok = false; return; }
+    if (lin && (Math.abs(lin.a - l.a) > 1e-9 || Math.abs(lin.b - l.b) > 1e-9)) { ok = false; return; }
+    lin = l;
+    sawTrig = true;
+  });
+  const lg = lin as { a: number; b: number } | null;
+  if (!ok || !sawTrig || !lg) return null;
+  const tName = pickSubVariable(node);
+  const sinT = `(2*${tName}/(1+${tName}^2))`;
+  const cosT = `((1-${tName}^2)/(1+${tName}^2))`;
+  const replaced = node.transform((n: MathNode, path: string) => {
+    if (path === "fn") return n;
+    const fn = asFunctionNode(n);
+    if (!fn || fn.args.length !== 1) return n;
+    switch (fn.fn.name) {
+      case "sin": return parse(sinT);
+      case "cos": return parse(cosT);
+      case "tan": return parse(`${sinT}/${cosT}`);
+      case "sec": return parse(`1/${cosT}`);
+      case "csc": return parse(`1/${sinT}`);
+      case "cot": return parse(`${cosT}/${sinT}`);
+      default: return n;
+    }
+  });
+  let integrand: MathNode;
+  try { integrand = simplify(parse(`(${replaced.toString()})*2/((1+${tName}^2)*${numLit(lg.a)})`)); } catch { return null; }
+  if (!isConstantExpr(integrand, variable)) return null;
+  const sub: string[] = [];
+  let H: IntegralPiece = null;
+  try { H = integrateNode(integrand, tName, sub, depth + 1); } catch { H = null; }
+  if (!H) return null;
+  const u = `(${numLit(lg.a)}*${variable} ${lg.b < 0 ? "-" : "+"} ${numLit(Math.abs(lg.b))})`;
+  const anti = substituteExpr(H.antiderivative, tName, `tan(${u}/2)`);
+  steps.push(`##Weierstrass Substitution $${tName} = \\tan\\frac{u}{2}$\n$$\\sin u = \\frac{2${tName}}{1+${tName}^2},\\quad \\cos u = \\frac{1-${tName}^2}{1+${tName}^2},\\quad du = \\frac{2\\,d${tName}}{1+${tName}^2}$$\n$$${integralLatex(node.toString(), variable)} = \\int ${exprToLatex(integrand.toString())}\\,d${tName}$$`);
+  steps.push(...sub);
+  steps.push(`##Substitute Back\n$$${integralLatex(node.toString(), variable)} = ${exprToLatex(prettifyResult(anti, variable))}$$`);
+  return { antiderivative: anti, rule: "Weierstrass substitution" };
+}
+
+// ── rationalise  1/(√a ± √b)  ────────────────────────────────────────────────
+function tryConjugate(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 3) return null;
+  const op = asOperator(unwrapParens(node));
+  if (!op || op.fn !== "divide" || op.args.length !== 2) return null;
+  const den = asOperator(unwrapParens(op.args[1]));
+  if (!den || (den.fn !== "add" && den.fn !== "subtract") || den.args.length !== 2) return null;
+  const [a, b] = den.args;
+  const conj = den.fn === "add" ? `(${a.toString()}) - (${b.toString()})` : `(${a.toString()}) + (${b.toString()})`;
+  let rewritten: MathNode;
+  try { rewritten = simplify(parse(`((${op.args[0].toString()})*(${conj}))/(((${a.toString()})^2) - ((${b.toString()})^2))`)); } catch { return null; }
+  if (rewritten.toString() === node.toString()) return null;
+  const sub: string[] = [];
+  let piece: IntegralPiece = null;
+  try { piece = integrateNode(rewritten, variable, sub, depth + 1); } catch { piece = null; }
+  if (!piece) return null;
+  steps.push(`##Multiply by the Conjugate\n$$${exprToLatex(node.toString())} = ${exprToLatex(rewritten.toString())}$$`);
+  steps.push(...sub);
+  return piece;
+}
+
+// ── the strategy chain ───────────────────────────────────────────────────────
+function integrateExtras(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 6) return null;
+  const attempts: Array<() => { piece: IntegralPiece; buf: string[] }> = [];
+  const run = (fn: (buf: string[]) => IntegralPiece) => attempts.push(() => { const buf: string[] = []; return { piece: fn(buf), buf }; });
+
+  // 0) trig reciprocal rewrite → retry whole pipeline on the rewritten tree
+  run((buf) => {
+    const rewritten = rewriteTrigReciprocals(node);
+    if (rewritten.toString() === node.toString()) return null;
+    buf.push(`##Rewrite\n$$${integralLatex(node.toString(), variable)} = ${integralLatex(rewritten.toString(), variable)}$$`);
+    const inner = integrateNode(rewritten, variable, buf, depth + 1);
+    return inner;
+  });
+
+  run((buf) => tryTableRules(node, variable, buf));
+
+  // 1) sin/cos powers & products → sum of sinusoids
+  run((buf) => {
+    const sum = trigProductToSum(node, variable);
+    if (!sum) return null;
+    const f = collectFactors(node, variable).factors;
+    const simpleAlready = f.length === 1 && asFunctionNode(f[0]) !== null;
+    if (simpleAlready) return null;
+    buf.push(`##Power-Reduction / Product-to-Sum\n$$${integralLatex(node.toString(), variable)} = ${integralLatex(prettifyResult(sum, variable), variable)}$$`);
+    return integrateNode(parse(sum), variable, buf, depth + 1);
+  });
+
+  run((buf) => tryPolyTimesTranscendental(node, variable, buf));
+  run((buf) => tryPolyTimesAbs(node, variable, buf));
+  run((buf) => tryExpTrig(node, variable, buf));
+  run((buf) => tryLogPowers(node, variable, buf));
+  run((buf) => tryQuadraticRadical(node, variable, buf));
+  run((buf) => tryLinearPowerTimesPoly(node, variable, buf));
+  run((buf) => tryRationalFunction(node, variable, buf));
+
+  // polynomial expansion
+  run((buf) => {
+    const poly = polyFromNode(node, variable);
+    if (!poly || polyDeg(poly) < 1) return null;
+    const expanded = polyToString(poly, variable);
+    buf.push(`##Expand\n$$${exprToLatex(node.toString())} = ${exprToLatex(expanded)}$$`);
+    return integrateNode(parse(expanded), variable, buf, depth + 1);
+  });
+
+  run((buf) => tryPartsAlgebraicDerivative(node, variable, buf, depth));
+  run((buf) => tryPolyOverQuadraticRadical(node, variable, buf));
+  run((buf) => tryExpTimesTrigProduct(node, variable, buf, depth));
+  run((buf) => tryExpandAtoms(node, variable, buf, depth));
+  run((buf) => tryPartsPolyTimesAny(node, variable, buf, depth));
+  run((buf) => tryUSubstitution(node, variable, buf, depth));
+  run((buf) => tryWeierstrass(node, variable, buf, depth));
+  run((buf) => tryHyperbolicRewrite(node, variable, buf, depth));
+  run((buf) => trySqrtLinearSubstitution(node, variable, buf, depth));
+  run((buf) => tryConjugate(node, variable, buf, depth));
+  run((buf) => tryExpSubstitution(node, variable, buf, depth));
+
+  for (const attempt of attempts) {
+    let out: { piece: IntegralPiece; buf: string[] };
+    try { out = attempt(); } catch { continue; }
+    if (out.piece && verifyAntiderivative(node, out.piece.antiderivative, variable)) {
+      steps.push(...out.buf);
+      return out.piece;
+    }
+  }
+  return null;
+}
+
+let integrationDeadline = Infinity;
+const integrationFailMemo = new Set<string>();
+
+function withIntegrationBudget<T>(ms: number, fn: () => T): T {
+  const prevDeadline = integrationDeadline;
+  integrationDeadline = Date.now() + ms;
+  integrationFailMemo.clear();
+  try { return fn(); } finally { integrationDeadline = prevDeadline; }
+}
+
 function integrateNode(node: MathNode, variable: string, steps: string[], depth = 0): IntegralPiece {
+  if (Date.now() > integrationDeadline) return null;
+  const memoKey = `${variable}|${node.toString()}`;
+  if (integrationFailMemo.has(memoKey)) return null;
+  const result = integrateNodeUncached(node, variable, steps, depth);
+  if (!result) integrationFailMemo.add(memoKey);
+  return result;
+}
+
+function integrateNodeUncached(node: MathNode, variable: string, steps: string[], depth = 0): IntegralPiece {
+  const coreSteps: string[] = [];
+  let core: IntegralPiece = null;
+  try { core = integrateNodeCore(node, variable, coreSteps, depth); } catch { core = null; }
+  if (core) { steps.push(...coreSteps); return core; }
+  return integrateExtras(node, variable, steps, depth);
+}
+
+
+function integrateNodeCore(node: MathNode, variable: string, steps: string[], depth = 0): IntegralPiece {
   const str = node.toString();
   const here = () => integralLatex(node.toString(), variable);
 
@@ -1521,7 +3416,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       return null;
     }
     const k = str === "0" ? "0" : str;
-    steps.push(`##Constant Rule\n${k === "0" ? "The integrand is $0$" : `The integrand is the constant $${exprToLatex(k)}$`} — a constant has antiderivative $k${variable}$:\n$$${here()} = ${exprToLatex(k)}${variable}$$`);
+    steps.push(`##Constant Rule\n$$${here()} = ${k === "0" ? "0" : `${exprToLatex(k)}${variable}`}$$`);
     return { antiderivative: k === "0" ? "0" : `(${k})*${variable}`, rule: "constant rule" };
   }
 
@@ -1538,7 +3433,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
         return t.sign === -1 ? ` - ${d}` : ` + ${d}`;
       })
       .join("");
-    steps.push(`##Separate the Terms\nSum/difference of ${flatTerms.length} terms — integrate each separately, then add:\n$$${here()} = ${perTermLatex}$$`);
+    steps.push(`##Separate the Terms\n$$${here()} = ${perTermLatex}$$`);
     const parts: string[] = [];
     let ok = true;
     flatTerms.forEach((t) => {
@@ -1547,13 +3442,13 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       parts.push(t.sign === -1 ? `-(${piece.antiderivative})` : piece.antiderivative);
     });
     if (!ok) return null;
-    steps.push(`##Combine the Results\nAdd all the term-by-term antiderivatives together:\n$$${here()} = ${exprToLatex(prettifyResult(parts.join("+"), variable))}$$`);
+    steps.push(`##Combine the Results\n$$${here()} = ${exprToLatex(prettifyResult(parts.join("+"), variable))}$$`);
     return { antiderivative: parts.join(" + ").replace(/\+ -/g, "- "), rule: "sum rule" };
   }
   // Unary minus: -f(x)
   if (asOperator(node)?.fn === "unaryMinus") {
     const arg = asOperator(node)!.args[0];
-    steps.push(`##Constant Multiple Rule\nThe leading minus is a factor of $-1$ — integrate the rest, then reattach the sign:\n$$${here()} = -${integralLatex(arg.toString(), variable)}$$`);
+    steps.push(`##Constant Multiple Rule\n$$${here()} = -${integralLatex(arg.toString(), variable)}$$`);
     const piece = integrateNode(arg, variable, steps, depth + 1);
     if (!piece) return null;
     return { antiderivative: `-(${piece.antiderivative})`, rule: "constant-multiple rule (k=-1)" };
@@ -1567,7 +3462,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       const constSide = isConstantExpr(lhs, variable) ? lhs : isConstantExpr(rhs, variable) ? rhs : null;
       const fnSide = constSide === lhs ? rhs : lhs;
       if (constSide) {
-        steps.push(`##Constant Multiple Rule\n$${exprToLatex(constSide.toString())}$ is constant — pull it out front, integrate the rest:\n$$${here()} = ${exprToLatex(constSide.toString())}\\cdot ${integralLatex(fnSide.toString(), variable)}$$`);
+        steps.push(`##Constant Multiple Rule\n$$${here()} = ${exprToLatex(constSide.toString())}\\cdot ${integralLatex(fnSide.toString(), variable)}$$`);
         const piece = integrateNode(fnSide, variable, steps, depth + 1);
         if (!piece) return null;
         return { antiderivative: `(${constSide.toString()})*(${piece.antiderivative})`, rule: "constant multiple rule" };
@@ -1590,7 +3485,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
     const args = asOperator(node)!.args;
     const [num, denom] = args;
     if (isConstantExpr(denom, variable)) {
-      steps.push(`##Constant Divisor\nDividing by constant $${exprToLatex(denom.toString())}$ is a factor of $\\frac{1}{${exprToLatex(denom.toString())}}$ — integrate the numerator, then divide:\n$$${here()} = \\frac{${integralLatex(num.toString(), variable)}}{${exprToLatex(denom.toString())}}$$`);
+      steps.push(`##Constant Divisor\n$$${here()} = \\frac{${integralLatex(num.toString(), variable)}}{${exprToLatex(denom.toString())}}$$`);
       const piece = integrateNode(num, variable, steps, depth + 1);
       if (!piece) return null;
       return { antiderivative: `(${piece.antiderivative})/(${denom.toString()})`, rule: "constant divisor" };
@@ -1601,9 +3496,9 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       if (lin && lin.a !== 0) {
         const argStr = wrapLinearArg(lin.a, lin.b, variable);
         if (isTrivialLinear(lin)) {
-          steps.push(`##Reciprocal Rule\nReciprocal form $\\int \\frac{1}{${variable}}\\,d${variable}$ — standard result is $\\ln|${variable}|$:\n$$${here()} = \\ln\\left|${variable}\\right|$$`);
+          steps.push(`##Reciprocal Rule\n$$${here()} = \\ln\\left|${variable}\\right|$$`);
         } else {
-          steps.push(`##Reciprocal Rule + u-Substitution\nLet $u = ${exprToLatex(argStr)}$, so $du = ${fmtNum(lin.a)}\\,d${variable}$:\n$$${here()} = \\frac{1}{${fmtNum(lin.a)}}\\int \\frac{1}{u}\\,du = \\frac{1}{${fmtNum(lin.a)}}\\ln\\left|${exprToLatex(argStr)}\\right|$$`);
+          steps.push(`##Reciprocal Rule + u-Substitution\n$u = ${exprToLatex(argStr)},\\quad du = ${fmtNum(lin.a)}\\,d${variable}$\n$$${here()} = \\frac{1}{${fmtNum(lin.a)}}\\int \\frac{1}{u}\\,du = \\frac{1}{${fmtNum(lin.a)}}\\ln\\left|${exprToLatex(argStr)}\\right|$$`);
         }
         return { antiderivative: `(${num.toString()})*log(abs(${argStr}))/(${fmtNum(lin.a)})`, rule: "reciprocal/log rule" };
       }
@@ -1628,18 +3523,18 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
           if (Math.abs(n + 1) < EPS_TIGHT) {
             const argStr = wrapLinearArg(lin.a, lin.b, variable);
             if (isTrivialLinear(lin)) {
-              steps.push(`##Power Rule Exception (n = -1)\n$${variable}^{-1}$ is the one exponent Power Rule cannot handle ($n+1=0$ divides by zero); its antiderivative is $\\ln|${variable}|$:\n$$${here()} = \\ln\\left|${variable}\\right|$$`);
+              steps.push(`##Power Rule Exception (n = -1)\n$$${here()} = \\ln\\left|${variable}\\right|$$`);
             } else {
-              steps.push(`##Power Rule Exception (n = -1) + u-Substitution\nLet $u = ${exprToLatex(argStr)}$, so $du = ${fmtNum(lin.a)}\\,d${variable}$:\n$$${here()} = \\frac{1}{${fmtNum(lin.a)}}\\ln\\left|${exprToLatex(argStr)}\\right|$$`);
+              steps.push(`##Power Rule Exception (n = -1) + u-Substitution\n$u = ${exprToLatex(argStr)},\\quad du = ${fmtNum(lin.a)}\\,d${variable}$\n$$${here()} = \\frac{1}{${fmtNum(lin.a)}}\\ln\\left|${exprToLatex(argStr)}\\right|$$`);
             }
             return { antiderivative: `log(abs(${argStr}))/(${fmtNum(lin.a)})`, rule: "power rule (n=-1, log form)" };
           }
           const newExp = n + 1;
           const argStr = wrapLinearArg(lin.a, lin.b, variable);
           if (isTrivialLinear(lin)) {
-            steps.push(`##Power Rule\n$\\int ${variable}^n\\,d${variable} = \\frac{${variable}^{n+1}}{n+1}$, with $n = ${fmtNum(n)}$, $n+1 = ${fmtNum(newExp)}$:\n$$${here()} = \\frac{${variable}^{${fmtNum(newExp)}}}{${fmtNum(newExp)}}$$`);
+            steps.push(`##Power Rule\n$$${here()} = \\frac{${variable}^{${fmtNum(n)}+1}}{${fmtNum(n)}+1} = \\frac{${variable}^{${fmtNum(newExp)}}}{${fmtNum(newExp)}}$$`);
           } else {
-            steps.push(`##Power Rule + u-Substitution\nLet $u = ${exprToLatex(argStr)}$ so $du = ${fmtNum(lin.a)}\\,d${variable}$. Power Rule: $\\int u^n\\,du = \\frac{u^{n+1}}{n+1}$, $n+1 = ${fmtNum(newExp)}$:\n$$${here()} = \\frac{\\left(${exprToLatex(argStr)}\\right)^{${fmtNum(newExp)}}}{${fmtNum(newExp)}\\cdot ${fmtNum(lin.a)}}$$`);
+            steps.push(`##Power Rule + u-Substitution\n$u = ${exprToLatex(argStr)},\\quad du = ${fmtNum(lin.a)}\\,d${variable}$\n$$${here()} = \\frac{\\left(${exprToLatex(argStr)}\\right)^{${fmtNum(newExp)}}}{${fmtNum(newExp)}\\cdot ${fmtNum(lin.a)}}$$`);
           }
           return {
             antiderivative: `(${argStr})^${fmtNum(newExp)}/(${fmtNum(newExp)}*${fmtNum(lin.a)})`,
@@ -1657,13 +3552,15 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
           const argStr = wrapLinearArg(lin.a, lin.b, variable);
           const b = base.toString();
           if (isTrivialLinear(lin)) {
-            steps.push(`##Exponential Rule\nWith a constant base $a = ${b}$, the standard rule is $\\int a^${variable}\\,d${variable} = \\frac{a^${variable}}{\\ln(a)}$:\n$$${here()} = \\frac{${b}^${variable}}{\\ln(${b})}$$`);
+            steps.push(`##Exponential Rule\n$$${here()} = ${b === "e" ? `e^${variable}` : `\\frac{${b}^${variable}}{\\ln(${b})}`}$$`);
           } else {
-            steps.push(`##Exponential Rule + u-Substitution\nLet $u = ${exprToLatex(argStr)}$, so $du = ${fmtNum(lin.a)}\\,d${variable}$. The base $a = ${b}$ is constant, so $\\int a^u\\,du = \\frac{a^u}{\\ln(a)}$:\n$$${here()} = \\frac{${b}^{${exprToLatex(argStr)}}}{${fmtNum(lin.a)}\\cdot \\ln(${b})}$$`);
+            steps.push(`##Exponential Rule + u-Substitution\n$u = ${exprToLatex(argStr)},\\quad du = ${fmtNum(lin.a)}\\,d${variable}$\n$$${here()} = ${b === "e" ? `\\frac{e^{${exprToLatex(argStr)}}}{${fmtNum(lin.a)}}` : `\\frac{${b}^{${exprToLatex(argStr)}}}{${fmtNum(lin.a)}\\cdot \\ln(${b})}`}$$`);
           }
           const aFactor = lin.a === 1 ? "" : `(${fmtNum(lin.a)})*`;
           return {
-            antiderivative: `(${base.toString()})^(${argStr})/(${aFactor}log(${base.toString()}))`,
+            antiderivative: b === "e"
+              ? `(e)^(${argStr})${lin.a === 1 ? "" : `/(${fmtNum(lin.a)})`}`
+              : `(${base.toString()})^(${argStr})/(${aFactor}log(${base.toString()}))`,
             rule: "exponential rule (base a)",
           };
         }
@@ -1688,7 +3585,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
       const header = trivial ? `##Standard ${displayName === "ln" ? "\\ln" : `\\${displayName}`} Rule` : `##u-Substitution`;
       const intro = trivial
         ? ""
-        : `Let $u = ${uL}$, so $du = ${a}\\,d${variable}$:\n`;
+        : `$u = ${uL},\\quad du = ${a}\\,d${variable}$\n`;
 
       const RULES: Record<string, { rule: string; trivialLatex: string; subLatex: string; antideriv: string }> = {
         sin: { rule: "-\\cos", trivialLatex: `-\\cos(${variable})`, subLatex: `\\frac{-\\cos(u)}{${a}}`, antideriv: `-cos(${u})/(${a})` },
@@ -1704,11 +3601,11 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
         return { antiderivative: r.antideriv, rule: `${fname} rule` };
       }
       if (fname === "log") {
-        steps.push(`##Log Rule (Integration by Parts result)\n${intro}This uses the standard result $\\int \\ln(u)\\,du = u\\ln(u) - u$:\n$$${here()} = ${trivial ? `${variable}\\ln(${variable}) - ${variable}` : `\\frac{u\\ln(u) - u}{${a}}`}$$`);
+        steps.push(`##Log Rule\n${intro}$$${here()} = ${trivial ? `${variable}\\ln(${variable}) - ${variable}` : `\\frac{u\\ln(u) - u}{${a}}`}$$`);
         return { antiderivative: `((${u})*log(${u}) - (${u}))/(${a})`, rule: "log rule (∫ln u du = u ln u - u)" };
       }
       if (fname === "sqrt") {
-        steps.push(`##Power Rule (via $\\sqrt{u} = u^{1/2}$)\n${intro}Rewrite $\\sqrt{u}$ as $u^{1/2}$, then apply the Power Rule: $\\int u^{1/2}\\,du = \\frac{2}{3}u^{3/2}$:\n$$${here()} = ${trivial ? `\\frac{2}{3}${variable}^{3/2}` : `\\frac{2u^{3/2}}{3\\cdot ${a}}`}$$`);
+        steps.push(`##Power Rule ($\\sqrt{u} = u^{1/2}$)\n${intro}$$${here()} = ${trivial ? `\\frac{2}{3}${variable}^{3/2}` : `\\frac{2u^{3/2}}{3\\cdot ${a}}`}$$`);
         return { antiderivative: `(2/3)*(${u})^(3/2)/(${a})`, rule: "power rule (sqrt, linear sub)" };
       }
     }
@@ -1717,7 +3614,7 @@ function integrateNode(node: MathNode, variable: string, steps: string[], depth 
 
   // Bare variable: ∫x dx = x²/2
   if (asSymbol(node) && str === variable) {
-    steps.push(`##Power Rule\n$${variable}$ is the same as $${variable}^1$; by the Power Rule, $\\int ${variable}^n\\,d${variable} = \\frac{${variable}^{n+1}}{n+1}$ with $n=1$:\n$$${here()} = \\frac{${variable}^2}{2}$$`);
+    steps.push(`##Power Rule\n$$${here()} = \\frac{${variable}^{1+1}}{1+1} = \\frac{${variable}^2}{2}$$`);
     return { antiderivative: `${variable}^2/2`, rule: "power rule (n=1)" };
   }
 
@@ -1729,28 +3626,24 @@ export function solveIndefiniteIntegral(
   variable: string = "x"
 ): MathResult {
   try {
+    expression = cleanExpression(expression);
+    variable = cleanVariable(variable);
     assertNonEmptyExpression(expression);
     const steps: string[] = [];
     const bodySteps: string[] = [];
     steps.push(`##Given\n$$${integralLatex(expression, variable)}$$`);
 
-    const node = simplify(parse(expression));
-    const piece = integrateNode(node, variable, bodySteps);
+    const { piece, node } = integrateWithVariants(parse(expression), variable, bodySteps);
 
     if (!piece) {
       steps.push(...bodySteps);
-      steps.push(`##Beyond This Solver\nThis needs a technique not covered here (e.g. trig substitution).\n\nTip: try Definite Integration for a numerical answer.`);
+      steps.push(`##Beyond This Solver\nNot supported (needs e.g. trig substitution). Try Definite Integration for a numerical value.`);
       return {
         input: expression,
         result: "Cannot solve symbolically — try Definite Integration",
         steps,
         error: undefined,
       };
-    }
-
-    const ruleNames = extractRuleNames(bodySteps);
-    if (ruleNames.length > 1) {
-      steps.push(`##Approach\nUsing **${ruleNames.join("**, **")}**.`);
     }
     steps.push(...bodySteps);
 
@@ -1759,8 +3652,7 @@ export function solveIndefiniteIntegral(
     // simplify() output, which scrambles term order and sign placement.
     const finalStr = prettifyResult(piece.antiderivative, variable);
 
-    steps.push(`##Combine Everything\n$$F(${variable}) = ${exprToLatex(finalStr)}$$`);
-    steps.push(`##Add the Constant of Integration\nA constant\u2019s derivative is $0$, so $F(${variable}) + C$ shares the same derivative for every $C$ \u2014 "$+\\,C$" covers the whole family:\n$$${integralLatex(expression, variable)} = ${exprToLatex(finalStr)} + C$$`);
+    steps.push(`##Add the Constant\n$$${integralLatex(expression, variable)} = ${exprToLatex(finalStr)} + C$$`);
 
     // Sanity check: numerically verify d/dx[F(x)] ≈ f(x) at a few sample points
     try {
@@ -1778,9 +3670,9 @@ export function solveIndefiniteIntegral(
         }
       }
       if (allMatch) {
-        steps.push(`##Verify\nDifferentiating $F(${variable})$ at several sample points reproduces the original integrand — ✓ confirming this antiderivative is correct.`);
+        steps.push(`##Verify\n$F'(${variable}) = f(${variable})$ ✓`);
       } else {
-        steps.push(`##Verify\n⚠ This check did not match cleanly — double-check this result, or use Definite Integration.`);
+        steps.push(`##Verify\n⚠ Check didn't match — re-verify manually, or use Definite Integration.`);
       }
     } catch {
       // skip verification silently if it fails to evaluate (e.g. domain issues)
@@ -1793,26 +3685,63 @@ export function solveIndefiniteIntegral(
 }
 
 // Partial derivative w.r.t. one variable (treats others as constants)
+/** LaTeX for ∂ⁿf/∂y²∂x given the order the derivatives are applied in (first applied is rightmost). */
+export function partialNotation(sequence: string[]): string {
+  const segments: { v: string; n: number }[] = [];
+  for (const v of sequence) {
+    const last = segments[segments.length - 1];
+    if (last && last.v === v) last.n++; else segments.push({ v, n: 1 });
+  }
+  const denom = [...segments].reverse().map((sg) => (sg.n === 1 ? `\\partial ${sg.v}` : `\\partial ${sg.v}^{${sg.n}}`)).join(" ");
+  const total = sequence.length;
+  return total === 1 ? `\\frac{\\partial f}{${denom}}` : `\\frac{\\partial^{${total}} f}{${denom}}`;
+}
+
+/**
+ * Partial derivative(s). `variable` is the variable to differentiate by; pass
+ * `sequence` (e.g. ["x","y"]) for higher-order and mixed partials — they are
+ * applied left to right, so ["x","y"] gives ∂²f/∂y∂x.
+ */
 export function solvePartialDerivative(
   expression: string,
   variable: string,
-  allVars: string[] = ["x", "y"]
+  allVars: string[] = ["x", "y"],
+  sequence?: string[],
 ): MathResult {
   try {
+    expression = cleanExpression(expression);
+    variable = cleanVariable(variable);
+    allVars = [...new Set([...allVars.map((v) => cleanVariable(v)), ...(sequence ?? []).map((v) => cleanVariable(v))])];
     assertNonEmptyExpression(expression);
+    const seq = sequence && sequence.length > 0 ? sequence.map((v) => cleanVariable(v)) : [variable];
+    if (seq.length > 6) throw new MathInputError("Please keep the order of the derivative to 6 or less.");
     const steps: string[] = [];
-    const others = allVars.filter(v => v !== variable);
-    const node = parse(expression);
+    const givenP = parse(expression);
+    const logMaskP = maskLogConstants(rewriteLogBases(givenP), allVars);
+    const maskedP = maskStepFunctions(logMaskP.node);
+    let current = maskedP.node;
+    const restoreTex = (st: string) => restoreStepFunctions(st, logMaskP.map, true);
 
-    const withRespectToNote = others.length ? ` ($${others.join(", ")}$ treated as constant${others.length > 1 ? "s" : ""})` : "";
-    steps.push(`##Given\n$$f(${allVars.join(", ")}) = ${exprToLatex(node.toString())}$$\nFind $\\frac{\\partial f}{\\partial ${variable}}$${withRespectToNote}.`);
+    const uniqueSeq = [...new Set(seq)];
+    const constNote = seq.length === 1
+      ? (allVars.filter((v) => v !== seq[0]).length ? ` (${allVars.filter((v) => v !== seq[0]).map((v) => `$${v}$`).join(", ")} treated as constant${allVars.filter((v) => v !== seq[0]).length > 1 ? "s" : ""})` : "")
+      : ` (differentiate by ${seq.map((v) => `$${v}$`).join(", then ")}${uniqueSeq.length > 0 ? "; everything else is constant at each step" : ""})`;
+    steps.push(`##Given\n$$f(${allVars.join(", ")}) = ${exprToLatex(givenP.toString())}$$\nFind $${partialNotation(seq)}$${constNote}.`);
 
-    narrateDerivativeTop(node, variable, steps, true);
-
-    const deriv = derivative(node, variable);
-    const simplified = simplify(deriv);
-    const pretty = prettifyResult(simplified.toString(), variable);
-    steps.push(`##Final Answer\n$$\\frac{\\partial f}{\\partial ${variable}} = ${exprToLatex(pretty)}$$`);
+    for (let i = 0; i < seq.length; i++) {
+      const v = seq[i];
+      if (seq.length > 1) {
+        steps.push(`##Differentiate by ${v}${i > 0 ? " (again)" : ""}\n$$${i === 0 ? "f" : "g"} = ${exprToLatex(restoreStepFunctions(prettifyResult(current.toString(), v), logMaskP.map))}\\quad\\Rightarrow\\quad \\frac{\\partial}{\\partial ${v}}${i === 0 ? "f" : "g"}$$`);
+      }
+      if (!maskedP.used) {
+        const buf: string[] = [];
+        narrateDerivativeTop(current, v, buf, true);
+        steps.push(...buf.map(restoreTex));
+      }
+      current = simplify(derivative(current, v));
+    }
+    const pretty = restoreStepFunctions(restoreStepFunctions(prettifyResult(current.toString(), seq[seq.length - 1]), maskedP.map), logMaskP.map);
+    steps.push(`##Final Answer\n$$${partialNotation(seq)} = ${exprToLatex(pretty)}$$`);
 
     return { input: expression, result: pretty, steps };
   } catch (e: unknown) {
@@ -1835,6 +3764,8 @@ export function validateGraphExpression(
   xMax: number = 10
 ): string | null {
   try {
+    expression = cleanExpression(expression);
+    variable = cleanVariable(variable);
     assertNonEmptyExpression(expression);
   } catch (e) {
     return describeError(e);
@@ -2015,3 +3946,5 @@ export function parseEquationToZeroForm(
   }
   return { vars, expr };
 }
+
+export { polyFromNode, polyDeg, polyToString, trimPoly, rationalFromNode };

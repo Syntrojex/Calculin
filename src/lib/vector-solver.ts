@@ -110,7 +110,7 @@ export function vecScale(u: Vec3, k: number, is3D: boolean): VectorResult {
     const comp = is3D
       ? `(${w(k)}\\cdot ${w(u.x)}, \\; ${w(k)}\\cdot ${w(u.y)}, \\; ${w(k)}\\cdot ${w(u.z)})`
       : `(${w(k)}\\cdot ${w(u.x)}, \\; ${w(k)}\\cdot ${w(u.y)})`;
-    steps.push(`##Multiply Each Component by k\n$$k\\vec{u} = ${comp}$$`);
+    steps.push(`##Scale Each Component\n$$k\\vec{u} = ${comp}$$`);
     steps.push(`##Result\n$$${vecLatex(r, is3D)}$$`);
     return { resultVector: r, is3D, steps };
   } catch (e) {
@@ -140,11 +140,11 @@ export function vecUnit(u: Vec3, is3D: boolean): VectorResult {
     const r: Vec3 = { x: u.x / m, y: u.y / m, z: is3D ? u.z / m : 0 };
     const steps: string[] = [];
     steps.push(`##Given\n$$${vecLatex(u, is3D, "u")}$$`);
-    steps.push(`##Find the Magnitude\n$$${magLatex("u", u, is3D)} = ${toFractionLatex(m)}$$`);
+    steps.push(`##Magnitude\n$$${magLatex("u", u, is3D)} = ${toFractionLatex(m)}$$`);
     const comp = is3D
       ? `\\left(\\frac{${toFractionLatex(u.x)}}{${toFractionLatex(m)}}, \\; \\frac{${toFractionLatex(u.y)}}{${toFractionLatex(m)}}, \\; \\frac{${toFractionLatex(u.z)}}{${toFractionLatex(m)}}\\right)`
       : `\\left(\\frac{${toFractionLatex(u.x)}}{${toFractionLatex(m)}}, \\; \\frac{${toFractionLatex(u.y)}}{${toFractionLatex(m)}}\\right)`;
-    steps.push(`##Divide Every Component by the Magnitude\n$$\\hat{u} = \\frac{\\vec{u}}{|\\vec{u}|} = ${comp}$$`);
+    steps.push(`##Divide by the Magnitude\n$$\\hat{u} = \\frac{\\vec{u}}{|\\vec{u}|} = ${comp}$$`);
     steps.push(`##Result\n$$\\hat{u} = ${vecLatex(r, is3D)}$$`);
     return { resultVector: r, is3D, steps };
   } catch (e) {
@@ -179,8 +179,8 @@ export function vecCross(u: Vec3, v: Vec3): VectorResult {
     };
     const steps: string[] = [];
     steps.push(`##Given\n$$${vecLatex(u, true, "u")}, \\quad ${vecLatex(v, true, "v")}$$`);
-    steps.push(`##Set Up the Determinant\n$$\\vec{u}\\times\\vec{v} = \\begin{vmatrix}\\hat{\\imath}&\\hat{\\jmath}&\\hat{k}\\\\${toFractionLatex(u.x)}&${toFractionLatex(u.y)}&${toFractionLatex(u.z)}\\\\${toFractionLatex(v.x)}&${toFractionLatex(v.y)}&${toFractionLatex(v.z)}\\end{vmatrix}$$`);
-    steps.push(`##Expand Along the Top Row\n$$\\hat{\\imath}\\left(${w(u.y)}\\cdot ${w(v.z)} - ${w(u.z)}\\cdot ${w(v.y)}\\right) - \\hat{\\jmath}\\left(${w(u.x)}\\cdot ${w(v.z)} - ${w(u.z)}\\cdot ${w(v.x)}\\right) + \\hat{k}\\left(${w(u.x)}\\cdot ${w(v.y)} - ${w(u.y)}\\cdot ${w(v.x)}\\right)$$`);
+    steps.push(`##Determinant Form\n$$\\vec{u}\\times\\vec{v} = \\begin{vmatrix}\\hat{\\imath}&\\hat{\\jmath}&\\hat{k}\\\\${toFractionLatex(u.x)}&${toFractionLatex(u.y)}&${toFractionLatex(u.z)}\\\\${toFractionLatex(v.x)}&${toFractionLatex(v.y)}&${toFractionLatex(v.z)}\\end{vmatrix}$$`);
+    steps.push(`##Expand Along Row 1\n$$\\hat{\\imath}\\left(${w(u.y)}\\cdot ${w(v.z)} - ${w(u.z)}\\cdot ${w(v.y)}\\right) - \\hat{\\jmath}\\left(${w(u.x)}\\cdot ${w(v.z)} - ${w(u.z)}\\cdot ${w(v.x)}\\right) + \\hat{k}\\left(${w(u.x)}\\cdot ${w(v.y)} - ${w(u.y)}\\cdot ${w(v.x)}\\right)$$`);
     steps.push(`##Result\n$$\\vec{u}\\times\\vec{v} = ${vecLatex(r, true)}$$`);
     return { resultVector: r, is3D: true, steps };
   } catch (e) {
@@ -199,7 +199,7 @@ export function vecAngle(u: Vec3, v: Vec3, is3D: boolean): VectorResult {
     const steps: string[] = [];
     steps.push(`##Given\n$$${vecLatex(u, is3D, "u")}, \\quad ${vecLatex(v, is3D, "v")}$$`);
     steps.push(`##Angle Formula\n$$\\cos\\theta = \\frac{\\vec{u}\\cdot\\vec{v}}{|\\vec{u}|\\,|\\vec{v}|}$$`);
-    steps.push(`##Compute the Dot Product and Magnitudes\n$$\\vec{u}\\cdot\\vec{v} = ${toFractionLatex(d)}, \\quad |\\vec{u}| = ${toFractionLatex(mu)}, \\quad |\\vec{v}| = ${toFractionLatex(mv)}$$`);
+    steps.push(`##Dot Product and Magnitudes\n$$\\vec{u}\\cdot\\vec{v} = ${toFractionLatex(d)}, \\quad |\\vec{u}| = ${toFractionLatex(mu)}, \\quad |\\vec{v}| = ${toFractionLatex(mv)}$$`);
     steps.push(`##Substitute\n$$\\cos\\theta = \\frac{${toFractionLatex(d)}}{${toFractionLatex(mu)}\\cdot ${toFractionLatex(mv)}} = ${toFractionLatex(cosT)}$$`);
     steps.push(`##Result\n$$\\theta = \\cos^{-1}\\left(${toFractionLatex(cosT)}\\right) = ${toFractionLatex(deg)}°$$`);
     return { resultScalar: deg, isAngle: true, is3D, steps };
@@ -218,7 +218,7 @@ export function vecScalarProjection(u: Vec3, v: Vec3, is3D: boolean): VectorResu
     const steps: string[] = [];
     steps.push(`##Given\n$$${vecLatex(u, is3D, "u")}, \\quad ${vecLatex(v, is3D, "v")}$$`);
     steps.push(`##Scalar Projection Formula\n$$\\text{comp}_{\\vec{v}}\\vec{u} = \\frac{\\vec{u}\\cdot\\vec{v}}{|\\vec{v}|}$$`);
-    steps.push(`##Compute the Dot Product and Magnitude\n$$\\vec{u}\\cdot\\vec{v} = ${toFractionLatex(d)}, \\quad |\\vec{v}| = ${toFractionLatex(mv)}$$`);
+    steps.push(`##Dot Product and Magnitude\n$$\\vec{u}\\cdot\\vec{v} = ${toFractionLatex(d)}, \\quad |\\vec{v}| = ${toFractionLatex(mv)}$$`);
     steps.push(`##Result\n$$\\text{comp}_{\\vec{v}}\\vec{u} = \\frac{${toFractionLatex(d)}}{${toFractionLatex(mv)}} = ${toFractionLatex(comp)}$$`);
     return { resultScalar: comp, is3D, steps };
   } catch (e) {
@@ -237,7 +237,7 @@ export function vecVectorProjection(u: Vec3, v: Vec3, is3D: boolean): VectorResu
     const steps: string[] = [];
     steps.push(`##Given\n$$${vecLatex(u, is3D, "u")}, \\quad ${vecLatex(v, is3D, "v")}$$`);
     steps.push(`##Vector Projection Formula\n$$\\text{proj}_{\\vec{v}}\\vec{u} = \\frac{\\vec{u}\\cdot\\vec{v}}{|\\vec{v}|^2}\\,\\vec{v}$$`);
-    steps.push(`##Compute the Scalar Factor\n$$\\vec{u}\\cdot\\vec{v} = ${toFractionLatex(d)}, \\quad |\\vec{v}|^2 = ${toFractionLatex(mv2)}, \\quad k = \\frac{${toFractionLatex(d)}}{${toFractionLatex(mv2)}} = ${toFractionLatex(k)}$$`);
+    steps.push(`##Scalar Factor\n$$\\vec{u}\\cdot\\vec{v} = ${toFractionLatex(d)}, \\quad |\\vec{v}|^2 = ${toFractionLatex(mv2)}, \\quad k = \\frac{${toFractionLatex(d)}}{${toFractionLatex(mv2)}} = ${toFractionLatex(k)}$$`);
     const comp = is3D
       ? `(${w(k)}\\cdot ${w(v.x)}, \\; ${w(k)}\\cdot ${w(v.y)}, \\; ${w(k)}\\cdot ${w(v.z)})`
       : `(${w(k)}\\cdot ${w(v.x)}, \\; ${w(k)}\\cdot ${w(v.y)})`;

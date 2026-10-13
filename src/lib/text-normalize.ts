@@ -59,7 +59,7 @@ const FUNCTION_NAMES_BY_LENGTH_DESC = [...FUNCTION_NAMES].sort((a, b) => b.lengt
 // ("cospi" -> "cos(pi)"), on top of the usual single-letter/number case.
 const IMPLICIT_ARG_WORDS = ["pi", "theta", "infinity", "inf"];
 const IMPLICIT_CALL_RE = new RegExp(
-  `(?<![a-zA-Z])(${FUNCTION_NAMES_BY_LENGTH_DESC.join("|")})(?!\\s*\\()(${IMPLICIT_ARG_WORDS.join("|")}|[0-9]+[a-zA-Z]?|[a-zA-Z])\\b`,
+  `(?<![a-zA-Z])(${FUNCTION_NAMES_BY_LENGTH_DESC.join("|")})(?!\\s*\\()(${IMPLICIT_ARG_WORDS.join("|")}|[0-9]+[a-zA-Z]?|[a-zA-Z])\\b(?!\\s*\\()`,
   "gi"
 );
 
@@ -118,6 +118,15 @@ export function normalizeMathInput(input: string): string {
   // "log" as "ln" (see formatMath/formatMathHTML) so nothing user-facing changes.
   s = s.replace(/\bln\s*\(/gi, "log(");
 
+  return normalizeSymbols(s);
+}
+
+/** Symbol-only part of the normalization (× ÷ − Greek √ superscripts) — no
+ *  function-name or implicit-call rewriting. Exposed so the solve-time
+ *  expression cleaner can map symbols first and apply its own, stricter
+ *  function handling afterwards. */
+export function normalizeSymbols(input: string): string {
+  let s = input;
   // Multiplication / division / minus symbols people paste from Word/PDF.
   s = s.replace(/[×·]/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
 

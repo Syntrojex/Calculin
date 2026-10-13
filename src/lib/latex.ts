@@ -1,5 +1,6 @@
 import { parse as _parse, type MathNode } from "mathjs";
-import { normalizeMathInput } from "./text-normalize";
+import { cleanExpression } from "./expression-clean";
+import { stripParens } from "./expr-parens";
 
 // ── Lightweight structural type guards (kept local rather than imported from
 // math-solver.ts, to avoid a circular import — math-solver.ts itself imports
@@ -12,14 +13,6 @@ function asOperator(node: MathNode): OpNode | null {
 }
 function asFunctionNode(node: MathNode): FnNode | null {
   return node.type === "FunctionNode" ? (node as unknown as FnNode) : null;
-}
-function stripParens(node: MathNode): MathNode {
-  if (node.type === "ParenthesisNode") {
-    return stripParens((node as unknown as { content: MathNode }).content);
-  }
-  const withMap = node as unknown as { map?: (fn: (n: MathNode) => MathNode) => MathNode };
-  if (typeof withMap.map === "function") return withMap.map((child) => stripParens(child));
-  return node;
 }
 
 /**
@@ -188,7 +181,7 @@ export function deepCleanExprString(exprString: string): string {
  */
 export function exprToLatex(input: string): string {
   try {
-    const node = _parse(normalizeMathInput(input));
+    const node = _parse(cleanExpression(input));
     const cleaned = deepCleanNode(stripParens(node));
     let tex = cleaned.toTex();
     // This app's solvers only ever call mathjs's single-arg log(...), which
