@@ -15,6 +15,7 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
 import { downloadCanvasPNG, slugifyForFilename } from "@/lib/canvas-export";
+import { parseNumericInput, cleanExpression, cleanVariable } from "@/lib/expression-clean";
 
 const Graph3D = lazy(() => import("./Graph3D").then((m) => ({ default: m.Graph3D })));
 
@@ -47,19 +48,22 @@ export function DoubleIntegralCalculator() {
   const solve = useCallback(() => {
     setResult(solveDoubleIntegral(
       expr, variable, varY,
-      parseFloat(lower), parseFloat(upper),
-      parseFloat(yLower), parseFloat(yUpper),
+      lower, upper,
+      yLower, yUpper,
       100, settings
     ));
   }, [expr, variable, varY, lower, upper, yLower, yUpper, settings]);
 
   useAutoRun([expr, variable, varY, lower, upper, yLower, yUpper, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);
 
-  const doubleIntegralRange = Math.max(
-    Math.abs(parseFloat(lower) || 0), Math.abs(parseFloat(upper) || 0),
-    Math.abs(parseFloat(yLower) || 0), Math.abs(parseFloat(yUpper) || 0),
-    2
-  ) * 1.4;
+  const finiteAbs = (raw: string) => {
+    const v = parseNumericInput(raw);
+    return Number.isFinite(v) ? Math.abs(v) : 0;
+  };
+  const doubleIntegralRange = Math.min(
+    Math.max(finiteAbs(lower), finiteAbs(upper), finiteAbs(yLower), finiteAbs(yUpper), 2) * 1.4,
+    50,
+  );
 
   return (
     <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
@@ -104,11 +108,11 @@ export function DoubleIntegralCalculator() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">{varY} lower</Label>
+                <Label className="text-xs">{varY} lower <span className="text-muted-foreground">(number or f({variable}))</span></Label>
                 <Input value={yLower} onChange={(e) => setYLower(e.target.value)} className="font-mono text-center" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{varY} upper</Label>
+                <Label className="text-xs">{varY} upper <span className="text-muted-foreground">(number or f({variable}))</span></Label>
                 <Input value={yUpper} onChange={(e) => setYUpper(e.target.value)} className="font-mono text-center" />
               </div>
             </div>
@@ -140,7 +144,7 @@ export function DoubleIntegralCalculator() {
                     <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
                       <div className="text-sm text-muted-foreground mb-1">Result:</div>
                       <div className="text-xl font-mono font-semibold text-foreground">
-                        <MathText text={`\u222c = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
+                        <MathText text={`\u222c = ${result.exactText ? `${result.exactText} ≈ ` : ""}${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
                       </div>
                     </div>
                     <StepsReveal steps={result.steps} show={showSteps} resetKey={result.result} />
@@ -184,7 +188,7 @@ export function DoubleIntegralCalculator() {
                   }
                 >
                   <div ref={chart3dRef}>
-                    <Graph3D expression={renameToXY(expr, variable, varY)} range={doubleIntegralRange} />
+                    <Graph3D expression={renameToXY(cleanExpression(expr), cleanVariable(variable, "x"), cleanVariable(varY, "y"))} range={doubleIntegralRange} />
                   </div>
                 </Suspense>
               </CardContent>

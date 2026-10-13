@@ -6,8 +6,8 @@ import { MathInput } from "./MathInput";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { solveDerivative, solveNthDerivative, generateGraphPoints, extractVariables } from "@/lib/math-solver";
-import { GraphCanvas } from "./GraphCanvas";
+import { solveDerivative, solveNthDerivative, extractVariables, validateGraphExpression } from "@/lib/math-solver";
+import { FunctionGraph } from "./FunctionGraph";
 import { StepsReveal } from "./StepsReveal";
 import type { MathResult } from "@/lib/math-solver";
 import { ArrowRight, Sparkles } from "lucide-react";
@@ -46,13 +46,13 @@ export function DerivativeSolver() {
 
   useAutoRun([expr, variable, order], solve, settings.autoCalculate);
 
-  // The graph is no longer behind a toggle — it's generated automatically
-  // whenever the function (and its derivative, once solved) can actually be
-  // plotted, same as everywhere else in the app.
-  const originalPoints = generateGraphPoints(expr, variable, -settings.defaultGraphRange, settings.defaultGraphRange);
-  const derivPoints = result && !result.error
-    ? generateGraphPoints(result.result, variable, -settings.defaultGraphRange, settings.defaultGraphRange)
-    : [];
+  // The graph is generated automatically whenever the function (and its
+  // derivative, once solved) can actually be plotted. FunctionGraph samples the
+  // function itself, so any function draws correctly at any zoom level.
+  const R = settings.defaultGraphRange;
+  const originalProblem = validateGraphExpression(expr, variable, -R, R);
+  const derivProblem = result && !result.error ? validateGraphExpression(result.result, variable, -R, R) : "none";
+  const derivLabel = order === 1 ? `f′(${variable})` : `f^(${order})(${variable})`;
 
   return (
     <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
@@ -178,33 +178,39 @@ export function DerivativeSolver() {
         )}
       </div>
 
-      {originalPoints.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4 lg:sticky lg:top-4 min-w-0">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4 lg:sticky lg:top-4 min-w-0">
+        <Card className="shadow-lg border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Original Function</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {originalProblem ? (
+              <p className="text-sm text-muted-foreground">{originalProblem}</p>
+            ) : (
+              <FunctionGraph series={[{ expr, label: `f(${variable})` }]} variable={variable} xRange={[-R, R]} />
+            )}
+          </CardContent>
+        </Card>
+
+        {result && !result.error && (
           <Card className="shadow-lg border-border/50">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Original Function</CardTitle>
+              <CardTitle className="text-sm text-muted-foreground">Derivative</CardTitle>
             </CardHeader>
             <CardContent>
-              <GraphCanvas series={[{ expr, points: originalPoints }]} xMin={-settings.defaultGraphRange} xMax={settings.defaultGraphRange} />
+              {derivProblem ? (
+                <p className="text-sm text-muted-foreground">{derivProblem}</p>
+              ) : (
+                <FunctionGraph
+                  series={[{ expr: result.result, label: derivLabel, color: "#10b981" }]}
+                  variable={variable}
+                  xRange={[-R, R]}
+                />
+              )}
             </CardContent>
           </Card>
-
-          {derivPoints.length > 0 && (
-            <Card className="shadow-lg border-border/50">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Derivative</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <GraphCanvas
-                  series={[{ expr: result?.result || "", points: derivPoints }]}
-                  xMin={-settings.defaultGraphRange}
-                  xMax={settings.defaultGraphRange}
-                />
-              </CardContent>
-            </Card>
-          )}
-        </motion.div>
-      )}
+        )}
+      </motion.div>
     </div>
   );
 }

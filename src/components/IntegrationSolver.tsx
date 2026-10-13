@@ -10,9 +10,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   solveDefiniteIntegral,
   solveIndefiniteIntegral,
-  generateGraphPoints,
+  validateGraphExpression,
 } from "@/lib/math-solver";
-import { GraphCanvas } from "./GraphCanvas";
+import { FunctionGraph, type PlotShade } from "./FunctionGraph";
 import { StepsReveal } from "./StepsReveal";
 import type { MathResult } from "@/lib/math-solver";
 import { ArrowRight, Infinity as InfinityIcon } from "lucide-react";
@@ -23,6 +23,7 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
 import { exprToLatex } from "@/lib/latex";
+import { parseNumericInput } from "@/lib/expression-clean";
 
 /** Strips the trailing "+ C" from an indefinite-integral result so it can be
  *  plotted as a concrete function (C = 0, i.e. one representative member of
@@ -45,7 +46,9 @@ export function IntegrationSolver() {
 
   const solve = useCallback(() => {
     if (mode === "definite") {
-      setResult(solveDefiniteIntegral(expr, variable, parseFloat(lower), parseFloat(upper), 1000, settings));
+      setResult(
+        solveDefiniteIntegral(expr, variable, parseNumericInput(lower), parseNumericInput(upper), 1000, settings, { lower, upper }),
+      );
     } else {
       setResult(solveIndefiniteIntegral(expr, variable));
     }
@@ -56,12 +59,30 @@ export function IntegrationSolver() {
   // Graphs are no longer behind a toggle — they're generated automatically
   // whenever the expression (and result, for the antiderivative graph) can
   // actually be plotted.
-  const points = generateGraphPoints(expr, variable, -settings.defaultGraphRange, settings.defaultGraphRange);
+  const R = settings.defaultGraphRange;
+  const graphProblem = validateGraphExpression(expr, variable, -R, R);
 
   const antiderivativeExpr = mode === "indefinite" && result && !result.error ? stripConstantOfIntegration(result.result) : "";
-  const antiderivativePoints = antiderivativeExpr
-    ? generateGraphPoints(antiderivativeExpr, variable, -settings.defaultGraphRange, settings.defaultGraphRange)
-    : [];
+  const antiderivativeProblem = antiderivativeExpr ? validateGraphExpression(antiderivativeExpr, variable, -R, R) : "none";
+
+  // Definite integral: show the area between the bounds, with the window sized to fit them.
+  const lo = parseNumericInput(lower);
+  const hi = parseNumericInput(upper);
+  let definiteRange: [number, number] | undefined;
+  let shades: PlotShade[] | undefined;
+  if (mode === "definite" && !Number.isNaN(lo) && !Number.isNaN(hi)) {
+    const aFin = Number.isFinite(lo), bFin = Number.isFinite(hi);
+    if (aFin && bFin) {
+      const a = Math.min(lo, hi), b = Math.max(lo, hi);
+      const pad = Math.max((b - a) * 0.35, 1);
+      definiteRange = [a - pad, b + pad];
+      shades = [{ seriesIndex: 0, from: a, to: b }];
+    } else if (aFin || bFin) {
+      const fin = aFin ? lo : hi;
+      definiteRange = aFin ? [fin - 4, fin + 12] : [fin - 12, fin + 4];
+      shades = [{ seriesIndex: 0, from: aFin ? fin : fin - 1e4, to: aFin ? fin + 1e4 : fin }];
+    }
+  }
 
   return (
     <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
@@ -154,7 +175,11 @@ export function IntegrationSolver() {
                         />
                       ) : (
                         <div className="text-xl font-mono font-semibold text-foreground">
-                          <MathText text={`∫ from ${lower} to ${upper} = ${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`} />
+                          <MathText
+                            text={`∫ from ${lower.trim() || "?"} to ${upper.trim() || "?"} = ${
+                              result.exactText ? `${result.exactText} ≈ ` : ""
+                            }${result.numericResult !== undefined ? formatNumber(result.numericResult, settings) : result.result}`}
+                          />
                         </div>
                       )}
                     </div>
@@ -169,33 +194,45 @@ export function IntegrationSolver() {
       </div>
 
       <div className="space-y-4 lg:sticky lg:top-4 min-w-0">
-        {points.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+          <Card className="shadow-lg border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">
+                {mode === "definite" && shades ? `Area under f(${variable})` : `Graph of f(${variable})`}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {graphProblem ? (
+                <p className="text-sm text-muted-foreground">{graphProblem}</p>
+              ) : (
+                <FunctionGraph
+                  series={[{ expr, label: `f(${variable})` }]}
+                  variable={variable}
+                  xRange={definiteRange ?? [-R, R]}
+                  shades={shades}
+                />
+              )}
+              {mode === "definite" && shades && (
+                <p className="mt-2 text-[11px] text-muted-foreground">Green = area above the axis (positive), red = below (negative).</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {mode === "indefinite" && antiderivativeExpr && (
             <Card className="shadow-lg border-border/50">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Graph of f({variable})</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">Graph of Antiderivative F({variable}) (with C = 0)</CardTitle>
               </CardHeader>
               <CardContent>
-                <GraphCanvas series={[{ expr, points }]} xMin={-settings.defaultGraphRange} xMax={settings.defaultGraphRange} />
+                {antiderivativeProblem ? (
+                  <p className="text-sm text-muted-foreground">{antiderivativeProblem}</p>
+                ) : (
+                  <FunctionGraph series={[{ expr: antiderivativeExpr, label: `F(${variable})`, color: "#10b981" }]} variable={variable} xRange={[-R, R]} />
+                )}
               </CardContent>
             </Card>
-
-            {mode === "indefinite" && antiderivativePoints.length > 0 && (
-              <Card className="shadow-lg border-border/50">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-muted-foreground">Graph of Antiderivative F({variable}) (with C = 0)</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <GraphCanvas
-                    series={[{ expr: antiderivativeExpr, points: antiderivativePoints }]}
-                    xMin={-settings.defaultGraphRange}
-                    xMax={settings.defaultGraphRange}
-                  />
-                </CardContent>
-              </Card>
-            )}
-          </motion.div>
-        )}
+          )}
+        </motion.div>
       </div>
     </div>
   );

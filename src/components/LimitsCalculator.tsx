@@ -7,184 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight } from "lucide-react";
-import { evaluate } from "mathjs";
 import { StepsReveal } from "./StepsReveal";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
-import { exprToLatex } from "@/lib/latex";
+import { solveLimit, type LimitResult, type LimitSide } from "@/lib/limit-solver";
+import { FunctionGraph, type PlotMarker, type PlotLine } from "./FunctionGraph";
+import { validateGraphExpression } from "@/lib/math-solver";
+import { cleanExpression, cleanVariable, parseNumericInput } from "@/lib/expression-clean";
+import { evaluate } from "mathjs";
 
-export interface LimitResult {
-  value: string;
-  steps: string[];
-  error?: string;
-  /** Raw numeric value (when the limit is a finite number) so the UI can
-   *  apply the user's Decimal/Fraction/Scientific display setting instead
-   *  of an always-decimal fixed string. */
-  numericValue?: number;
-}
-
-function approachingLatex(approaching: string): string {
-  if (["Infinity", "inf", "∞"].includes(approaching)) return "\\infty";
-  if (["-Infinity", "-inf", "-∞"].includes(approaching)) return "-\\infty";
-  return exprToLatex(approaching);
-}
-
-export type LimitSide = "two-sided" | "left" | "right";
+export type { LimitResult, LimitSide };
 
 export function computeLimit(expr: string, variable: string, approaching: string, side: LimitSide, fmt: (n: number) => string): LimitResult {
-  try {
-    if (!expr || !expr.trim()) {
-      return { value: "", steps: [], error: "Please enter a function." };
-    }
-    if (!variable || !variable.trim()) {
-      return { value: "", steps: [], error: "Please enter a variable name." };
-    }
-    const steps: string[] = [];
-    const num = (v: number) => (isNaN(v) ? "\\text{undef}" : v === Infinity ? "\\infty" : v === -Infinity ? "-\\infty" : fmt(v).replace(/∞/g, "\\infty"));
-    const xv = (v: number) => String(parseFloat(v.toPrecision(10)));
-    const table = (label: string, xs: number[], ys: number[]) =>
-      `$$\\begin{array}{c|${"c".repeat(xs.length)}} ${label} & ${xs.map(xv).join(" & ")} \\\\ \\hline f(${variable}) & ${ys.map(num).join(" & ")} \\end{array}$$`;
-    const lhs = (sign: "-" | "+") => `\\lim_{${variable}\\to ${approachingLatex(approaching)}^${sign}} f(${variable})`;
-    // One-sided limits use the standard x -> a^- / x -> a^+ notation, so
-    // the "Given" step (and every later reference to it) reads correctly —
-    // a jump discontinuity can have a perfectly well-defined one-sided
-    // limit even when the two-sided limit doesn't exist.
-    const sideSuffix = side === "left" ? "^-" : side === "right" ? "^+" : "";
-    const limitHeaderLatex = `\\lim_{${variable}\\to ${approachingLatex(approaching)}${sideSuffix}} ${exprToLatex(expr)}`;
-    steps.push(`##Given\n$$${limitHeaderLatex}$$`);
-
-    let target: number;
-    if (approaching === "Infinity" || approaching === "inf" || approaching === "∞") {
-      target = Infinity;
-    } else if (approaching === "-Infinity" || approaching === "-inf" || approaching === "-∞") {
-      target = -Infinity;
-    } else {
-      try {
-        const v = evaluate(approaching);
-        target = typeof v === "number" ? v : NaN;
-      } catch {
-        target = NaN;
-      }
-    }
-
-    if (isNaN(target)) {
-      return { value: "", steps: [], error: "Invalid approach value — use a number, an expression like pi/2, or Infinity" };
-    }
-
-    // Numerical approach from both sides
-    const scope: Record<string, number> = {};
-    if (isFinite(target)) {
-      let fa = NaN;
-      try {
-        const r = evaluate(expr, { [variable]: target });
-        fa = typeof r === "number" ? r : NaN;
-      } catch { /* undefined at the point */ }
-      steps.push(`##Direct Substitution\n$$f(${approachingLatex(approaching)}) = ${isFinite(fa) ? num(fa) : "\\text{undefined}"}$$`);
-    }
-
-    if (isFinite(target) && side !== "two-sided") {
-      // One-sided limit only: approach from just the requested side. This
-      // can exist and be perfectly well-defined even where the two-sided
-      // limit does not (a jump discontinuity, or a function only defined on
-      // one side of the point, like sqrt(x) at x=0).
-      const deltas = [0.1, 0.01, 0.001, 0.0001, 0.00001];
-      const vals: number[] = [];
-      for (const d of deltas) {
-        scope[variable] = side === "left" ? target - d : target + d;
-        vals.push(evaluate(expr, scope) as number);
-      }
-      steps.push(`##Numerical Approach\n${table(`${variable} \\to ${approachingLatex(approaching)}^${side === "left" ? "-" : "+"}`, deltas.map(d => (side === "left" ? target - d : target + d)), vals)}`);
-
-      const last = vals[vals.length - 1];
-      const secondLast = vals[vals.length - 2];
-
-      if (!isFinite(last)) {
-        const signLatex = last > 0 ? "+\\infty" : "-\\infty";
-        steps.push(`##Conclusion\n$$${limitHeaderLatex} = ${signLatex}$$`);
-        return { value: last > 0 ? "+∞" : "-∞", steps };
-      }
-
-      if (Math.abs(last - secondLast) < 0.001) {
-        const rounded = Math.abs(last - Math.round(last)) < 0.0001 ? Math.round(last) : parseFloat(last.toFixed(6));
-        steps.push(`##Conclusion\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
-        return { value: rounded.toString(), steps, numericValue: rounded };
-      }
-
-      steps.push(`##Conclusion\n$$${limitHeaderLatex} \\approx ${exprToLatex(fmt(last))}$$`);
-      return { value: last.toFixed(6), steps, numericValue: last };
-    } else if (isFinite(target)) {
-      // Approach from left and right
-      const deltas = [0.1, 0.01, 0.001, 0.0001, 0.00001];
-      const leftVals: number[] = [];
-      const rightVals: number[] = [];
-
-      for (const d of deltas) {
-        scope[variable] = target - d;
-        const lv = evaluate(expr, scope) as number;
-        leftVals.push(lv);
-
-        scope[variable] = target + d;
-        const rv = evaluate(expr, scope) as number;
-        rightVals.push(rv);
-      }
-
-      steps.push(`##Numerical Approach\n${table(`${variable} \\to ${approachingLatex(approaching)}^-`, deltas.map(d => target - d), leftVals)}\n${table(`${variable} \\to ${approachingLatex(approaching)}^+`, deltas.map(d => target + d), rightVals)}`);
-
-      const leftLimit = leftVals[leftVals.length - 1];
-      const rightLimit = rightVals[rightVals.length - 1];
-
-      if (!isFinite(leftLimit) && !isFinite(rightLimit)) {
-        if (leftLimit === rightLimit) {
-          const signLatex = leftLimit > 0 ? "+\\infty" : "-\\infty";
-          steps.push(`##Conclusion\n$$${limitHeaderLatex} = ${signLatex}$$`);
-          return { value: leftLimit > 0 ? "+∞" : "-∞", steps };
-        }
-        steps.push(`##Conclusion\n$$${lhs("-")} = ${leftLimit > 0 ? "+\\infty" : "-\\infty"}, \\quad ${lhs("+")} = ${rightLimit > 0 ? "+\\infty" : "-\\infty"}$$\n$$${limitHeaderLatex} = \\text{DNE}$$`);
-        return { value: "DNE (Does Not Exist)", steps };
-      }
-
-      if (Math.abs(leftLimit - rightLimit) < 0.001) {
-        const avg = (leftLimit + rightLimit) / 2;
-        const rounded = Math.abs(avg - Math.round(avg)) < 0.0001 ? Math.round(avg) : parseFloat(avg.toFixed(6));
-        steps.push(`##Conclusion\n$$${lhs("-")} = ${lhs("+")} = ${exprToLatex(fmt(rounded))}$$\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
-        return { value: rounded.toString(), steps, numericValue: rounded };
-      } else {
-        steps.push(`##Conclusion\n$$${lhs("-")} = ${exprToLatex(fmt(leftLimit))} \\neq ${exprToLatex(fmt(rightLimit))} = ${lhs("+")}$$\n$$${limitHeaderLatex} = \\text{DNE}$$`);
-        return { value: "DNE (Does Not Exist)", steps };
-      }
-    } else {
-      // Infinity approach
-      const vals = target > 0 ? [10, 100, 1000, 10000, 100000] : [-10, -100, -1000, -10000, -100000];
-      const results: number[] = [];
-
-      for (const v of vals) {
-        scope[variable] = v;
-        results.push(evaluate(expr, scope) as number);
-      }
-
-      steps.push(`##Numerical Approach\n${table(`${variable} \\to ${approachingLatex(approaching)}`, vals, results)}`);
-
-      const last = results[results.length - 1];
-      const secondLast = results[results.length - 2];
-
-      if (!isFinite(last)) {
-        const signLatex = last > 0 ? "+\\infty" : "-\\infty";
-        return { value: last > 0 ? "+∞" : "-∞", steps: [...steps, `##Conclusion\n$$${limitHeaderLatex} = ${signLatex}$$`] };
-      }
-
-      if (Math.abs(last - secondLast) < 0.01) {
-        const rounded = Math.abs(last - Math.round(last)) < 0.001 ? Math.round(last) : parseFloat(last.toFixed(6));
-        steps.push(`##Conclusion\n$$${limitHeaderLatex} = ${exprToLatex(fmt(rounded))}$$`);
-        return { value: rounded.toString(), steps, numericValue: rounded };
-      }
-
-      steps.push(`##Conclusion\n$$${limitHeaderLatex} \\approx ${exprToLatex(fmt(last))}$$`);
-      return { value: last.toFixed(6), steps, numericValue: last };
-    }
-  } catch (e: unknown) {
-    return { value: "", steps: [], error: e instanceof Error ? e.message : "Error" };
-  }
+  return solveLimit(expr, variable, approaching, side, fmt);
 }
 
 export function LimitsCalculator() {
@@ -204,6 +40,35 @@ export function LimitsCalculator() {
   );
 
   useAutoRun([expr, variable, approaching, side, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);
+
+  // ── graph of f near the point the limit is taken at ────────────────────────
+  const v = cleanVariable(variable);
+  const a = parseNumericInput(approaching);
+  const graph = (() => {
+    if (!result || result.error || Number.isNaN(a)) return null;
+    const w = Math.max(3, Number.isFinite(a) ? Math.abs(a) * 0.6 : 0);
+    const xRange: [number, number] = Number.isFinite(a) ? [a - w, a + w] : a > 0 ? [-5, 50] : [-50, 5];
+    const problem = validateGraphExpression(expr, v, xRange[0], xRange[1]);
+    const markers: PlotMarker[] = [];
+    const vlines: PlotLine[] = [];
+    const hlines: PlotLine[] = [];
+    if (Number.isFinite(a)) {
+      vlines.push({ value: a, label: `${v} = ${approaching.trim()}` });
+      if (result.kind === "finite" && result.limitValue !== undefined) {
+        markers.push({ x: a, y: result.limitValue, filled: false, label: `L = ${result.exactText ?? formatNumber(result.limitValue, settings)}`, color: "#ef4444" });
+        hlines.push({ value: result.limitValue, color: "rgba(239,68,68,0.7)" });
+        try {
+          const fa = evaluate(cleanExpression(expr), { [v]: a });
+          if (typeof fa === "number" && Number.isFinite(fa) && Math.abs(fa - result.limitValue) > 1e-9 * (1 + Math.abs(fa))) {
+            markers.push({ x: a, y: fa, filled: true, label: `f(${approaching.trim()}) = ${formatNumber(fa, settings)}`, color: "#6366f1" });
+          }
+        } catch { /* f(a) undefined */ }
+      }
+    } else if (result.kind === "finite" && result.limitValue !== undefined) {
+      hlines.push({ value: result.limitValue, label: `y = ${result.exactText ?? formatNumber(result.limitValue, settings)}`, color: "rgba(239,68,68,0.8)" });
+    }
+    return { problem, xRange, markers, vlines, hlines };
+  })();
 
   return (
     <div className="space-y-6">
@@ -271,10 +136,10 @@ export function LimitsCalculator() {
             ) : (
               <>
                 <Badge variant="secondary" className="text-base font-mono px-3 py-1">
-                  lim{side === "left" ? "\u207b" : side === "right" ? "\u207a" : ""} = {result.numericValue !== undefined ? formatNumber(result.numericValue, settings) : result.value}
+                  lim{side === "left" ? "\u207b" : side === "right" ? "\u207a" : ""} = {result.exactText ? `${result.exactText} ≈ ` : ""}{result.numericValue !== undefined && Number.isFinite(result.numericValue) ? formatNumber(result.numericValue, settings) : result.value}
                 </Badge>
                 <StepsReveal steps={result.steps} show={showSteps} resetKey={result.value} title="Steps:" />
-                <Button variant="ghost" size="sm" onClick={() => setShowSteps((v) => !v)} className="text-xs">
+                <Button variant="ghost" size="sm" onClick={() => setShowSteps((sv) => !sv)} className="text-xs">
                   {showSteps ? "Hide" : "Show"} Steps
                 </Button>
               </>
@@ -282,6 +147,28 @@ export function LimitsCalculator() {
           </CardContent>
         </Card>
         </motion.div>
+      )}
+
+      {graph && (
+        <Card className="shadow-lg border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Graph of f({v}) near the limit point</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {graph.problem ? (
+              <p className="text-sm text-muted-foreground">{graph.problem}</p>
+            ) : (
+              <FunctionGraph
+                series={[{ expr, label: `f(${v})` }]}
+                variable={v}
+                xRange={graph.xRange}
+                markers={graph.markers}
+                vlines={graph.vlines}
+                hlines={graph.hlines}
+              />
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );
