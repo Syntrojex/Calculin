@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { validateGraphExpression, generateGraphPoints, extractVariables } from "@/lib/math-solver";
-import { GraphCanvas, type GraphSeries } from "./GraphCanvas";
+import { extractVariables } from "@/lib/math-solver";
+import { FunctionGraph, type PlotMarker } from "./FunctionGraph";
+import { makeEvaluator, findIntersections, validate2D, validateSurface, validateImplicitSurface } from "@/lib/graph-utils";
+import { cleanExpression, cleanVariable } from "@/lib/expression-clean";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
@@ -25,41 +27,23 @@ interface GraphEntry {
 
 let nextId = 1;
 
-function findIntersections(s1: GraphSeries, s2: GraphSeries): { x: number; y: number }[] {
-  const result: { x: number; y: number }[] = [];
-  const n = Math.min(s1.points.length, s2.points.length);
-  for (let i = 0; i < n - 1; i++) {
-    const d0 = s1.points[i].y - s2.points[i].y;
-    const d1 = s1.points[i + 1].y - s2.points[i + 1].y;
-    if (d0 === 0) {
-      result.push({ x: s1.points[i].x, y: s1.points[i].y });
-      continue;
-    }
-    if ((d0 > 0 && d1 < 0) || (d0 < 0 && d1 > 0)) {
-      const t = d0 / (d0 - d1);
-      const x = s1.points[i].x + t * (s1.points[i + 1].x - s1.points[i].x);
-      const y = s1.points[i].y + t * (s1.points[i + 1].y - s1.points[i].y);
-      result.push({ x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000 });
-    }
-  }
-  return result;
-}
+interface PlottedFn { expr: string }
 
-function allPairwiseIntersections(series: GraphSeries[]): { x: number; y: number }[] {
+/** Intersections of every pair of plotted functions inside [lo, hi] (poles are not intersections). */
+function allPairwiseIntersections(fns: PlottedFn[], lo: number, hi: number): { x: number; y: number }[] {
+  const evals = fns.map((f) => makeEvaluator(f.expr, "x"));
   const all: { x: number; y: number }[] = [];
-  for (let i = 0; i < series.length; i++) {
-    for (let j = i + 1; j < series.length; j++) {
-      all.push(...findIntersections(series[i], series[j]));
+  for (let i = 0; i < fns.length; i++) {
+    for (let j = i + 1; j < fns.length; j++) {
+      const a = evals[i], b = evals[j];
+      if (a && b) all.push(...findIntersections(a, b, lo, hi));
     }
   }
-  // De-duplicate points that are very close together
   const deduped: { x: number; y: number }[] = [];
   for (const p of all) {
-    if (!deduped.some((q) => Math.abs(q.x - p.x) < 1e-2 && Math.abs(q.y - p.y) < 1e-2)) {
-      deduped.push(p);
-    }
+    if (!deduped.some((q) => Math.abs(q.x - p.x) < 1e-6 * (1 + Math.abs(p.x)) && Math.abs(q.y - p.y) < 1e-6 * (1 + Math.abs(p.y)))) deduped.push({ x: p.x, y: p.y });
   }
-  return deduped;
+  return deduped.slice(0, 40);
 }
 
 export function GraphPlotter() {
@@ -124,7 +108,7 @@ export function GraphPlotter() {
       setPlottedImplicit(null);
       return;
     }
-    const expr = `(${parts[0].trim()}) - (${parts[1].trim()})`;
+    const expr = `(${cleanExpression(parts[0])}) - (${cleanExpression(parts[1])})`;
     const vars = extractVariables(expr);
     const allowed = new Set(["x", "y", "z"]);
     const unknownVars = vars.filter((v) => !allowed.has(v));
@@ -142,10 +126,18 @@ export function GraphPlotter() {
     // x^2+y^2=9) is still valid — the surface simply extends infinitely
     // along that axis. Always pass all 3 axis names so the scene renders
     // a full x/y/z frame regardless of which ones the equation actually uses.
+    const useRange = customRange ?? settings.defaultGraphRange;
+    const problem = validateImplicitSurface(expr, ["x", "y", "z"], useRange);
+    if (problem) {
+      setImplicitError(problem);
+      setPlottedImplicit(null);
+      return;
+    }
     setImplicitError(null);
-    setPlottedImplicit({ vars: ["x", "y", "z"], expr, range: customRange ?? settings.defaultGraphRange, original: eq });
+    setPlottedImplicit({ vars: ["x", "y", "z"], expr, range: useRange, original: eq });
   };
-  const [plotted, setPlotted] = useState<GraphSeries[]>([]);
+  const [plotted, setPlotted] = useState<PlottedFn[]>([]);
+  const [error3d, setError3d] = useState<string | null>(null);
 
   const addGraph = () => {
     if (graphs.length >= 5) return;
@@ -171,21 +163,13 @@ export function GraphPlotter() {
     const effLo = hi - lo < 1e-9 ? lo - 10 : lo;
     const effHi = hi - lo < 1e-9 ? hi + 10 : hi;
     setPlotRange({ lo: effLo, hi: effHi });
-    // Fewer samples on small screens: the curve is visually identical but the
-    // evaluation cost (and memory) drops by more than half.
-    const samplePoints = typeof window !== "undefined" && window.innerWidth < 640 ? 360 : 800;
     const errors: Record<number, string> = {};
-    const results = graphs
-      .filter((g) => g.expr.trim())
-      .map((g) => {
-        const problem = validateGraphExpression(g.expr, "x", effLo, effHi);
-        if (problem) {
-          errors[g.id] = problem;
-          return { expr: g.expr, points: [] as { x: number; y: number }[] };
-        }
-        return { expr: g.expr, points: generateGraphPoints(g.expr, "x", effLo, effHi, samplePoints) };
-      })
-      .filter((r) => r.points.length > 0);
+    const results: PlottedFn[] = [];
+    for (const g of graphs.filter((gr) => gr.expr.trim())) {
+      const problem = validate2D(g.expr, "x", effLo, effHi);
+      if (problem) errors[g.id] = problem;
+      else results.push({ expr: g.expr });
+    }
     setGraphErrors(errors);
     setPlotted(results);
   };
@@ -196,8 +180,23 @@ export function GraphPlotter() {
 
   const intersections = useMemo(() => {
     if (!compareMode || plotted.length < 2) return [];
-    return allPairwiseIntersections(plotted);
-  }, [compareMode, plotted]);
+    return allPairwiseIntersections(plotted, plotRange.lo, plotRange.hi);
+  }, [compareMode, plotted, plotRange]);
+
+  const plotSeries = useMemo(() => plotted.map((p) => ({ expr: p.expr, label: `y = ${cleanExpression(p.expr)}` })), [plotted]);
+  const intersectionMarkers = useMemo<PlotMarker[]>(
+    () => intersections.map((p) => ({ x: p.x, y: p.y, filled: true, color: "#f43f5e" })),
+    [intersections],
+  );
+  const range2d: [number, number] = [plotRange.lo, plotRange.hi];
+
+  // 3D: only render a surface when the function really has real values in the box.
+  const plotSurface = (raw: string) => {
+    const cleaned = cleanExpression(raw);
+    const problem = validateSurface(raw, settings.defaultGraphRange);
+    setError3d(problem);
+    setPlotted3d(problem ? "" : cleaned);
+  };
 
   return (
     <div className="space-y-6">
@@ -278,7 +277,7 @@ export function GraphPlotter() {
                   <Input
                     type="number"
                     value={xMin}
-                    onChange={(e) => setXMin(parseFloat(e.target.value) || -10)}
+                    onChange={(e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) setXMin(v); }}
                     className="text-center"
                   />
                 </div>
@@ -287,7 +286,7 @@ export function GraphPlotter() {
                   <Input
                     type="number"
                     value={xMax}
-                    onChange={(e) => setXMax(parseFloat(e.target.value) || 10)}
+                    onChange={(e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) setXMax(v); }}
                     className="text-center"
                   />
                 </div>
@@ -334,14 +333,14 @@ export function GraphPlotter() {
                       onChange={(e) => setExpr3d(normalizeMathInput(e.target.value))}
                       placeholder="e.g. sin(x) * cos(y), x^2 - y^2"
                       className="font-mono text-sm"
-                      onKeyDown={(e) => e.key === "Enter" && setPlotted3d(expr3d)}
+                      onKeyDown={(e) => e.key === "Enter" && plotSurface(expr3d)}
                     />
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {examples3d.map((ex) => (
                       <button
                         key={ex}
-                        onClick={() => { setExpr3d(ex); setPlotted3d(ex); }}
+                        onClick={() => { setExpr3d(ex); plotSurface(ex); }}
                         className={`text-xs px-2 py-1 rounded-md border font-mono transition-all ${
                           plotted3d === ex
                             ? "border-primary bg-primary/10 text-primary"
@@ -352,9 +351,10 @@ export function GraphPlotter() {
                       </button>
                     ))}
                   </div>
-                  <Button onClick={() => setPlotted3d(expr3d)} className="w-full gap-2">
+                  <Button onClick={() => plotSurface(expr3d)} className="w-full gap-2">
                     <Box className="h-4 w-4" /> Plot 3D Surface
                   </Button>
+                  {error3d && <p className="text-xs text-destructive leading-snug">{error3d}</p>}
                   <p className="text-xs text-muted-foreground"><span className="sm:hidden">one-finger drag to rotate · pinch in/out to zoom</span><span className="hidden sm:inline">drag to rotate · scroll to zoom</span> · z = f(x, y) over [−{settings.defaultGraphRange}, {settings.defaultGraphRange}]²</p>
                 </>
               ) : (
@@ -449,7 +449,13 @@ export function GraphPlotter() {
           >
             <div ref={chart3dRef} className={is3dFullscreen ? "flex-1 min-h-0" : ""}>
               {surfaceType === "explicit" ? (
-                <Graph3D expression={plotted3d} range={settings.defaultGraphRange} fillParent={is3dFullscreen} />
+                plotted3d ? (
+                  <Graph3D expression={plotted3d} range={settings.defaultGraphRange} fillParent={is3dFullscreen} />
+                ) : (
+                  <div className="h-[460px] rounded-xl border border-border flex items-center justify-center text-sm text-muted-foreground bg-muted/20 text-center px-6">
+                    {error3d ?? "Enter a function of x and y, then hit \"Plot 3D Surface\"."}
+                  </div>
+                )
               ) : plottedImplicit ? (
                 <ImplicitSurface3D
                   expression={plottedImplicit.expr}
@@ -459,7 +465,7 @@ export function GraphPlotter() {
                 />
               ) : (
                 <div className="h-[460px] rounded-xl border border-border flex items-center justify-center text-sm text-muted-foreground bg-muted/20 text-center px-6">
-                  Enter an equation in x, y, and z, then hit "Plot Implicit Surface" to render it.
+                  {implicitError ?? "Enter an equation in x, y, and z, then hit \"Plot Implicit Surface\" to render it."}
                 </div>
               )}
             </div>
@@ -473,11 +479,10 @@ export function GraphPlotter() {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
               <Card className="shadow-lg border-border/50">
                 <CardContent className="pt-6 space-y-3">
-                  <GraphCanvas
-                    series={plotted}
-                    xMin={plotRange.lo}
-                    xMax={plotRange.hi}
-                    markers={intersections}
+                  <FunctionGraph
+                    series={plotSeries}
+                    xRange={range2d}
+                    markers={intersectionMarkers}
                     downloadFilename={plotted[0]?.expr}
                   />
                   {intersections.length > 0 && (
@@ -503,10 +508,10 @@ export function GraphPlotter() {
                 <motion.div key={i} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: i * 0.08 }}>
                   <Card className="shadow-lg border-border/50">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-muted-foreground">f(x) = {p.expr}</CardTitle>
+                      <CardTitle className="text-sm text-muted-foreground">f(x) = {cleanExpression(p.expr)}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <GraphCanvas series={[p]} xMin={plotRange.lo} xMax={plotRange.hi} />
+                      <FunctionGraph series={[{ expr: p.expr, label: `f(x)` }]} xRange={range2d} />
                     </CardContent>
                   </Card>
                 </motion.div>

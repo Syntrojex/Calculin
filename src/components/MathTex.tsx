@@ -14,7 +14,7 @@ interface MathTexProps {
  *  must never crash the whole steps panel.
  *
  *  Wrapped in memo(): Formula Sheet / Definitions pages render dozens of
- *  these at once (up to ~40 on the Trigonometry sheet) — without memo, ANY
+ *  these at once (dozens on a reference sheet) — without memo, ANY
  *  re-render of an ancestor (switching theme, switching tabs, any unrelated
  *  state change bubbling down) re-renders every single one of them even
  *  though their own props never changed, which is what made switching

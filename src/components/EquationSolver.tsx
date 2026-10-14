@@ -12,6 +12,8 @@ import { Calculator, LineChart } from "lucide-react";
 import { evaluate } from "mathjs";
 import { StepsReveal } from "./StepsReveal";
 import { GraphCanvas } from "./GraphCanvas";
+import { FunctionGraph, type PlotMarker } from "./FunctionGraph";
+import { makeEvaluator, findRoots, validate2D, validateImplicitSurface } from "@/lib/graph-utils";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
@@ -150,10 +152,13 @@ function GraphEquationTab() {
 
   const r = Math.abs(parseFloat(range)) || 10;
 
-  const points2d = useMemo(() => {
-    if (!parsed || parsed.vars.length !== 1) return [];
-    return generateGraphPoints(parsed.expr, parsed.vars[0], -r, r);
-  }, [parsed, r]);
+  const problem1d = useMemo(() => (parsed && parsed.vars.length === 1 ? validate2D(parsed.expr, parsed.vars[0], -r, r) : null), [parsed, r]);
+  const roots1d = useMemo<PlotMarker[]>(() => {
+    if (!parsed || parsed.vars.length !== 1 || problem1d) return [];
+    const f = makeEvaluator(parsed.expr, parsed.vars[0]);
+    return f ? findRoots(f, -r, r).slice(0, 30).map((x) => ({ x, y: 0, filled: true, color: "#ef4444", label: String(parseFloat(x.toPrecision(5))) })) : [];
+  }, [parsed, r, problem1d]);
+  const problem3d = useMemo(() => (parsed && parsed.vars.length === 3 ? validateImplicitSurface(parsed.expr, parsed.vars, r) : null), [parsed, r]);
 
   const implicit2d = useMemo(() => {
     if (!parsed || parsed.vars.length !== 2) return [];
@@ -187,26 +192,40 @@ function GraphEquationTab() {
       {parsed && parsed.vars.length === 1 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <p className="text-xs text-muted-foreground mb-2">Single variable ({parsed.vars[0]}) → 2D graph of {parsed.expr} = 0 (roots are where it crosses zero)</p>
-          <GraphCanvas series={[{ expr: parsed.expr, points: points2d }]} xMin={-r} xMax={r} />
+          {problem1d ? (
+            <p className="text-sm text-destructive">{problem1d}</p>
+          ) : (
+            <FunctionGraph series={[{ expr: parsed.expr, label: `y = ${parsed.expr}` }]} variable={parsed.vars[0]} xRange={[-r, r]} markers={roots1d} />
+          )}
         </motion.div>
       )}
 
       {parsed && parsed.vars.length === 2 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <p className="text-xs text-muted-foreground mb-2">Two variables ({parsed.vars.join(", ")}) → 2D implicit curve</p>
-          <GraphCanvas
-            series={[{ expr: equation, points: implicit2d, mode: "scatter" }]}
-            xMin={-r} xMax={r} yMin={-r} yMax={r}
-          />
+          {implicit2d.length === 0 ? (
+            <p className="text-sm text-destructive">
+              The equation never holds inside [−{r}, {r}] × [−{r}, {r}] (or has no real values there), so there is no curve to draw. Try a larger range or check the equation.
+            </p>
+          ) : (
+            <GraphCanvas
+              series={[{ expr: equation, points: implicit2d, mode: "scatter" }]}
+              xMin={-r} xMax={r} yMin={-r} yMax={r}
+            />
+          )}
         </motion.div>
       )}
 
       {parsed && parsed.vars.length === 3 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <p className="text-xs text-muted-foreground mb-2">Three variables ({parsed.vars.join(", ")}) → 3D surface</p>
-          <Suspense fallback={<div className="h-[460px] rounded-xl border border-border flex items-center justify-center text-sm text-muted-foreground">Loading 3D engine…</div>}>
-            <ImplicitSurface3D expression={parsed.expr} varNames={[parsed.vars[0], parsed.vars[1], parsed.vars[2]]} range={r} />
-          </Suspense>
+          {problem3d ? (
+            <p className="text-sm text-destructive">{problem3d}</p>
+          ) : (
+            <Suspense fallback={<div className="h-[460px] rounded-xl border border-border flex items-center justify-center text-sm text-muted-foreground">Loading 3D engine…</div>}>
+              <ImplicitSurface3D expression={parsed.expr} varNames={[parsed.vars[0], parsed.vars[1], parsed.vars[2]]} range={r} />
+            </Suspense>
+          )}
         </motion.div>
       )}
     </div>
@@ -216,11 +235,20 @@ function GraphEquationTab() {
 function RootGraph({ expr, range }: { expr: string; range?: number }) {
   const settings = useSettings();
   const effectiveRange = range ?? settings.defaultGraphRange;
-  const points = useMemo(() => generateGraphPoints(expr, "x", -effectiveRange, effectiveRange), [expr, effectiveRange]);
+  const problem = useMemo(() => validate2D(expr, "x", -effectiveRange, effectiveRange), [expr, effectiveRange]);
+  const roots = useMemo<PlotMarker[]>(() => {
+    if (problem) return [];
+    const f = makeEvaluator(expr, "x");
+    return f ? findRoots(f, -effectiveRange, effectiveRange).slice(0, 30).map((x) => ({ x, y: 0, filled: true, color: "#ef4444", label: String(parseFloat(x.toPrecision(5))) })) : [];
+  }, [expr, effectiveRange, problem]);
   return (
     <div className="space-y-1">
       <p className="text-xs text-muted-foreground">Graph of y = {expr} (crosses zero at the root)</p>
-      <GraphCanvas series={[{ expr, points }]} xMin={-effectiveRange} xMax={effectiveRange} />
+      {problem ? (
+        <p className="text-sm text-destructive">{problem}</p>
+      ) : (
+        <FunctionGraph series={[{ expr, label: `y = ${expr}` }]} xRange={[-effectiveRange, effectiveRange]} markers={roots} />
+      )}
     </div>
   );
 }

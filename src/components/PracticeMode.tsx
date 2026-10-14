@@ -79,7 +79,7 @@ export function PracticeMode() {
             Practice Mode
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Exam-style questions across calculus, algebra, matrices and trigonometry — every
+            Exam-style questions across calculus, algebra and matrices — every
             solution is worked through step by step.
           </p>
         </CardHeader>
@@ -123,7 +123,7 @@ export function PracticeMode() {
           {difficulty === "hard" && (
             <p className="text-[11px] text-muted-foreground">
               Hard mode includes long multi-part questions: Gauss-Jordan elimination, integration
-              by parts, trigonometric proofs and multi-stage word problems.
+              by parts and multi-stage word problems.
             </p>
           )}
         </CardContent>
