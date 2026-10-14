@@ -13,7 +13,7 @@ function TermsOfServicePage() {
         <h2>1. Overview</h2>
         <p>
           These Terms of Service ("Terms") govern your access to and use of Calculin,
-          a free online calculator suite covering calculus, algebra, trigonometry,
+          a free online calculator suite covering calculus, algebra,
           complex numbers, number systems, graphing, and practice problems.
           By using Calculin, you agree to these Terms in full.
         </p>

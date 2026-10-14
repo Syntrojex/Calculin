@@ -14,7 +14,7 @@ function AboutPage() {
         <p>
           Calculin is a free, all-in-one math companion for anyone who wants more
           than just an answer. Type in a derivative, an integral, an equation, a
-          matrix, a trig identity, or a graph — and Calculin walks you through it
+          matrix, or a graph — and Calculin walks you through it
           step by step, the same way you'd solve it by hand, so the "why" behind
           the result is never a mystery.
         </p>
@@ -25,7 +25,7 @@ function AboutPage() {
         <p>
           Most calculators online either hide their steps behind a paywall or don't
           show them at all. Calculin was built to fix that: derivatives, integrals,
-          equations, matrices, trigonometry, complex numbers, number systems,
+          equations, matrices, complex numbers, number systems,
           2D/3D graphing, and a practice mode with worked solutions — all free, all in
           one place, with no account required.
         </p>

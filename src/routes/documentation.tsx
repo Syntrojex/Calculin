@@ -65,7 +65,6 @@ function DocumentationPage() {
         <h2>Other Tools</h2>
         <ul>
           <li><strong>Matrix</strong> — addition, subtraction, multiplication, determinant, inverse, transpose, rank, row echelon form, and Cramer's Rule.</li>
-          <li><strong>Trignometry</strong> — a full identity reference organized by category, plus a Prove Identity tool that simplifies both sides of an equation symbolically using real trig identities and shows its reasoning.</li>
           <li><strong>Complex</strong> — arithmetic, modulus/argument, polar-to-rectangular conversion, powers, principal roots, and De Moivre's Theorem.</li>
           <li><strong>Num Systems</strong> — convert any number between bases 2 through 36, with the full division/remainder working shown.</li>
           <li><strong>Graph</strong> — 2D function plotting with Compare Mode (overlay multiple functions with automatic intersection-point detection), and a fully interactive, color-mapped 3D surface plotter you can rotate and zoom.</li>

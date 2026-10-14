@@ -22,7 +22,6 @@ const PiecewiseCalculator = lazy(() => import("@/components/PiecewiseCalculator"
 const EquationSolver = lazy(() => import("@/components/EquationSolver").then(m => ({ default: m.EquationSolver })));
 const MatrixCalculator = lazy(() => import("@/components/MatrixCalculator").then(m => ({ default: m.MatrixCalculator })));
 const VectorCalculator = lazy(() => import("@/components/VectorCalculator").then(m => ({ default: m.VectorCalculator })));
-const TrigIdentities = lazy(() => import("@/components/TrigIdentities").then(m => ({ default: m.TrigIdentities })));
 const ComplexCalculator = lazy(() => import("@/components/ComplexCalculator").then(m => ({ default: m.ComplexCalculator })));
 const NumberConversions = lazy(() => import("@/components/NumberConversions").then(m => ({ default: m.NumberConversions })));
 const GraphPlotter = lazy(() => import("@/components/GraphPlotter").then(m => ({ default: m.GraphPlotter })));
@@ -38,14 +37,14 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Free online calculator: derivatives, integrals, equations, limits, matrices, trigonometry, complex numbers, number systems, 2D/3D graphs & practice mode.",
+          "Free online calculator: derivatives, integrals, equations, limits, matrices, complex numbers, number systems, 2D/3D graphs & practice mode.",
       },
     ],
   }),
 });
 
 // Tab order: Derivative, Integral, Double ∫, Partial Deriv., Limits, Piecewise,
-// Equations, Matrix, Vectors, Complex, Num Systems, Trigonometry, Graph, Practice
+// Equations, Matrix, Vectors, Complex, Num Systems, Graph, Practice
 //
 // Each tab declares its own `category` (matching a CATEGORIES key below)
 // instead of being listed a second time in a separate per-category "tools"
@@ -66,7 +65,6 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
   { value: "vector", label: "Vectors", shortLabel: "v⃗", icon: <Move3d className="h-3.5 w-3.5" />, component: <VectorCalculator />, category: "algebra" },
   { value: "complex", label: "Complex", shortLabel: "z", icon: <Zap className="h-3.5 w-3.5" />, component: <ComplexCalculator />, category: "algebra" },
   { value: "numconv", label: "Num Systems", shortLabel: "0b1", icon: <Binary className="h-3.5 w-3.5" />, component: <NumberConversions />, category: "algebra" },
-  { value: "trig", label: "Trigonometry", shortLabel: "θ", icon: <span className="text-xs font-bold">θ</span>, component: <TrigIdentities />, category: "trigonometry" },
   { value: "graph", label: "Graph", shortLabel: "📈", icon: <LineChart className="h-3.5 w-3.5" />, component: <GraphPlotter />, category: "graph" },
   { value: "practice", label: "Practice", shortLabel: "✏︎", icon: <GraduationCap className="h-3.5 w-3.5" />, component: <PracticeMode />, category: "practice" },
   // One tab per formula-sheet topic — generated from the same data used to
@@ -114,7 +112,6 @@ function tabByValue(value: string) {
 const CATEGORIES: { key: string; label: string; icon: React.ReactNode; collapsedOnMobile?: boolean }[] = [
   { key: "calculus", label: "Calculus", icon: <span className="text-xs font-bold">d/dx</span> },
   { key: "algebra", label: "Algebra", icon: <Calculator className="h-3.5 w-3.5" /> },
-  { key: "trigonometry", label: "Trigonometry", icon: <span className="text-xs font-bold">θ</span> },
   { key: "graph", label: "Graph", icon: <LineChart className="h-3.5 w-3.5" /> },
   { key: "practice", label: "Practice", icon: <GraduationCap className="h-3.5 w-3.5" /> },
   // Only these two reference-heavy categories (10 topics each) collapse
@@ -315,7 +312,7 @@ function Index() {
             Solve Math <span className="text-primary">Instantly</span>
           </h2>
           <p className="mt-2 text-muted-foreground text-xs sm:text-sm px-2">
-            Derivatives · Integrals · Limits · Matrices · Trigonometry · Complex Numbers · Number Systems · 2D/3D Graphs · Practice Mode
+            Derivatives · Integrals · Limits · Matrices · Complex Numbers · Number Systems · 2D/3D Graphs · Practice Mode
           </p>
         </motion.section>
       </div>
