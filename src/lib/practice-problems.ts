@@ -9,7 +9,7 @@
  * Difficulty is not just "bigger numbers": easy problems drill one rule,
  * medium combines two, and hard problems are full exam questions — multi-part
  * word problems, integration by parts, Gauss-Jordan elimination on a 3×3
- * system, and trigonometric proofs.
+ * system, and multi-stage word problems.
  */
 import { derivative, parse, simplify } from "mathjs";
 import { solveDerivative, solveIndefiniteIntegral, solveDefiniteIntegral } from "./math-solver";
@@ -17,7 +17,7 @@ import { normalizeMathInput } from "./text-normalize";
 
 export type Category =
   | "derivative" | "integral" | "limit" | "linear"
-  | "quadratic" | "matrix" | "trig" | "word";
+  | "quadratic" | "matrix" | "word";
 export type Difficulty = "easy" | "medium" | "hard";
 
 export interface Problem {
@@ -714,273 +714,6 @@ function genMatrix(diff: Difficulty): Problem {
   };
 }
 
-// ── Trigonometry ──────────────────────────────────────────────────────────────
-const EXACT_ANGLES: {
-  deg: number; sin: string; cos: string; tan: string;
-  sinP: string; cosP: string; tanP: string;
-  sinV: number; cosV: number; tanV: number;
-}[] = [
-  { deg: 30, sin: "\\frac{1}{2}", cos: "\\frac{\\sqrt{3}}{2}", tan: "\\frac{1}{\\sqrt{3}}", sinP: "1/2", cosP: "\u221a3/2", tanP: "1/\u221a3", sinV: 0.5, cosV: Math.sqrt(3) / 2, tanV: 1 / Math.sqrt(3) },
-  { deg: 45, sin: "\\frac{1}{\\sqrt{2}}", cos: "\\frac{1}{\\sqrt{2}}", tan: "1", sinP: "1/\u221a2", cosP: "1/\u221a2", tanP: "1", sinV: Math.SQRT1_2, cosV: Math.SQRT1_2, tanV: 1 },
-  { deg: 60, sin: "\\frac{\\sqrt{3}}{2}", cos: "\\frac{1}{2}", tan: "\\sqrt{3}", sinP: "\u221a3/2", cosP: "1/2", tanP: "\u221a3", sinV: Math.sqrt(3) / 2, cosV: 0.5, tanV: Math.sqrt(3) },
-];
-
-function genTrig(diff: Difficulty): Problem {
-  if (diff === "easy") {
-    const which = pick(["value", "convert", "pythag"] as const);
-    if (which === "value") {
-      const a = pick(EXACT_ANGLES);
-      const fn = pick(["sin", "cos", "tan"] as const);
-      const value = fn === "sin" ? a.sinV : fn === "cos" ? a.cosV : a.tanV;
-      const exact = fn === "sin" ? a.sin : fn === "cos" ? a.cos : a.tan;
-      const plain = fn === "sin" ? a.sinP : fn === "cos" ? a.cosP : a.tanP;
-      return {
-        category: "trig",
-        prompt: `Evaluate exactly:\n$$\\${fn}(${a.deg}°)$$`,
-        correctAnswer: `${plain} ≈ ${fmt(value)}`,
-        hint: "Use the standard 30–60–90 and 45–45–90 triangles.",
-        answerFormat: "a number (decimal is fine)",
-        steps: [
-          step("Recall the Standard Triangle", a.deg === 45
-            ? `A 45–45–90 triangle has legs $1, 1$ and hypotenuse $\\sqrt{2}$.`
-            : `A 30–60–90 triangle has sides $1$ (opposite $30°$), $\\sqrt{3}$ (opposite $60°$), and hypotenuse $2$.`),
-          step("Apply the Definition", `${fn === "sin" ? "$\\sin\\theta = \\frac{\\text{opposite}}{\\text{hypotenuse}}$" : fn === "cos" ? "$\\cos\\theta = \\frac{\\text{adjacent}}{\\text{hypotenuse}}$" : "$\\tan\\theta = \\frac{\\text{opposite}}{\\text{adjacent}}$"}`),
-          step("Read Off the Value", eq(`\\${fn}(${a.deg}°) = ${exact}`)),
-          step("As a Decimal", eq(`\\${fn}(${a.deg}°) \\approx ${fmt(value)}`)),
-        ],
-        check: (input) => { const v = parseNumberAnswer(input); return v !== null && numericallyClose(v, value, 5e-3); },
-      };
-    }
-    if (which === "convert") {
-      const deg = pick([30, 45, 60, 120, 135, 150, 210, 240, 300, 330]);
-      const rad = (deg * Math.PI) / 180;
-      return {
-        category: "trig",
-        prompt: `Convert $${deg}°$ to radians. Give your answer as a decimal (or as a multiple of π).`,
-        correctAnswer: `${fmt(rad)} rad`,
-        hint: "Multiply by π/180.",
-        answerFormat: "a number, e.g. 2.094 or 2pi/3",
-        steps: [
-          step("Write the Conversion Factor", `A full turn is $360° = 2\\pi$ radians, so $1° = \\frac{\\pi}{180}$ radians.`),
-          step("Multiply", eq(`${deg}° \\times \\frac{\\pi}{180} = \\frac{${deg}\\pi}{180}`)),
-          step("Simplify the Fraction", eq(`\\frac{${deg}\\pi}{180} = \\frac{${deg / gcd(deg, 180)}\\pi}{${180 / gcd(deg, 180)}}`)),
-          step("As a Decimal", eq(`\\approx ${fmt(rad)}\\text{ rad}`)),
-        ],
-        check: (input) => { const v = parseNumberAnswer(input); return v !== null && numericallyClose(v, rad, 5e-3); },
-      };
-    }
-    const [o, a2, h] = pick([[3, 4, 5], [5, 12, 13], [8, 15, 17], [7, 24, 25]]);
-    const value = o / h;
-    return {
-      category: "trig",
-      prompt: `A right triangle has legs of length $${o}$ and $${a2}$, with hypotenuse $${h}$. Find $\\sin\\theta$ for the angle $\\theta$ opposite the side of length $${o}$.`,
-      correctAnswer: `${o}/${h} ≈ ${fmt(value)}`,
-      hint: "sin = opposite / hypotenuse.",
-      answerFormat: "a number or fraction",
-      steps: [
-        step("Confirm the Right Triangle", eq(`${o}^{2} + ${a2}^{2} = ${o * o} + ${a2 * a2} = ${h * h} = ${h}^{2}\\quad\\checkmark`)),
-        step("Identify the Sides", `Relative to $\\theta$: opposite $= ${o}$, adjacent $= ${a2}$, hypotenuse $= ${h}$.`),
-        step("Apply the Definition", eq(`\\sin\\theta = \\frac{\\text{opposite}}{\\text{hypotenuse}} = \\frac{${o}}{${h}}`)),
-        step("As a Decimal", eq(`\\sin\\theta = ${fmt(value)}`)),
-      ],
-      check: (input) => { const v = parseNumberAnswer(input); return v !== null && numericallyClose(v, value, 5e-3); },
-    };
-  }
-
-  if (diff === "medium") {
-    const which = pick(["ratio", "solve", "identity-value"] as const);
-    if (which === "ratio") {
-      const [o, a2, h] = pick([[3, 4, 5], [5, 12, 13], [8, 15, 17]]);
-      const target = pick(["cos", "tan"] as const);
-      const value = target === "cos" ? a2 / h : o / a2;
-      return {
-        category: "trig",
-        prompt: `Given that $\\sin\\theta = \\dfrac{${o}}{${h}}$ and $\\theta$ lies in the first quadrant, find $\\${target}\\theta$.`,
-        correctAnswer: fmt(value),
-        hint: "Use sin²θ + cos²θ = 1 to get the missing ratio, keeping signs appropriate to the quadrant.",
-        answerFormat: "a number or fraction",
-        steps: [
-          step("Use the Pythagorean Identity", eq(`\\sin^{2}\\theta + \\cos^{2}\\theta = 1`)),
-          step("Substitute the Known Ratio", eq(`\\left(\\frac{${o}}{${h}}\\right)^{2} + \\cos^{2}\\theta = 1`)),
-          step("Simplify the Square", eq(`\\frac{${o * o}}{${h * h}} + \\cos^{2}\\theta = 1`)),
-          step("Isolate cos²θ", eq(`\\cos^{2}\\theta = 1 - \\frac{${o * o}}{${h * h}} = \\frac{${h * h - o * o}}{${h * h}}`)),
-          step("Take the Square Root", `In the first quadrant cosine is positive, so take the positive root:\n${eq(`\\cos\\theta = \\frac{${a2}}{${h}}`)}`),
-          ...(target === "tan" ? [step("Form the Tangent", eq(`\\tan\\theta = \\frac{\\sin\\theta}{\\cos\\theta} = \\frac{${o}/${h}}{${a2}/${h}} = \\frac{${o}}{${a2}}`))] : []),
-          step("Final Value", eq(`\\${target}\\theta = ${fmt(value)}`)),
-        ],
-        check: (input) => { const v = parseNumberAnswer(input); return v !== null && numericallyClose(v, value, 5e-3); },
-      };
-    }
-    if (which === "solve") {
-      const a = pick(EXACT_ANGLES);
-      const solutions = [a.deg, 180 - a.deg];
-      return {
-        category: "trig",
-        prompt: `Solve for $\\theta$ in the interval $0° \\le \\theta < 360°$:\n$$\\sin\\theta = ${a.sin}$$\nEnter all solutions in degrees, separated by commas.`,
-        correctAnswer: solutions.map((d2) => `${d2}°`).join(", "),
-        hint: "Find the reference angle first, then use the quadrants where sine is positive (I and II).",
-        answerFormat: "angles in degrees, e.g. 30, 150",
-        steps: [
-          step("Find the Reference Angle", `Ignoring sign, $\\sin^{-1}\\left(${a.sin}\\right) = ${a.deg}°$ — this is the reference angle.`),
-          step("Decide the Quadrants", `The value is positive, and sine is positive in quadrant I and quadrant II (ASTC), so there are two solutions in one full turn.`),
-          step("Quadrant I Solution", eq(`\\theta = ${a.deg}°`)),
-          step("Quadrant II Solution", eq(`\\theta = 180° - ${a.deg}° = ${180 - a.deg}°`)),
-          step("Check Both", `$\\sin(${a.deg}°) = ${fmt(a.sinV)}$ and $\\sin(${180 - a.deg}°) = ${fmt(a.sinV)}$ — both match.`),
-          step("General Solution (for reference)", eq(`\\theta = ${a.deg}° + 360°n \\quad\\text{or}\\quad \\theta = ${180 - a.deg}° + 360°n,\\; n\\in\\mathbb{Z}`)),
-        ],
-        check: (input) => matchesSet(input, solutions, 0.5),
-      };
-    }
-    const a = pick(EXACT_ANGLES);
-    const value = 2 * a.sinV * a.cosV;
-    return {
-      category: "trig",
-      prompt: `Use the double-angle formula to evaluate:\n$$\\sin(2 \\times ${a.deg}°)$$`,
-      correctAnswer: fmt(value),
-      hint: "sin(2θ) = 2 sinθ cosθ.",
-      answerFormat: "a number",
-      steps: [
-        step("State the Formula", eq(`\\sin(2\\theta) = 2\\sin\\theta\\cos\\theta`)),
-        step("Write the Known Values", eq(`\\sin(${a.deg}°) = ${a.sin},\\qquad \\cos(${a.deg}°) = ${a.cos}`)),
-        step("Substitute", eq(`\\sin(${2 * a.deg}°) = 2\\left(${a.sin}\\right)\\left(${a.cos}\\right)`)),
-        step("Multiply Out", eq(`= ${fmt(value)}`)),
-        step("Sanity Check", `$${2 * a.deg}°$ ${2 * a.deg > 90 ? "lies in quadrant II, where sine is still positive" : "lies in quadrant I, where sine is positive"} — the sign of the answer is consistent.`),
-      ],
-      check: (input) => { const v = parseNumberAnswer(input); return v !== null && numericallyClose(v, value, 5e-3); },
-    };
-  }
-
-  // Hard: identity proofs, exact values via sum formulas, quadratic trig
-  // equations, and the law of cosines.
-  const which = pick(["proof", "sum-formula", "quadratic-eq", "law-of-cosines"] as const);
-
-  if (which === "proof") {
-    const variant = pick([0, 1, 2] as const);
-    if (variant === 0) {
-      return {
-        category: "trig",
-        prompt: `Prove the identity\n$$\\frac{1 - \\cos^{2}x}{\\sin x\\,\\cos x} = \\tan x$$\nWork the left-hand side down to a single trigonometric function, and enter that function as your answer.`,
-        correctAnswer: "tan(x)",
-        hint: "Start from sin²x + cos²x = 1.",
-        answerFormat: "a single function, e.g. tan(x)",
-        steps: [
-          step("Start from the Left-Hand Side", eq(`\\text{LHS} = \\frac{1 - \\cos^{2}x}{\\sin x\\,\\cos x}`)),
-          step("Apply the Pythagorean Identity", `Since $\\sin^{2}x + \\cos^{2}x = 1$, rearranging gives $1 - \\cos^{2}x = \\sin^{2}x$:\n${eq(`= \\frac{\\sin^{2}x}{\\sin x\\,\\cos x}`)}`),
-          step("Cancel One Factor of sin x", `Both top and bottom share a factor $\\sin x$ (valid wherever $\\sin x \\neq 0$):\n${eq(`= \\frac{\\sin x}{\\cos x}`)}`),
-          step("Recognize the Quotient Identity", eq(`\\frac{\\sin x}{\\cos x} = \\tan x`)),
-          step("Conclude", `LHS $= \\tan x =$ RHS, so the identity holds for all $x$ where $\\sin x\\cos x \\neq 0$. $\\blacksquare$`),
-        ],
-        check: (input) => expressionsAgree(input, "tan(x)", [0.4, 0.9, 1.3, -0.6, 2.2]),
-      };
-    }
-    if (variant === 1) {
-      return {
-        category: "trig",
-        prompt: `Prove the identity\n$$\\frac{\\sin x}{1 + \\cos x} + \\frac{1 + \\cos x}{\\sin x} = 2\\csc x$$\nSimplify the left-hand side to a single term and enter it (use 1/sin(x) for csc).`,
-        correctAnswer: "2/sin(x)",
-        hint: "Put both fractions over a common denominator, then use sin²x + cos²x = 1.",
-        answerFormat: "a single expression, e.g. 2/sin(x)",
-        steps: [
-          step("Start from the Left-Hand Side", eq(`\\text{LHS} = \\frac{\\sin x}{1 + \\cos x} + \\frac{1 + \\cos x}{\\sin x}`)),
-          step("Take a Common Denominator", `The common denominator is $\\sin x\\,(1+\\cos x)$:\n${eq(`= \\frac{\\sin^{2}x + (1 + \\cos x)^{2}}{\\sin x\\,(1 + \\cos x)}`)}`),
-          step("Expand the Square", eq(`(1 + \\cos x)^{2} = 1 + 2\\cos x + \\cos^{2}x`)),
-          step("Substitute the Expansion", eq(`= \\frac{\\sin^{2}x + 1 + 2\\cos x + \\cos^{2}x}{\\sin x\\,(1 + \\cos x)}`)),
-          step("Use the Pythagorean Identity", `Group $\\sin^{2}x + \\cos^{2}x = 1$:\n${eq(`= \\frac{1 + 1 + 2\\cos x}{\\sin x\\,(1 + \\cos x)} = \\frac{2 + 2\\cos x}{\\sin x\\,(1 + \\cos x)}`)}`),
-          step("Factor the Numerator", eq(`= \\frac{2(1 + \\cos x)}{\\sin x\\,(1 + \\cos x)}`)),
-          step("Cancel the Common Factor", `Cancel $(1+\\cos x)$, valid wherever $\\cos x \\neq -1$:\n${eq(`= \\frac{2}{\\sin x} = 2\\csc x`)}`),
-          step("Conclude", `LHS $= 2\\csc x =$ RHS. $\\blacksquare$`),
-        ],
-        check: (input) => expressionsAgree(input, "2/sin(x)", [0.5, 1.1, 2.0, -0.8, 2.6]),
-      };
-    }
-    return {
-      category: "trig",
-      prompt: `Prove the identity\n$$\\frac{\\cos x}{1 - \\sin x} = \\sec x + \\tan x$$\nSimplify the left-hand side and enter the equivalent expression (use 1/cos(x) for sec).`,
-      correctAnswer: "1/cos(x) + tan(x)",
-      hint: "Multiply top and bottom by the conjugate (1 + sin x).",
-      answerFormat: "an expression in x, e.g. 1/cos(x)+tan(x)",
-      steps: [
-        step("Start from the Left-Hand Side", eq(`\\text{LHS} = \\frac{\\cos x}{1 - \\sin x}`)),
-        step("Multiply by the Conjugate", `Multiplying top and bottom by $(1 + \\sin x)$ changes nothing but the form:\n${eq(`= \\frac{\\cos x\\,(1 + \\sin x)}{(1 - \\sin x)(1 + \\sin x)}`)}`),
-        step("Expand the Denominator", `This is a difference of squares:\n${eq(`(1 - \\sin x)(1 + \\sin x) = 1 - \\sin^{2}x`)}`),
-        step("Apply the Pythagorean Identity", eq(`1 - \\sin^{2}x = \\cos^{2}x`)),
-        step("Substitute Back", eq(`= \\frac{\\cos x\\,(1 + \\sin x)}{\\cos^{2}x}`)),
-        step("Cancel One Factor of cos x", eq(`= \\frac{1 + \\sin x}{\\cos x}`)),
-        step("Split the Fraction", eq(`= \\frac{1}{\\cos x} + \\frac{\\sin x}{\\cos x} = \\sec x + \\tan x`)),
-        step("Conclude", `LHS $= \\sec x + \\tan x =$ RHS. $\\blacksquare$`),
-      ],
-      check: (input) => expressionsAgree(input, "1/cos(x) + tan(x)", [0.4, 1.0, 2.0, -0.7, 2.5]),
-    };
-  }
-
-  if (which === "sum-formula") {
-    const target = pick([75, 15, 105] as const);
-    const value = target === 75 ? Math.cos((75 * Math.PI) / 180) : target === 15 ? Math.cos((15 * Math.PI) / 180) : Math.cos((105 * Math.PI) / 180);
-    const parts = target === 75 ? [45, 30] : target === 15 ? [45, 30] : [60, 45];
-    const op = target === 15 ? "-" : "+";
-    return {
-      category: "trig",
-      prompt: `Find the exact value of $\\cos(${target}°)$ using the ${op === "+" ? "sum" : "difference"} formula, then give its decimal value to 4 places.`,
-      correctAnswer: fmt(value),
-      hint: `Write ${target}° as ${parts[0]}° ${op} ${parts[1]}° and use cos(A ± B) = cosA cosB ∓ sinA sinB.`,
-      answerFormat: "a number, e.g. 0.2588",
-      steps: [
-        step("Split the Angle", eq(`${target}° = ${parts[0]}° ${op} ${parts[1]}°`)),
-        step("State the Formula", eq(`\\cos(A ${op} B) = \\cos A\\cos B ${op === "+" ? "-" : "+"} \\sin A\\sin B`)),
-        step("Write the Known Exact Values", eq(`\\cos ${parts[0]}° = ${parts[0] === 45 ? "\\tfrac{1}{\\sqrt2}" : "\\tfrac{1}{2}"},\\; \\sin ${parts[0]}° = ${parts[0] === 45 ? "\\tfrac{1}{\\sqrt2}" : "\\tfrac{\\sqrt3}{2}"},\\; \\cos ${parts[1]}° = ${parts[1] === 30 ? "\\tfrac{\\sqrt3}{2}" : "\\tfrac{1}{\\sqrt2}"},\\; \\sin ${parts[1]}° = ${parts[1] === 30 ? "\\tfrac{1}{2}" : "\\tfrac{1}{\\sqrt2}"}`)),
-        step("Substitute into the Formula", eq(`\\cos(${target}°) = \\cos ${parts[0]}°\\cos ${parts[1]}° ${op === "+" ? "-" : "+"} \\sin ${parts[0]}°\\sin ${parts[1]}°`)),
-        step("Multiply Each Product", `Carrying out both products and combining over a common denominator gives the exact surd form.`),
-        step("Decimal Value", eq(`\\cos(${target}°) \\approx ${fmt(value)}`)),
-        step("Sanity Check", `$${target}°$ is in quadrant ${target < 90 ? "I, where cosine is positive" : "II, where cosine is negative"} — matching the sign of the answer.`),
-      ],
-      check: (input) => { const v = parseNumberAnswer(input); return v !== null && numericallyClose(v, value, 5e-3); },
-    };
-  }
-
-  if (which === "quadratic-eq") {
-    // 2sin²θ − 3sinθ + 1 = 0 → sinθ = 1/2 or 1 → θ = 30°, 150°, 90°
-    const solutions = [30, 90, 150];
-    return {
-      category: "trig",
-      prompt: `Solve for $\\theta$ in $0° \\le \\theta < 360°$:\n$$2\\sin^{2}\\theta - 3\\sin\\theta + 1 = 0$$\nEnter all solutions in degrees, separated by commas.`,
-      correctAnswer: "30°, 90°, 150°",
-      hint: "Substitute s = sinθ to get a quadratic in s, solve it, then find every angle for each value of s.",
-      answerFormat: "angles in degrees, e.g. 30, 90, 150",
-      steps: [
-        step("Substitute to Make It a Quadratic", `Let $s = \\sin\\theta$. The equation becomes an ordinary quadratic:\n${eq(`2s^{2} - 3s + 1 = 0`)}`),
-        step("Factor the Quadratic", eq(`2s^{2} - 3s + 1 = (2s - 1)(s - 1) = 0`)),
-        step("Solve for s", eq(`s = \\tfrac{1}{2} \\quad\\text{or}\\quad s = 1`)),
-        step("Return to θ — First Case", `$\\sin\\theta = \\tfrac{1}{2}$ has reference angle $30°$, and sine is positive in quadrants I and II:\n${eq(`\\theta = 30° \\quad\\text{or}\\quad \\theta = 180° - 30° = 150°`)}`),
-        step("Return to θ — Second Case", `$\\sin\\theta = 1$ happens at exactly one angle in a full turn:\n${eq(`\\theta = 90°`)}`),
-        step("Check the Interval", `All three angles $30°, 90°, 150°$ lie in $[0°, 360°)$, so all are kept.`),
-        step("Verify One Solution", eq(`2\\sin^{2}(30°) - 3\\sin(30°) + 1 = 2\\left(\\tfrac14\\right) - \\tfrac32 + 1 = 0\\quad\\checkmark`)),
-      ],
-      check: (input) => matchesSet(input, solutions, 0.5),
-    };
-  }
-
-  const a = randInt(4, 12), b = randInt(4, 12), C = pick([60, 120, 45]);
-  const cSq = a * a + b * b - 2 * a * b * Math.cos((C * Math.PI) / 180);
-  const c = Math.sqrt(cSq);
-  return {
-    category: "trig",
-    prompt: `In triangle $ABC$, $a = ${a}$, $b = ${b}$, and the included angle $C = ${C}°$. Find the length of side $c$, correct to 3 decimal places.`,
-    correctAnswer: fmt(c),
-    hint: "Law of cosines: c² = a² + b² − 2ab·cos C.",
-    answerFormat: "a number",
-    steps: [
-      step("State the Law of Cosines", `The included angle sits between the two known sides, which is exactly when the law of cosines applies:\n${eq(`c^{2} = a^{2} + b^{2} - 2ab\\cos C`)}`),
-      step("Substitute the Given Values", eq(`c^{2} = ${a}^{2} + ${b}^{2} - 2(${a})(${b})\\cos(${C}°)`)),
-      step("Square the Sides", eq(`c^{2} = ${a * a} + ${b * b} - ${2 * a * b}\\cos(${C}°)`)),
-      step("Evaluate the Cosine", eq(`\\cos(${C}°) = ${fmt(Math.cos((C * Math.PI) / 180))}`)),
-      step("Multiply Out", eq(`c^{2} = ${a * a + b * b} - (${fmt(2 * a * b * Math.cos((C * Math.PI) / 180))}) = ${fmt(cSq)}`)),
-      step("Take the Square Root", `Length is positive, so take the positive root:\n${eq(`c = \\sqrt{${fmt(cSq)}} = ${fmt(c)}`)}`),
-      step("Sanity Check", `${C > 90 ? `Since $C > 90°$, side $c$ should be longer than both $a$ and $b$ — and $${fmt(c)}$ is.` : `Since $C < 90°$, side $c$ should be shorter than $a + b = ${a + b}$ — and $${fmt(c)}$ is.`}`),
-    ],
-    check: (input) => { const v = parseNumberAnswer(input); return v !== null && numericallyClose(v, c, 5e-3); },
-  };
-}
-
 // ── Word problems ─────────────────────────────────────────────────────────────
 function genWord(diff: Difficulty): Problem {
   if (diff === "hard") return pick(HARD_WORD)(diff);
@@ -1539,7 +1272,6 @@ export const GENERATORS: Record<Category, (diff: Difficulty) => Problem> = {
   linear: genLinear,
   quadratic: genQuadratic,
   matrix: genMatrix,
-  trig: genTrig,
   word: genWord,
 };
 
@@ -1550,12 +1282,11 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   linear: "Linear Equations",
   quadratic: "Quadratics",
   matrix: "Matrices",
-  trig: "Trigonometry",
   word: "Word Problems",
 };
 
 export const ALL_CATEGORIES: Category[] = [
-  "derivative", "integral", "limit", "linear", "quadratic", "matrix", "trig", "word",
+  "derivative", "integral", "limit", "linear", "quadratic", "matrix", "word",
 ];
 
 /** Builds one problem, retrying a couple of times if a generator throws. */

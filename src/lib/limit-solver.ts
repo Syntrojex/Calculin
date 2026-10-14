@@ -11,7 +11,7 @@
  *    A narration is only shown if it agrees with the numerical result.
  */
 import { derivative, evaluate, parse as mjParse, simplify, type MathNode } from "mathjs";
-import { cleanExpression, cleanVariable, parseNumericInput } from "./expression-clean";
+import { cleanExpression, cleanVariable, parseNumericInput, findUnknownFunctionNames } from "./expression-clean";
 import { exprToLatex } from "./latex";
 import { recognizeConstant } from "./numeric-integrate";
 import { polyDeg, polyFromNode } from "./math-solver";
@@ -163,6 +163,8 @@ export function solveLimit(
   fmt: (n: number) => string,
 ): LimitResult {
   try {
+    const unknownFns = findUnknownFunctionNames(exprIn);
+    if (unknownFns.length) return { value: "", steps: [], error: `Unknown function${unknownFns.length > 1 ? "s" : ""} "${unknownFns.join(", ")}" — supported ones include sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, ln, log, sqrt, abs, exp, floor, ceil.` };
     const expr = cleanExpression(exprIn);
     if (!expr) return { value: "", steps: [], error: "Please enter a function." };
     const variable = cleanVariable(variableIn);

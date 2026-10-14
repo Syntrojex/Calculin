@@ -398,3 +398,21 @@ export function mentionsVariable(expr: string, variable: string): boolean {
   const esc = variable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(?<![A-Za-z0-9_])${esc}(?![A-Za-z0-9_])`).test(expr);
 }
+
+/** Words (3+ letters) written like a function call — name( — that are not a known function: foo(x), bar(x) … */
+export function findUnknownFunctionNames(raw: string): string[] {
+  const text = normalizeSymbols(String(raw ?? ""));
+  const out = new Set<string>();
+  const re = /([A-Za-z][A-Za-z0-9_]*)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const name = m[1];
+    const lower = name.toLowerCase();
+    if (name.length < 3 || /[\d_]/.test(name)) continue;
+    if (CANON.has(lower) || CONST_WORDS[lower]) continue;
+    let hasKnownSuffix = false;
+    for (let k = 1; k < lower.length; k++) if (CANON.has(lower.slice(k))) { hasKnownSuffix = true; break; }
+    if (!hasKnownSuffix) out.add(name);
+  }
+  return [...out];
+}
