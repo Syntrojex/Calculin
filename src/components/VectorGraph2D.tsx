@@ -1,91 +1,115 @@
+import type { Scene, SArrow } from "@/lib/vector-scene";
+
 /**
- * A simple 2D arrow diagram for the Vector calculator — grid, axes, and one
- * arrow per vector (auto-scaled to fit, origin-anchored unless a `from`
- * point is given for tip-to-tail display). Plain SVG, same spirit as
- * ShapeDiagram, but computed from live vector values instead of a fixed
- * lookup table.
+ * 2D vector diagram (plain SVG): grid with numbered axes, every arrow of the
+ * scene (tip-to-tail chains, dashed helper copies, results), translucent
+ * parallelograms, projection drop-lines, angle arcs — all computed from the
+ * live vector values, auto-scaled to fit.
  */
-interface VectorArrow {
-  x: number;
-  y: number;
-  color: string;
-  label: string;
-  /** Tail point, default the origin — set this to draw tip-to-tail (e.g.
-   *  showing v starting where u ends, to illustrate u+v geometrically). */
-  from?: { x: number; y: number };
+const SIZE = 420;
+const PAD = 40;
+
+function niceStep(range: number): number {
+  const raw = range / 5;
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / p;
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
+}
+function tick(v: number, step: number): string {
+  const digits = Math.min(4, Math.max(0, -Math.floor(Math.log10(step) + 1e-9)));
+  return v.toFixed(digits).replace(/\.?0+$/, "");
 }
 
-const SIZE = 280;
-const PAD = 28;
-
-export function VectorGraph2D({ vectors }: { vectors: VectorArrow[] }) {
-  const usable = vectors.filter((v) => isFinite(v.x) && isFinite(v.y));
-  if (usable.length === 0) return null;
-
-  // Scale so every vector (tail and tip) fits inside the drawing area with
-  // some breathing room, and the grid always includes the origin.
-  let maxAbs = 1;
-  for (const v of usable) {
-    const fx = v.from?.x ?? 0, fy = v.from?.y ?? 0;
-    maxAbs = Math.max(maxAbs, Math.abs(fx), Math.abs(fy), Math.abs(fx + v.x), Math.abs(fy + v.y));
-  }
-  const scale = ((SIZE - PAD * 2) / 2) / (maxAbs * 1.15);
-  const cx = SIZE / 2, cy = SIZE / 2;
-  const toPx = (x: number, y: number) => ({ px: cx + x * scale, py: cy - y * scale });
-
-  // Grid lines at "nice" integer steps, however many fit.
-  const step = Math.max(1, Math.round(maxAbs / 4));
-  const gridLines: number[] = [];
-  for (let g = -Math.ceil(maxAbs); g <= Math.ceil(maxAbs); g += step) gridLines.push(g);
+export function VectorGraph2D({ scene }: { scene: Scene }) {
+  if (scene.arrows.length === 0) return null;
+  const half = scene.extent * 1.15;
+  const scale = (SIZE / 2 - PAD) / half;
+  const c = SIZE / 2;
+  const X = (x: number) => c + x * scale;
+  const Y = (y: number) => c - y * scale;
+  const step = niceStep(half * 2);
+  const ticks: number[] = [];
+  for (let g = -Math.floor(half / step) * step; g <= half + 1e-9; g += step) ticks.push(parseFloat(g.toFixed(10)));
 
   const axisColor = "var(--color-muted-foreground)";
-  const gridColor = "color-mix(in oklch, var(--color-muted-foreground) 15%, transparent)";
+  const gridColor = "color-mix(in oklch, var(--color-muted-foreground) 14%, transparent)";
+  const mutedText = "color-mix(in oklch, var(--color-muted-foreground) 90%, transparent)";
+
+  const renderArrow = (a: SArrow, i: number) => {
+    const x1 = X(a.from.x), y1 = Y(a.from.y);
+    const x2 = X(a.from.x + a.vec.x), y2 = Y(a.from.y + a.vec.y);
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1.5) return null;
+    const ux = dx / len, uy = dy / len;
+    const w = a.width ?? 2.6;
+    const head = Math.min(len * 0.6, 8 + w * 1.6);
+    const hw = head * 0.42;
+    const bx = x2 - ux * head, by = y2 - uy * head;
+    const op = a.faint ? 0.5 : 1;
+    return (
+      <g key={`a${i}`} opacity={op}>
+        <line x1={x1} y1={y1} x2={bx} y2={by} stroke={a.color} strokeWidth={w} strokeLinecap="round" strokeDasharray={a.dashed ? "6 5" : undefined} />
+        <polygon points={`${x2},${y2} ${bx - uy * hw},${by + ux * hw} ${bx + uy * hw},${by - ux * hw}`} fill={a.color} />
+        {a.label && (
+          <text
+            x={(x1 + x2) / 2 - uy * 14}
+            y={(y1 + y2) / 2 + ux * 14}
+            fontSize="13" fontStyle="italic" fontWeight="700" fill={a.color} textAnchor="middle" fontFamily="ui-monospace, monospace"
+            style={{ paintOrder: "stroke", stroke: "var(--color-background)", strokeWidth: 3 }}
+          >
+            {a.label}
+          </text>
+        )}
+      </g>
+    );
+  };
 
   return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="w-full max-w-[280px] mx-auto" role="img" aria-label="2D vector diagram">
-      {gridLines.map((g) => {
-        const { px } = toPx(g, 0);
-        const { py } = toPx(0, g);
+    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="w-full max-w-[440px] mx-auto" role="img" aria-label="2D vector diagram">
+      {ticks.map((g) => (
+        <g key={`g${g}`}>
+          <line x1={X(g)} y1={PAD / 2} x2={X(g)} y2={SIZE - PAD / 2} stroke={gridColor} strokeWidth="1" />
+          <line x1={PAD / 2} y1={Y(g)} x2={SIZE - PAD / 2} y2={Y(g)} stroke={gridColor} strokeWidth="1" />
+          {Math.abs(g) > 1e-9 && (
+            <>
+              <text x={X(g)} y={c + 14} fontSize="10" fill={mutedText} textAnchor="middle" fontFamily="ui-monospace, monospace">{tick(g, step)}</text>
+              <text x={c - 6} y={Y(g) + 3.5} fontSize="10" fill={mutedText} textAnchor="end" fontFamily="ui-monospace, monospace">{tick(g, step)}</text>
+            </>
+          )}
+        </g>
+      ))}
+      <line x1={PAD / 2} y1={c} x2={SIZE - PAD / 2} y2={c} stroke={axisColor} strokeWidth="1.4" />
+      <line x1={c} y1={PAD / 2} x2={c} y2={SIZE - PAD / 2} stroke={axisColor} strokeWidth="1.4" />
+      <text x={SIZE - PAD / 2 - 4} y={c - 7} fontSize="12" fontStyle="italic" fill={axisColor} textAnchor="end">x</text>
+      <text x={c + 8} y={PAD / 2 + 8} fontSize="12" fontStyle="italic" fill={axisColor}>y</text>
+
+      {scene.polys.map((p, i) => (
+        <polygon key={`p${i}`} points={p.points.map((q) => `${X(q.x)},${Y(q.y)}`).join(" ")} fill={p.color} fillOpacity={p.opacity} stroke="none" />
+      ))}
+      {scene.lines.map((l, i) => (
+        <polyline
+          key={`l${i}`}
+          points={l.points.map((q) => `${X(q.x)},${Y(q.y)}`).join(" ")}
+          fill="none" stroke={l.color} strokeWidth={l.faint ? 1.2 : 1.6} strokeDasharray={l.dashed ? "5 4" : undefined} opacity={l.faint ? 0.75 : 1}
+        />
+      ))}
+      {scene.arcs.map((a, i) => {
+        const mid = a.points[Math.floor(a.points.length / 2)];
         return (
-          <g key={`grid-${g}`}>
-            <line x1={px} y1={PAD} x2={px} y2={SIZE - PAD} stroke={gridColor} strokeWidth="1" />
-            <line x1={PAD} y1={py} x2={SIZE - PAD} y2={py} stroke={gridColor} strokeWidth="1" />
+          <g key={`r${i}`}>
+            <polyline points={a.points.map((q) => `${X(q.x)},${Y(q.y)}`).join(" ")} fill="none" stroke={a.color} strokeWidth="2" />
+            {a.label && (
+              <text x={X(mid.x * 1.55)} y={Y(mid.y * 1.55) + 4} fontSize="11.5" fontWeight="700" fill={a.color} textAnchor="middle" fontFamily="ui-monospace, monospace"
+                style={{ paintOrder: "stroke", stroke: "var(--color-background)", strokeWidth: 3 }}>
+                {a.label}
+              </text>
+            )}
           </g>
         );
       })}
-
-      {/* axes */}
-      <line x1={PAD} y1={cy} x2={SIZE - PAD} y2={cy} stroke={axisColor} strokeWidth="1.5" />
-      <line x1={cx} y1={PAD} x2={cx} y2={SIZE - PAD} stroke={axisColor} strokeWidth="1.5" />
-
-      {usable.map((v, i) => {
-        const fx = v.from?.x ?? 0, fy = v.from?.y ?? 0;
-        const tx = fx + v.x, ty = fy + v.y;
-        const a = toPx(fx, fy);
-        const b = toPx(tx, ty);
-        const dx = b.px - a.px, dy = b.py - a.py;
-        const len = Math.hypot(dx, dy);
-        if (len < 1) return null;
-        const ux = dx / len, uy = dy / len;
-        const headLen = 9, headWidth = 5.5;
-        const baseX = b.px - ux * headLen, baseY = b.py - uy * headLen;
-        const perpX = -uy * headWidth, perpY = ux * headWidth;
-        const labelX = (a.px + b.px) / 2 + (-uy) * 12;
-        const labelY = (a.py + b.py) / 2 + ux * 12;
-
-        return (
-          <g key={i}>
-            <line x1={a.px} y1={a.py} x2={baseX} y2={baseY} stroke={v.color} strokeWidth="2.5" strokeLinecap="round" />
-            <polygon
-              points={`${b.px},${b.py} ${baseX + perpX},${baseY + perpY} ${baseX - perpX},${baseY - perpY}`}
-              fill={v.color}
-            />
-            <text x={labelX} y={labelY} fontSize="12" fontStyle="italic" fontWeight="600" fill={v.color} textAnchor="middle" fontFamily="ui-monospace, monospace">
-              {v.label}
-            </text>
-          </g>
-        );
-      })}
+      {scene.arrows.map(renderArrow)}
+      <circle cx={c} cy={c} r="2.6" fill={axisColor} />
     </svg>
   );
 }

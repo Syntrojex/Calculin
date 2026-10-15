@@ -216,6 +216,7 @@ export function FunctionGraph({
   const [width, setWidth] = useState(600);
   const [override, setOverride] = useState<View | null>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const drag = useRef<{ pointers: Map<number, { x: number; y: number }>; last?: { x: number; y: number }; startDist?: number; moved: number } | null>(null);
 
   const evals = useMemo(() => series.map((s) => makeEvaluator(s, v)), [series, v]);
@@ -476,7 +477,12 @@ export function FunctionGraph({
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
     const p = toData(e.clientX, e.clientY);
-    if (!d || d.pointers.size === 0) { setHoverX(p.x); return; }
+    if (!d || d.pointers.size === 0) {
+      setHoverX(p.x);
+      const rect = canvasRef.current!.getBoundingClientRect();
+      setHoverPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      return;
+    }
     d.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (d.pointers.size === 2 && d.startDist) {
       const [a, b] = [...d.pointers.values()];
@@ -501,6 +507,7 @@ export function FunctionGraph({
       });
       d.last = { x: e.clientX, y: e.clientY };
       setHoverX(null);
+      setHoverPos(null);
     }
   };
   const onPointerUp = (e: React.PointerEvent) => {
@@ -551,20 +558,27 @@ export function FunctionGraph({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onPointerLeave={() => { if (!drag.current) setHoverX(null); }}
+        onPointerLeave={() => { if (!drag.current) { setHoverX(null); setHoverPos(null); } }}
         onDoubleClick={() => setOverride(null)}
       />
-      {hoverX !== null && (
-        <div className="pointer-events-none absolute bottom-9 left-14 rounded bg-background/85 px-2 py-1 text-[11px] font-mono text-muted-foreground shadow-sm ring-1 ring-border">
-          {v} = {fmtTick(hoverX, niceStep(frame.x1 - frame.x0, 200))}
+      {hoverX !== null && hoverPos && (
+        <div
+          className="pointer-events-none absolute z-20 rounded-md bg-background/95 px-2 py-1 text-[11px] font-mono leading-tight text-muted-foreground shadow-md ring-1 ring-border"
+          style={{
+            left: hoverPos.x + (hoverPos.x > width * 0.6 ? -14 : 14),
+            top: hoverPos.y + (hoverPos.y > height * 0.62 ? -14 : 14),
+            transform: `translate(${hoverPos.x > width * 0.6 ? "-100%" : "0"}, ${hoverPos.y > height * 0.62 ? "-100%" : "0"})`,
+          }}
+        >
+          <div className="text-foreground">{v} = {fmtTick(hoverX, niceStep(frame.x1 - frame.x0, 200))}</div>
           {series.map((s, i) => {
             const f = evals[i];
             if (!f) return null;
             const y = f(hoverX);
             return (
-              <span key={i} className="ml-2" style={{ color: s.color ?? COLORS[i % COLORS.length] }}>
+              <div key={i} style={{ color: s.color ?? COLORS[i % COLORS.length] }}>
                 {s.label ?? "f"} = {Number.isFinite(y) ? fmtTick(y, niceStep(frame.y1 - frame.y0, 2000)) : "undefined"}
-              </span>
+              </div>
             );
           })}
         </div>
