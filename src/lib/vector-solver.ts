@@ -248,3 +248,49 @@ export function vecVectorProjection(u: Vec3, v: Vec3, is3D: boolean): VectorResu
     return { is3D, steps: [], error: e instanceof Error ? e.message : "Invalid input" };
   }
 }
+
+// ── Many vectors & the scalar triple product ─────────────────────────────────
+export const VECTOR_NAMES = ["u", "v", "w", "a", "b", "c"];
+
+/** u + v + w + … (any number of vectors, component by component). */
+export function vecSumMany(vs: Vec3[], is3D: boolean): VectorResult {
+  try {
+    if (vs.length < 2) throw new Error("Add at least two vectors.");
+    vs.forEach((v, i) => {
+      const n = VECTOR_NAMES[i] ?? `v${i + 1}`;
+      if (!isFinite(v.x) || !isFinite(v.y) || (is3D && !isFinite(v.z))) throw new Error(`Vector ${n} has a component that isn't a valid number.`);
+    });
+    const r: Vec3 = { x: 0, y: 0, z: 0 };
+    vs.forEach((v) => { r.x += v.x; r.y += v.y; r.z += is3D ? v.z : 0; });
+    const names = vs.map((_, i) => VECTOR_NAMES[i] ?? `v${i + 1}`);
+    const sumName = names.map((n) => `\\vec{${n}}`).join("+");
+    const steps: string[] = [];
+    steps.push(`##Given\n$$${vs.map((v, i) => vecLatex(v, is3D, names[i])).join(", \\quad ")}$$`);
+    const axis = (pick: (v: Vec3) => number) => vs.map((v, i) => (i === 0 ? toFractionLatex(pick(v)) : `+${w(pick(v))}`)).join("");
+    const comp = is3D ? `(${axis((v) => v.x)}, \\; ${axis((v) => v.y)}, \\; ${axis((v) => v.z)})` : `(${axis((v) => v.x)}, \\; ${axis((v) => v.y)})`;
+    steps.push(`##Add Component-Wise\n$$${sumName} = ${comp}$$`);
+    steps.push(`##Result\n$$${vecLatex(r, is3D)}$$`);
+    return { resultVector: r, is3D, steps };
+  } catch (e) {
+    return { is3D, steps: [], error: e instanceof Error ? e.message : "Invalid input" };
+  }
+}
+
+/** u · (v × w): signed volume of the parallelepiped built on the three vectors. */
+export function vecTripleProduct(u: Vec3, v: Vec3, wv: Vec3): VectorResult {
+  try {
+    for (const [n, q] of [["u", u], ["v", v], ["w", wv]] as const) {
+      if (!isFinite(q.x) || !isFinite(q.y) || !isFinite(q.z)) throw new Error(`Vector ${n} has a component that isn't a valid number.`);
+    }
+    const c: Vec3 = { x: v.y * wv.z - v.z * wv.y, y: v.z * wv.x - v.x * wv.z, z: v.x * wv.y - v.y * wv.x };
+    const val = u.x * c.x + u.y * c.y + u.z * c.z;
+    const steps: string[] = [];
+    steps.push(`##Given\n$$${vecLatex(u, true, "u")}, \\quad ${vecLatex(v, true, "v")}, \\quad ${vecLatex(wv, true, "w")}$$`);
+    steps.push(`##Cross Product $\\vec{v}\\times\\vec{w}$\n$$\\vec{v}\\times\\vec{w} = ${vecLatex(c, true)}$$`);
+    steps.push(`##Dot with $\\vec{u}$\n$$\\vec{u}\\cdot(\\vec{v}\\times\\vec{w}) = ${w(u.x)}\\cdot ${w(c.x)} + ${w(u.y)}\\cdot ${w(c.y)} + ${w(u.z)}\\cdot ${w(c.z)} = ${toFractionLatex(val)}$$`);
+    steps.push(`##Volume\n$$V = \\left|\\vec{u}\\cdot(\\vec{v}\\times\\vec{w})\\right| = ${toFractionLatex(Math.abs(val))}$$\n${Math.abs(val) < 1e-12 ? "The three vectors are coplanar (volume 0)." : val > 0 ? "Positive: $\\vec{u},\\vec{v},\\vec{w}$ form a right-handed set." : "Negative: $\\vec{u},\\vec{v},\\vec{w}$ form a left-handed set."}`);
+    return { resultScalar: val, is3D: true, steps };
+  } catch (e) {
+    return { is3D: true, steps: [], error: e instanceof Error ? e.message : "Invalid input" };
+  }
+}
