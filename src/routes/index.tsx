@@ -168,7 +168,7 @@ function Index() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-lg">
         <div className="mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4">
-          <div className="flex items-center gap-2 lg:gap-6 py-3">
+          <div className="flex items-center gap-2 lg:gap-6 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
             <button
               className="sm:hidden mr-1 p-1.5 -ml-1.5 rounded-md hover:bg-muted/60 text-foreground"
               onClick={() => setMobileMenuOpen(true)}
@@ -176,7 +176,7 @@ function Index() {
             >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 sm:justify-self-start">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-primary-foreground font-bold text-lg shadow-sm">
                 ∫
               </div>
@@ -184,7 +184,7 @@ function Index() {
             </div>
 
             {/* Desktop category row — mobile keeps the hamburger Sheet below instead */}
-            <nav className="hidden sm:flex items-center gap-1 flex-1 overflow-x-auto no-scrollbar">
+            <nav className="hidden sm:flex items-center justify-center gap-1 min-w-0 max-w-full overflow-x-auto no-scrollbar">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat.key}
@@ -199,7 +199,7 @@ function Index() {
               ))}
             </nav>
 
-            <div className="ml-auto sm:ml-0">
+            <div className="ml-auto sm:ml-0 sm:justify-self-end">
               <SettingsPanel />
             </div>
           </div>
