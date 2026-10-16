@@ -55,11 +55,7 @@ Every tool comes with full step-by-step working, and any result can be exported 
 | ∞ **Limits Calculator** | Evaluate limits, including one-sided limits and infinity |
 | 🔢 **Equation Solver** | Solve linear, quadratic & polynomial equations — includes 3D implicit surface plotting |
 | 🔲 **Matrix Calculator** | Determinants, inverses, rank, Cramer's rule, and more |
-| 📚 **Trig Identities** | Explore and verify trigonometric identities |
 | 🧠 **Complex Calculator** | Full complex number arithmetic |
-| 🔢 **Number Theory** | Primes, GCD, LCM, and prime factorization |
-| 📦 **Shapes Calculator** | Area, perimeter, surface area, and volume |
-| 📏 **Unit Converter** | Convert between common measurement units |
 | 🔄 **Number Systems** | Binary, octal, decimal, and hexadecimal conversions |
 | 🌐 **Graph Plotter** | Plot functions in 2D, or visualize surfaces in 3D (Three.js) |
 | 🎯 **Practice Mode** | Auto-generated problems with instant grading |
