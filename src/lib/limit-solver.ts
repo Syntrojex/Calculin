@@ -203,6 +203,7 @@ export function solveLimit(
 
     type Verdict = { kind: "finite"; value: number; err: number } | { kind: "inf"; sign: 1 | -1 } | { kind: "dne"; why: string };
     let verdict: Verdict;
+    let oneSidedNote: "left" | "right" | null = null;
     const tolFor = (e: { err: number; value: number }) => Math.max(1e-7, 20 * e.err) * (1 + Math.abs(e.value));
     if (effSide === "two-sided" && !atInf) {
       if (L!.kind === "finite" && R!.kind === "finite") {
@@ -211,6 +212,13 @@ export function solveLimit(
           : { kind: "dne", why: "differ" };
       } else if (L!.kind === "inf" && R!.kind === "inf") {
         verdict = L!.sign === R!.sign ? { kind: "inf", sign: L!.sign } : { kind: "dne", why: "opposite" };
+      } else if ((L!.kind === "undefined") !== (R!.kind === "undefined") && !(L!.kind === "undefined" && R!.kind === "undefined")) {
+        // f only exists on one side of a (e.g. x·ln x at 0, x^x at 0): use the side where it is defined
+        const ok = (L!.kind === "undefined" ? R! : L!) as OneSided;
+        if (ok.kind === "finite") verdict = { kind: "finite", value: ok.value, err: ok.err };
+        else if (ok.kind === "inf") verdict = { kind: "inf", sign: ok.sign };
+        else verdict = { kind: "dne", why: "oscillates" };
+        oneSidedNote = L!.kind === "undefined" ? "right" : "left";
       } else if (L!.kind === "undefined" || R!.kind === "undefined") verdict = { kind: "dne", why: "undefined" };
       else verdict = { kind: "dne", why: L!.kind === "oscillates" || R!.kind === "oscillates" ? "oscillates" : "mixed" };
     } else {
@@ -284,6 +292,10 @@ export function solveLimit(
         narrated = (dp < dq && value === 0) || (dp === dq && sameValue(lp / lq)) || (dp > dq && verdict.kind === "inf");
         if (!narrated) steps.length = 1;
       }
+    }
+
+    if (oneSidedNote && verdict.kind !== "dne") {
+      steps.push(`##Domain\n$$f(${variable}) \\text{ is only defined for } ${variable} ${oneSidedNote === "right" ? ">" : "<"} ${aTex}$$\nSo only the ${oneSidedNote}-hand side exists, and the limit is that one-sided value.`);
     }
 
     // ── 3. fall back to the numeric table ─────────────────────────────────────
