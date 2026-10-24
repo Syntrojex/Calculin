@@ -15,7 +15,7 @@ import { useSettings, type Settings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
 
-type ComplexOp = "add" | "subtract" | "multiply" | "divide" | "power" | "sqrt" | "polar" | "rect" | "conjugate" | "modulus" | "demoivre";
+type ComplexOp = "add" | "subtract" | "multiply" | "divide" | "power" | "sqrt" | "polar" | "rect" | "conjugate" | "modulus" | "demoivre" | "nroots" | "exp" | "ln" | "reciprocal";
 
 interface Complex {
   re: number;
@@ -100,7 +100,7 @@ function parseComplex(re: string, im: string): Complex {
 function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings): { result: string; steps: string[] } {
   const steps: string[] = [];
   const givenParts = [`z_1 = ${czLatex(a, s)}`];
-  if (!["sqrt", "polar", "conjugate", "modulus", "demoivre"].includes(op)) {
+  if (!["sqrt", "polar", "conjugate", "modulus", "demoivre", "nroots", "exp", "ln", "reciprocal", "power"].includes(op)) {
     givenParts.push(`z_2 = ${czLatex(b, s)}`);
   }
   steps.push(`##Given\n$$${givenParts.join(", \\quad ")}$$`);
@@ -184,6 +184,43 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
       steps.push(`##Result\n$$z_1^{${n}} = ${czLatex(r, s)}$$`);
       return { result: fmtComplex(r, s), steps };
     }
+    case "nroots": {
+      if (!Number.isInteger(n) || n < 1 || n > 24) throw new Error("For nth roots, n must be a whole number from 1 to 24.");
+      if (a.re === 0 && a.im === 0) return { result: "0 (the only root)", steps };
+      const mod = modulus(a);
+      const arg = argument(a);
+      const rootMod = Math.pow(mod, 1 / n);
+      steps.push(`##Polar Form\n$$z = r(\\cos\\theta + i\\sin\\theta), \\qquad r = ${fmt(mod, s)}, \\quad \\theta = ${fmtAngle(arg, s)}$$`);
+      steps.push(`##Formula for the nth Roots\n$$w_k = \\sqrt[n]{r}\\left(\\cos\\frac{\\theta + 2\\pi k}{n} + i\\sin\\frac{\\theta + 2\\pi k}{n}\\right), \\quad k = 0, 1, \\dots, n-1$$`);
+      const roots: Complex[] = [];
+      for (let k = 0; k < n; k++) {
+        const th = (arg + 2 * Math.PI * k) / n;
+        roots.push({ re: rootMod * Math.cos(th), im: rootMod * Math.sin(th) });
+      }
+      steps.push(`##The ${n} Roots\n$$\\begin{array}{l}${roots.map((r, k) => `w_{${k}} = ${czLatex(r, s)}`).join("\\\\")}\\end{array}$$`);
+      return { result: roots.map((r, k) => `w${k} = ${fmtComplex(r, s)}`).join("\n"), steps };
+    }
+    case "exp": {
+      const mag = Math.exp(a.re);
+      const r = { re: mag * Math.cos(a.im), im: mag * Math.sin(a.im) };
+      steps.push(`##Euler's Formula\n$$e^{x+iy} = e^{x}(\\cos y + i\\sin y)$$`);
+      steps.push(`##Result\n$$e^{z_1} = e^{${fmt(a.re, s)}}\\left(\\cos ${fmt(a.im, s)} + i\\sin ${fmt(a.im, s)}\\right) = ${czLatex(r, s)}$$`);
+      return { result: fmtComplex(r, s), steps };
+    }
+    case "ln": {
+      if (a.re === 0 && a.im === 0) throw new Error("ln(0) is undefined.");
+      const r = { re: Math.log(modulus(a)), im: argument(a) };
+      steps.push(`##Principal Logarithm\n$$\\ln z = \\ln|z| + i\\operatorname{Arg}(z)$$`);
+      steps.push(`##Result\n$$\\ln z_1 = \\ln(${fmt(modulus(a), s)}) + i(${fmtAngle(argument(a), s)}) = ${czLatex(r, s)}$$\n\nGeneral value: add $2\\pi k\\,i$ for any integer $k$.`);
+      return { result: fmtComplex(r, s), steps };
+    }
+    case "reciprocal": {
+      if (a.re === 0 && a.im === 0) throw new Error("1/0 is undefined.");
+      const r = div({ re: 1, im: 0 }, a);
+      steps.push(`##Multiply by the Conjugate\n$$\\frac{1}{z} = \\frac{\\overline{z}}{|z|^2}, \\qquad |z_1|^2 = ${fmt(a.re * a.re + a.im * a.im, s)}$$`);
+      steps.push(`##Result\n$$\\frac{1}{z_1} = ${czLatex(r, s)}$$`);
+      return { result: fmtComplex(r, s), steps };
+    }
     default:
       return { result: "", steps: [] };
   }
@@ -198,6 +235,10 @@ const OPS: { value: ComplexOp; label: string; needsB: boolean; needsN: boolean; 
   { value: "sqrt", label: "√z₁", needsB: false, needsN: false },
   { value: "modulus", label: "|z₁| (Modulus)", needsB: false, needsN: false },
   { value: "conjugate", label: "z̄₁ (Conjugate)", needsB: false, needsN: false },
+  { value: "reciprocal", label: "1 / z₁", needsB: false, needsN: false },
+  { value: "nroots", label: "ⁿ√z₁ (all n roots)", needsB: false, needsN: true },
+  { value: "exp", label: "e^(z₁)", needsB: false, needsN: false },
+  { value: "ln", label: "ln(z₁)", needsB: false, needsN: false },
   { value: "polar", label: "→ Polar Form (r, θ)", needsB: false, needsN: false },
   { value: "rect", label: "Polar → Rectangular", needsB: true, needsN: false, bLabel: "r  and  θ (degrees) as 'real + imag'" },
   { value: "demoivre", label: "De Moivre's Theorem", needsB: false, needsN: true },
@@ -331,7 +372,7 @@ export function ComplexCalculator() {
           <CardContent className="pt-6 space-y-4">
             <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
               <div className="text-sm text-muted-foreground mb-1">Result</div>
-              <div className="text-xl font-mono font-semibold">
+              <div className="text-xl font-mono font-semibold whitespace-pre-line">
                 <MathText text={result.result} />
               </div>
             </div>

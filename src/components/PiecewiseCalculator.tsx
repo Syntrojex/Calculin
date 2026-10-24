@@ -18,6 +18,7 @@ import { exprToLatex } from "@/lib/latex";
 import { cleanExpression, cleanVariable, parseNumericInput } from "@/lib/expression-clean";
 import { extractVariables } from "@/lib/math-solver";
 import { solveLimit } from "@/lib/limit-solver";
+import { solveAny, type EqResult } from "@/lib/equation-solver";
 import { GitBranch, Plus, Trash2, CheckCircle2, XCircle, CircleDot } from "lucide-react";
 
 // ── Data model ────────────────────────────────────────────────────────────────
@@ -273,6 +274,7 @@ export function PiecewiseCalculator() {
   const [analyses, setAnalyses] = useState<BreakpointAnalysis[]>([]);
   const [graphRange, setGraphRange] = useState<{ lo: number; hi: number }>({ lo: -10, hi: 10 });
   const [showSteps, setShowSteps] = useState(settings.showSteps);
+  const [constSolve, setConstSolve] = useState<{ unknowns: string[]; eqs: string[]; result: EqResult } | null>(null);
 
   useEffect(() => setShowSteps(settings.showSteps), [settings.showSteps]);
 
@@ -283,6 +285,24 @@ export function PiecewiseCalculator() {
 
   const recompute = useCallback(() => {
     const breakpoints = getBreakpoints(pieces);
+    // Unknown constants (a, k, b …) in the formulas → solve for the values that make f continuous
+    const v = cleanVariable(variable);
+    const unknowns = Array.from(new Set(pieces.flatMap((p) => (p.formula.trim() ? extractVariables(cleanExpression(p.formula)) : [])))).filter((n) => n !== v && n !== "e" && n !== "pi");
+    if (unknowns.length > 0) {
+      const prep = prepare(pieces);
+      const eqs: string[] = [];
+      for (const b of breakpoints) {
+        const eps = 1e-6 * (1 + Math.abs(b));
+        const lp = firstMatch(prep, b - eps), rp = firstMatch(prep, b + eps), ap = firstMatch(prep, b);
+        const sub = (f: string) => `(${cleanExpression(f)})`.replace(new RegExp(`\\b${v}\\b`, "g"), `(${b})`);
+        if (lp && rp && lp.id !== rp.id) eqs.push(`${sub(lp.formula)} = ${sub(rp.formula)}`);
+        if (ap && lp && ap.id !== lp.id && ap.id !== rp?.id) eqs.push(`${sub(lp.formula)} = ${sub(ap.formula)}`);
+      }
+      setAnalyses([]);
+      setConstSolve(eqs.length ? { unknowns, eqs, result: solveAny(eqs.join(", "), fmt) } : null);
+      return;
+    }
+    setConstSolve(null);
     setAnalyses(breakpoints.map((x) => analyzeBreakpoint(pieces, variable, x, fmt)));
 
     let lo = -10, hi = 10;
@@ -314,9 +334,7 @@ export function PiecewiseCalculator() {
     const cleaned = cleanExpression(p.formula);
     if (p.formula.trim() === "") return null;
     try { mjParse(cleaned); } catch { return "I couldn't read this formula — check the brackets and operators."; }
-    const extra = extractVariables(cleaned).filter((v) => v !== cleanVariable(variable) && v !== "e");
-    if (extra.length > 0) return `Unknown variable ${extra.join(", ")} — use only ${cleanVariable(variable)} (and constants like pi, e).`;
-    return null;
+    return null; // other letters (a, k …) are treated as unknown constants to solve for
   };
 
   return (
@@ -441,6 +459,25 @@ export function PiecewiseCalculator() {
           )}
         </CardContent>
       </Card>
+
+      {constSolve && (
+        <Card className="shadow-lg border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Constant{constSolve.unknowns.length > 1 ? "s" : ""} for Continuity: {constSolve.unknowns.join(", ")}</CardTitle>
+            <p className="text-xs text-muted-foreground">Continuity at each breakpoint requires the pieces to meet — that gives the equation{constSolve.eqs.length > 1 ? "s" : ""} solved below.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {constSolve.result.error ? (
+              <p className="text-sm text-destructive">{constSolve.result.error}</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {constSolve.result.roots.map((r, i) => <Badge key={i} variant="secondary" className="font-mono text-sm">{r.includes("=") ? r : `${constSolve.unknowns[0]} = ${r}`}</Badge>)}
+              </div>
+            )}
+            <StepsReveal steps={[`##Continuity Conditions\n$$\\begin{array}{l}${constSolve.eqs.map((e) => e.split(" = ").map((t) => exprToLatex(t)).join(" = ")).join("\\\\")}\\end{array}$$`, ...constSolve.result.steps]} show={showSteps} resetKey={constSolve.eqs.join("|")} title="Steps:" />
+          </CardContent>
+        </Card>
+      )}
 
       {analyses.length > 0 && (
         <div className="space-y-4">

@@ -21,7 +21,7 @@ import { Move3d, ArrowRight, Plus, Minus } from "lucide-react";
 
 const VectorGraph3D = lazy(() => import("./VectorGraph3D").then((m) => ({ default: m.VectorGraph3D })));
 
-type Op = "add" | "subtract" | "scale" | "magnitude" | "unit" | "dot" | "cross" | "angle" | "scalarProj" | "vectorProj" | "triple";
+type Op = "add" | "subtract" | "scale" | "magnitude" | "unit" | "dot" | "cross" | "angle" | "scalarProj" | "vectorProj" | "triple" | "distance" | "midpoint" | "area" | "dircos" | "relation";
 
 const OPS_2D: { value: Op; label: string }[] = [
   { value: "add", label: "u + v (+ more vectors)" },
@@ -33,6 +33,11 @@ const OPS_2D: { value: Op; label: string }[] = [
   { value: "angle", label: "Angle Between u, v" },
   { value: "scalarProj", label: "Scalar Projection of u onto v" },
   { value: "vectorProj", label: "Vector Projection of u onto v" },
+  { value: "relation", label: "Parallel / Orthogonal Test" },
+  { value: "distance", label: "Distance Between Points u, v" },
+  { value: "midpoint", label: "Midpoint of u, v" },
+  { value: "area", label: "Area (Parallelogram & Triangle)" },
+  { value: "dircos", label: "Direction Cosines of u" },
 ];
 const OPS_3D: { value: Op; label: string }[] = [
   ...OPS_2D.slice(0, 5),
@@ -41,7 +46,7 @@ const OPS_3D: { value: Op; label: string }[] = [
   { value: "triple", label: "u \u00b7 (v \u00d7 w) (Triple Product)" },
 ];
 
-const TWO_VECTOR_OPS = new Set<Op>(["subtract", "dot", "cross", "angle", "scalarProj", "vectorProj"]);
+const TWO_VECTOR_OPS = new Set<Op>(["subtract", "dot", "cross", "angle", "scalarProj", "vectorProj", "relation", "distance", "midpoint", "area"]);
 const MAX_VECTORS = 6;
 type Comp = { x: string; y: string; z: string };
 
@@ -93,6 +98,11 @@ export function VectorCalculator() {
       case "scalarProj": setResult(V.vecScalarProjection(u, v, is3D)); break;
       case "vectorProj": setResult(V.vecVectorProjection(u, v, is3D)); break;
       case "triple": setResult(V.vecTripleProduct(u, v, w)); break;
+      case "relation": setResult(V.vecRelation(u, v, is3D)); break;
+      case "distance": setResult(V.vecDistance(u, v, is3D)); break;
+      case "midpoint": setResult(V.vecMidpoint(u, v, is3D)); break;
+      case "area": setResult(V.vecArea(u, v, is3D)); break;
+      case "dircos": setResult(V.vecDirectionCosines(u, is3D)); break;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [op, JSON.stringify(vecs), kVal, is3D]);
@@ -103,7 +113,7 @@ export function VectorCalculator() {
 
   const scene = useMemo(
     () => buildScene({
-      op,
+      op: ({ relation: "angle", distance: "subtract", midpoint: "add", area: is3D ? "cross" : "dot", dircos: "unit" } as Record<string, Op>)[op] as Parameters<typeof buildScene>[0]["op"] ?? op,
       vectors: vecs,
       names,
       k: kVal,
@@ -116,6 +126,7 @@ export function VectorCalculator() {
 
   const resultLatex = (() => {
     if (!result || result.error) return "";
+    if (result.verdict) return `\\text{${result.verdict}}`;
     if (result.resultVector) {
       const r = result.resultVector;
       const cs = is3D ? [r.x, r.y, r.z] : [r.x, r.y];

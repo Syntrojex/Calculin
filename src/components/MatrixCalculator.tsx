@@ -12,9 +12,11 @@ import { useSettings, type Settings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { StepsReveal } from "./StepsReveal";
 import { MathTex } from "./MathTex";
-import { toFraction, toFractionLatex } from "@/lib/number-format";
+import { toFraction, toFractionLatex, formatNumber } from "@/lib/number-format";
+import { trace as matTrace, scalarMultiple, matrixPower, adjugate, eigen, solveSystemGeneral } from "@/lib/matrix-extra";
+import { Input } from "@/components/ui/input";
 
-type Op = "add" | "subtract" | "multiply" | "determinant" | "inverse" | "transpose" | "cramer" | "rank" | "ref" | "rref";
+type Op = "add" | "subtract" | "multiply" | "determinant" | "inverse" | "transpose" | "cramer" | "rank" | "ref" | "rref" | "trace" | "scalar" | "power" | "adjugate" | "eigen" | "solve";
 
 const SIZES = [1, 2, 3, 4, 5];
 
@@ -363,6 +365,7 @@ export function MatrixCalculator() {
   const [gridB, setGridB] = useState<string[][]>([["5", "6"], ["7", "8"]]);
 
   const [vecB, setVecB] = useState<string[]>(["5", "11"]);
+  const [scalarIn, setScalarIn] = useState("2");
 
   const [result, setResult] = useState<string | null>(null);
   const [resultMatrix, setResultMatrix] = useState<number[][] | null>(null);
@@ -373,7 +376,8 @@ export function MatrixCalculator() {
   useEffect(() => setShowSteps(settings.showSteps), [settings.showSteps]);
 
   const needsB = op === "add" || op === "subtract" || op === "multiply";
-  const needsVec = op === "cramer";
+  const needsVec = op === "cramer" || op === "solve";
+  const needsScalar = op === "scalar" || op === "power";
 
   const changeRowsA = (n: number) => { setRowsA(n); setGridA((g) => resizeGrid(g, n, colsA)); if (needsVec) setVecB((v) => Array.from({ length: n }, (_, i) => v[i] ?? "0")); };
   const changeColsA = (n: number) => { setColsA(n); setGridA((g) => resizeGrid(g, rowsA, n)); };
@@ -391,6 +395,23 @@ export function MatrixCalculator() {
       setResultMatrix(null);
       const a = parseGrid(gridA, "Matrix A");
 
+      const fmtN = (n: number) => formatNumber(n, settings);
+      if (op === "trace") { const r = matTrace(a, fmtN); setSteps(r.steps); setResult(r.text); return; }
+      if (op === "adjugate") { const r = adjugate(a); setSteps(r.steps); setResult(formatMatrix(r.matrix!)); setResultMatrix(r.matrix!); return; }
+      if (op === "eigen") { const r = eigen(a, fmtN); setSteps(r.steps); setResult(r.text); return; }
+      if (op === "scalar" || op === "power") {
+        let k: number;
+        try { k = Number(evaluate(cleanExpression(scalarIn.trim() || "0"))); } catch { k = NaN; }
+        if (!Number.isFinite(k)) throw new Error(`"${scalarIn}" isn't a valid ${op === "scalar" ? "scalar k" : "power n"} — use a number like 3, -2 or 1/2.`);
+        const r = op === "scalar" ? scalarMultiple(a, k) : matrixPower(a, k);
+        setSteps(r.steps); setResult(formatMatrix(r.matrix!)); setResultMatrix(r.matrix!); return;
+      }
+      if (op === "solve") {
+        const bv = vecB.map((v) => parseCell(v, "Vector b"));
+        if (bv.length !== a.length) throw new Error(`Vector b must have ${a.length} entries to match A's ${a.length} rows.`);
+        const r = solveSystemGeneral(a, bv, fmtN);
+        setSteps(r.steps); setResult(r.text); return;
+      }
       if (op === "determinant") {
         if (rowsA !== colsA) throw new Error("The determinant is only defined for a square matrix (same number of rows and columns).");
         const stepList: string[] = [`##Given\n$$A = ${matrixLatex(a)}$$`];
@@ -519,7 +540,7 @@ export function MatrixCalculator() {
     }
   }, [op, gridA, gridB, vecB, rowsA, colsA, rowsB, colsB, settings]);
 
-  useAutoRun([op, gridA, gridB, vecB, rowsA, colsA, rowsB, colsB, settings.decimalPlaces, settings.numberForm], calculate, settings.autoCalculate);
+  useAutoRun([op, scalarIn, gridA, gridB, vecB, rowsA, colsA, rowsB, colsB, settings.decimalPlaces, settings.numberForm], calculate, settings.autoCalculate);
 
   return (
     <div className="space-y-6">
@@ -546,6 +567,12 @@ export function MatrixCalculator() {
                 <SelectItem value="ref">Row Echelon Form (REF)</SelectItem>
                 <SelectItem value="rref">Reduced Row Echelon Form (RREF)</SelectItem>
                 <SelectItem value="cramer">Solve A·x = b (Cramer's rule)</SelectItem>
+                <SelectItem value="solve">Solve A·x = b (any size, Gauss–Jordan)</SelectItem>
+                <SelectItem value="eigen">Eigenvalues &amp; eigenvectors</SelectItem>
+                <SelectItem value="trace">Trace(A)</SelectItem>
+                <SelectItem value="adjugate">Adjugate (adj A)</SelectItem>
+                <SelectItem value="power">Aⁿ (matrix power)</SelectItem>
+                <SelectItem value="scalar">k·A (scalar multiple)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -595,6 +622,13 @@ export function MatrixCalculator() {
               </div>
             )}
           </div>
+
+          {needsScalar && (
+            <div className="space-y-1 max-w-xs">
+              <Label className="text-xs">{op === "scalar" ? "Scalar k" : "Power n (whole number; negative = inverse)"}</Label>
+              <Input value={scalarIn} onChange={(e) => setScalarIn(e.target.value)} inputMode="decimal" />
+            </div>
+          )}
 
           {needsVec && (
             <MatrixGrid
