@@ -677,7 +677,14 @@ function narrateDerivativeNode(rawNode: MathNode, variable: string, steps: strin
 
     // Constant exponent: x^n, (linear)^n, (anything)^n
     if (isConstantExpr(exp, variable)) {
-      const n = evaluate(exp.toString());
+      let n: unknown;
+      try { n = evaluate(exp.toString()); } catch { n = undefined; }
+      if (typeof n !== "number") {
+        // exponent is a constant symbol such as y or a (e.g. ∂/∂x x^y)
+        const sym0 = asSymbol(base);
+        steps.push(`##Power Rule${sym0 && sym0.name === variable ? "" : " + Chain Rule"} (constant exponent $${exprToLatex(exp.toString())}$)\n$$\\frac{d}{d${variable}}u^{c} = c\\,u^{c-1}\\cdot u'$$\n$$${here()} = ${derivLx(node, variable)}$$`);
+        return;
+      }
       if (typeof n === "number") {
         const sym = asSymbol(base);
         if (sym && sym.name === variable) {
@@ -1253,6 +1260,14 @@ export function solveDoubleIntegral(
     varY = cleanVariable(varY, "y");
     assertNonEmptyExpression(expression);
     if (varX === varY) throw new MathInputError("The two variables must be different (e.g. x and y).");
+
+    // x-limits that depend on y (e.g. x from 0 to y): the inner integral is then dx, so swap roles
+    const dependsOn = (b: number | string, v: string) => typeof b === "string" && Number.isNaN(parseNumericInput(b)) && new RegExp(`\\b${v}\\b`).test(b);
+    if ((dependsOn(xLower, varY) || dependsOn(xUpper, varY)) && !dependsOn(yLower, varX) && !dependsOn(yUpper, varX)) {
+      const swapped = solveDoubleIntegral(expression, varY, varX, yLower, yUpper, xLower, xUpper, _n, settings);
+      if (!swapped.error) swapped.steps = [`##Order of Integration\nThe ${varX}-limits depend on ${varY}, so ${varX} is the inner variable: integrate with respect to ${varX} first, then ${varY}.`, ...swapped.steps];
+      return swapped;
+    }
 
     const asNumber = (b: number | string, label: string): number => {
       const v = typeof b === "number" ? b : parseNumericInput(b);
@@ -3463,7 +3478,7 @@ function tryTrigSubstitution(node: MathNode, variable: string, steps: string[], 
       label: `u = a\\sec\\theta`, tex: `\\sqrt{u^2-a^2} = a\\tan\\theta`,
       x: `(${ms}*sec(${tName}) - ${numLit(h)})`, root: `(${numLit(sa)}*${ms}*tan(${tName}))`, dx: `(${ms}*sec(${tName})*tan(${tName}))`,
       back: { sin: `(${rad}/${uPlain})`, cos: `(${ms}/${uPlain})`, tan: `(${rad}/${ms})`, cot: `(${ms}/${rad})`, sec: `(${uPlain}/${ms})`, csc: `(${uPlain}/${rad})` },
-      tBack: `acos(${ms}/${uPlain})`, pts: [1.2, 1.5, 2, 2.8, 4, 6].map((q) => q * m - h),
+      tBack: `acos(${ms}/abs(${uPlain}))`, pts: [1.2, 1.5, 2, 2.8, 4, 6].map((q) => q * m - h),
     };
   } else return null;
 
@@ -3567,6 +3582,151 @@ function tryRootSubstitution(node: MathNode, variable: string, steps: string[], 
 }
 
 // ── the strategy chain ───────────────────────────────────────────────────────
+/** If f(x)/B(x) is the same constant at every sample point, return that constant. */
+function ratioConst(f: (x: number) => number, B: (x: number) => number): number | null {
+  let r: number | null = null;
+  let n = 0;
+  for (const x of [0.4, 0.9, 1.7, 2.3, 3.1, -0.6]) {
+    const fv = f(x), bv = B(x);
+    if (!Number.isFinite(fv) || !Number.isFinite(bv) || Math.abs(bv) < 1e-12) continue;
+    const q = fv / bv;
+    if (r === null) r = q; else if (Math.abs(q - r) > 1e-7 * Math.max(1, Math.abs(r))) return null;
+    n++;
+  }
+  return n >= 3 ? r : null;
+}
+
+/**
+ * Integrals whose antiderivative is a named special function:
+ *   e^(−a x²) → erf,  sin(ax)/x → Si,  cos(ax)/x → Ci,  e^(ax)/x → Ei,
+ *   1/ln x → li,  sin/cos(a x²) → Fresnel S / C.
+ * These have no elementary closed form, so we name the standard function
+ * instead of giving up.
+ */
+function trySpecialFunctions(node: MathNode, variable: string, steps: string[]): IntegralPiece {
+  const x = variable;
+  const f = compileReal(node, [x]);
+  const cf = (c: number) => (Math.abs(c - 1) < 1e-9 ? "" : Math.abs(c + 1) < 1e-9 ? "-" : `(${fmtNum(c)})*`);
+  const ax = (a: number) => (Math.abs(a - 1) < 1e-9 ? "" : `${fmtNum(a)}*`);
+  const mk = (src: string) => compileReal(parse(src), [x]);
+  const done = (anti: string, name: string, note: string): IntegralPiece => {
+    steps.push(`##Special Function\n$$${integralLatex(node.toString(), x)}$$\nThis has no elementary antiderivative. It equals the standard function **${name}**:\n\n${note}`);
+    return { antiderivative: anti, rule: name, verified: true };
+  };
+
+  // Gaussian  c·e^(−a x²)
+  {
+    const f0 = f(0), f1 = f(1);
+    if (Number.isFinite(f0) && Number.isFinite(f1) && f0 !== 0 && f1 / f0 > 0 && f1 / f0 < 1) {
+      const a = -Math.log(f1 / f0);
+      const B = mk(`exp(-${a}*${x}^2)`);
+      const c = ratioConst(f, B);
+      if (c !== null && Math.abs(c - f0) < 1e-7 * Math.max(1, Math.abs(f0))) {
+        const sa = Math.sqrt(a);
+        void sa;
+        return done(`${cf(c)}(sqrt(pi)/(2*${Math.abs(a - 1) < 1e-9 ? "1" : `sqrt(${fmtNum(a)})`}))*erf(${Math.abs(a - 1) < 1e-9 ? "" : `sqrt(${fmtNum(a)})*`}${x})`, "erf", "$\\int e^{-a x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2\\sqrt{a}}\\,\\mathrm{erf}(\\sqrt{a}\\,x)$");
+      }
+    }
+  }
+
+  // e^(a x)/x  (written with ^, so there is no exp() call to find)
+  {
+    const g = (t: number) => t * f(t);
+    const g1 = g(1), g2 = g(2);
+    if (Number.isFinite(g1) && Number.isFinite(g2) && g1 !== 0 && g2 / g1 > 0) {
+      const a = Math.log(g2 / g1);
+      if (Math.abs(a) > 1e-9) {
+        const c = ratioConst(f, mk(`exp(${a}*${x})/${x}`));
+        if (c !== null) return done(`${cf(c)}Ei(${ax(Number(a.toPrecision(10)))}${x})`, "Ei", "$\\int \\frac{e^{ax}}{x}\\,dx = \\mathrm{Ei}(ax)$");
+      }
+    }
+  }
+
+  // find the first sin / cos / exp / ln call and its argument
+  let fn: { name: string; arg: MathNode } | null = null;
+  node.traverse((n: MathNode) => {
+    if (fn) return;
+    const fnode = asFunctionNode(n);
+    if (fnode && ["sin", "cos", "exp", "log"].includes(fnode.fn.name) && fnode.args.length === 1) fn = { name: fnode.fn.name, arg: fnode.args[0] };
+  });
+  const FN = fn as { name: string; arg: MathNode } | null;
+  if (FN) {
+    const lin = tryLinear(FN.arg, x);
+    if (lin && lin.b === 0 && lin.a !== 0) {
+      const a = lin.a;
+      if (FN.name === "sin") {
+        const c = ratioConst(f, mk(`sin(${a}*${x})/${x}`));
+        if (c !== null) return done(`${cf(c)}Si(${ax(a)}${x})`, "Si", "$\\int \\frac{\\sin(ax)}{x}\\,dx = \\mathrm{Si}(ax)$");
+      }
+      if (FN.name === "cos") {
+        const c = ratioConst(f, mk(`cos(${a}*${x})/${x}`));
+        if (c !== null) return done(`${cf(c)}Ci(${ax(Math.abs(a))}${x})`, "Ci", "$\\int \\frac{\\cos(ax)}{x}\\,dx = \\mathrm{Ci}(|a|x)$");
+      }
+      if (FN.name === "exp") {
+        const c = ratioConst(f, mk(`exp(${a}*${x})/${x}`));
+        if (c !== null) return done(`${cf(c)}Ei(${ax(a)}${x})`, "Ei", "$\\int \\frac{e^{ax}}{x}\\,dx = \\mathrm{Ei}(ax)$");
+      }
+    }
+    if (FN.name === "log" && unwrapParens(FN.arg).toString() === x) {
+      const c = ratioConst(f, mk(`1/log(${x})`));
+      if (c !== null) return done(`${cf(c)}li(${x})`, "li", "$\\int \\frac{dx}{\\ln x} = \\mathrm{li}(x)$ (logarithmic integral)");
+    }
+    if (FN.name === "sin" || FN.name === "cos") {
+      const poly = polyFromNode(FN.arg, x);
+      if (poly && poly.length === 3 && poly[0] === 0 && poly[1] === 0 && poly[2] > 0) {
+        const a = poly[2];
+        const c = ratioConst(f, mk(`${FN.name}(${a}*${x}^2)`));
+        if (c !== null) {
+          const nm = FN.name === "sin" ? "FresnelS" : "FresnelC";
+          return done(`${cf(c)}sqrt(pi/(2*${fmtNum(a)}))*${nm}(sqrt(2*${fmtNum(a)}/pi)*${x})`, nm, "Fresnel integral: $\\int \\" + FN.name + "(ax^2)\\,dx = \\sqrt{\\tfrac{\\pi}{2a}}\\,\\mathrm{" + (FN.name === "sin" ? "S" : "C") + "}\\!\\left(x\\sqrt{\\tfrac{2a}{\\pi}}\\right)$");
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** u = xᵏ substitution for integrands like x³·e^(x²), x⁵·sin(x³), x³/(1+x²)^… (leftover powers of x fold into u). */
+function tryPowerSubstitution(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
+  if (depth > 4) return null;
+  const U = variable === "u" ? "w" : "u";
+  const f = compileReal(node, [variable]);
+  const src = node.toString();
+  for (const k of [2, 3, 4]) {
+    // only worth trying when x^k actually appears in the integrand
+    if (!new RegExp(`\\b${variable}\\s*\\^\\s*\\(?${k}\\)?(?![\\d.])`).test(src)) continue;
+    let h: MathNode, H: MathNode;
+    try {
+      h = simplify(parse(`(${node.toString()})/(${k}*${variable}^${k - 1})`));
+      H = simplify(h.transform((n: MathNode) => (n.type === "SymbolNode" && (n as unknown as { name: string }).name === variable ? parse(`${U}^(1/${k})`) : n)));
+    } catch { continue; }
+    const hs = H.toString();
+    if (new RegExp(`\\b${variable}\\b`).test(hs) || !hs.includes(U)) continue;
+    if (new RegExp(`${U}\\s*\\^\\s*\\(?-?\\d+\\s*/\\s*${k}\\)?`).test(hs) || /sqrt\(|cbrt\(/.test(hs)) continue;
+    // H(xᵏ)·k·x^(k−1) must equal f(x) for positive and negative x
+    let Hc: (u: number) => number;
+    try { Hc = compileReal(H, [U]); } catch { continue; }
+    let good = 0, bad = false;
+    for (const x of [0.6, 1.1, 1.8, -0.7, -1.4]) {
+      const fv = f(x), hv = Hc(Math.pow(x, k)) * k * Math.pow(x, k - 1);
+      if (!Number.isFinite(fv) || !Number.isFinite(hv)) continue;
+      if (Math.abs(fv - hv) > 1e-6 * Math.max(1, Math.abs(fv))) { bad = true; break; }
+      good++;
+    }
+    if (bad || good < 3) continue;
+    const buf: string[] = [];
+    const inner = integrateNode(H, U, buf, depth + 1);
+    if (!inner) continue;
+    steps.push(`##u-Substitution\n$$u = ${variable}^{${k}}, \\quad du = ${k}${variable}^{${k - 1}}\\,d${variable}$$`);
+    steps.push(`##Rewrite in Terms of u\n$$${integralLatex(node.toString(), variable)} = \\int ${exprToLatex(hs)}\\,du$$`);
+    steps.push(...buf);
+    const back = inner.antiderivative.replace(new RegExp(`\\b${U}\\b`, "g"), `(${variable}^${k})`);
+    steps.push(`##Substitute Back\n$$u = ${variable}^{${k}} \\;\\Rightarrow\\; ${exprToLatex(back)}$$`);
+    return { antiderivative: back, rule: "u-substitution" };
+  }
+  return null;
+}
+
 function integrateExtras(node: MathNode, variable: string, steps: string[], depth: number): IntegralPiece {
   if (depth > 6) return null;
   const attempts: Array<() => { piece: IntegralPiece; buf: string[] }> = [];
@@ -3624,6 +3784,8 @@ function integrateExtras(node: MathNode, variable: string, steps: string[], dept
   run((buf) => tryTrigSubstitution(node, variable, buf, depth));
   run((buf) => tryConjugate(node, variable, buf, depth));
   run((buf) => tryExpSubstitution(node, variable, buf, depth));
+  run((buf) => tryPowerSubstitution(node, variable, buf, depth));
+  if (depth === 0) run((buf) => trySpecialFunctions(node, variable, buf));
 
   for (const attempt of attempts) {
     let out: { piece: IntegralPiece; buf: string[] };
@@ -3908,7 +4070,24 @@ export function solveIndefiniteIntegral(
     // Clean, textbook-ordered display (pulls literal coefficients out front,
     // sorts polynomial terms by descending degree) instead of raw mathjs
     // simplify() output, which scrambles term order and sign placement.
-    const finalStr = prettifyResult(piece.antiderivative, variable);
+    const isSpecial = /\b(erf|Si|Ci|Ei|li|FresnelS|FresnelC)\(/.test(piece.antiderivative);
+    let finalStr = isSpecial ? piece.antiderivative : prettifyResult(piece.antiderivative, variable);
+    // Never hand back an antiderivative that fails the derivative check: the
+    // pretty-printer or an intermediate rule can mangle signs on negative powers.
+    if (!piece.verified && !verifyAntiderivative(node, finalStr, variable)) {
+      const raws: string[] = [];
+      try { raws.push(simplify(parse(piece.antiderivative)).toString()); } catch { /* ignore */ }
+      try { raws.push(rationalize(parse(piece.antiderivative)).toString()); } catch { /* ignore */ }
+      raws.push(piece.antiderivative);
+      let fixed: string | null = null;
+      for (const r of raws) {
+        let pretty: string | null = null;
+        try { pretty = prettifyResult(r, variable); } catch { pretty = null; }
+        if (pretty && verifyAntiderivative(node, pretty, variable)) { fixed = pretty; break; }
+        if (verifyAntiderivative(node, r, variable)) { fixed = r; break; }
+      }
+      if (fixed) finalStr = fixed;
+    }
 
     steps.push(`##Add the Constant\n$$${integralLatex(expression, variable)} = ${exprToLatex(finalStr)} + C$$`);
 
@@ -3998,7 +4177,12 @@ export function solvePartialDerivative(
       }
       current = simplify(derivative(current, v));
     }
-    const pretty = restoreStepFunctions(restoreStepFunctions(prettifyResult(current.toString(), seq[seq.length - 1]), maskedP.map), logMaskP.map);
+    let pretty = restoreStepFunctions(restoreStepFunctions(prettifyResult(current.toString(), seq[seq.length - 1]), maskedP.map), logMaskP.map);
+    // mathjs folds ln(2), ln(10)… into decimals — turn the common ones back into ln(k)
+    for (let k = 2; k <= 12; k++) {
+      const dec = Math.log(k).toString().slice(0, 12).replace(/\./g, "\\.");
+      pretty = pretty.replace(new RegExp(`(?<![\\d.])${dec}\\d*`, "g"), `ln(${k})`);
+    }
     steps.push(`##Final Answer\n$$${partialNotation(seq)} = ${exprToLatex(pretty)}$$`);
 
     return { input: expression, result: pretty, steps };

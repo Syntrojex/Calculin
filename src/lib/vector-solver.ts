@@ -20,6 +20,8 @@ export interface VectorResult {
   resultScalar?: number;
   /** Degrees, when resultScalar represents an angle. */
   isAngle?: boolean;
+  /** Short text verdict (e.g. "Orthogonal") shown instead of a number/vector. */
+  verdict?: string;
   is3D: boolean;
   steps: string[];
   error?: string;
@@ -293,4 +295,101 @@ export function vecTripleProduct(u: Vec3, v: Vec3, wv: Vec3): VectorResult {
   } catch (e) {
     return { is3D: true, steps: [], error: e instanceof Error ? e.message : "Invalid input" };
   }
+}
+
+
+// ── extra operations ─────────────────────────────────────────────────────────
+
+const fail = (is3D: boolean, e: unknown): VectorResult => ({ is3D, steps: [], error: e instanceof Error ? e.message : "Invalid input" });
+
+/** Distance between the points u and v. */
+export function vecDistance(u: Vec3, v: Vec3, is3D: boolean): VectorResult {
+  try {
+    assertVectorsUsable(u, v, is3D);
+    const dx = v.x - u.x, dy = v.y - u.y, dz = is3D ? v.z - u.z : 0;
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const steps = [
+      `##Given (as points)\n$$P = ${vecLatex(u, is3D)}, \\quad Q = ${vecLatex(v, is3D)}$$`,
+      `##Distance Formula\n$$d = \\sqrt{(${w(v.x)}-${w(u.x)})^2 + (${w(v.y)}-${w(u.y)})^2${is3D ? ` + (${w(v.z)}-${w(u.z)})^2` : ""}}$$`,
+      `##Result\n$$d = \\sqrt{${toFractionLatex(dx * dx + dy * dy + dz * dz)}} = ${toFractionLatex(d)}$$`,
+    ];
+    return { resultScalar: d, is3D, steps };
+  } catch (e) { return fail(is3D, e); }
+}
+
+/** Midpoint of the segment from u to v. */
+export function vecMidpoint(u: Vec3, v: Vec3, is3D: boolean): VectorResult {
+  try {
+    assertVectorsUsable(u, v, is3D);
+    const m: Vec3 = { x: (u.x + v.x) / 2, y: (u.y + v.y) / 2, z: is3D ? (u.z + v.z) / 2 : 0 };
+    const steps = [
+      `##Given (as points)\n$$P = ${vecLatex(u, is3D)}, \\quad Q = ${vecLatex(v, is3D)}$$`,
+      `##Midpoint Formula\n$$M = \\left(\\frac{x_1+x_2}{2}, \\frac{y_1+y_2}{2}${is3D ? ", \\frac{z_1+z_2}{2}" : ""}\\right)$$`,
+      `##Result\n$$M = ${vecLatex(m, is3D)}$$`,
+    ];
+    return { resultVector: m, is3D, steps };
+  } catch (e) { return fail(is3D, e); }
+}
+
+/** Area of the parallelogram spanned by u and v, and of the triangle they form. */
+export function vecArea(u: Vec3, v: Vec3, is3D: boolean): VectorResult {
+  try {
+    assertVectorsUsable(u, v, is3D);
+    const cx = u.y * (is3D ? v.z : 0) - (is3D ? u.z : 0) * v.y;
+    const cy = (is3D ? u.z : 0) * v.x - u.x * (is3D ? v.z : 0);
+    const cz = u.x * v.y - u.y * v.x;
+    const area = Math.sqrt(cx * cx + cy * cy + cz * cz);
+    const steps: string[] = [`##Given\n$$${vecLatex(u, is3D, "u")}, \\quad ${vecLatex(v, is3D, "v")}$$`];
+    if (is3D) {
+      steps.push(`##Cross Product\n$$\\vec{u}\\times\\vec{v} = ${vecLatex({ x: cx, y: cy, z: cz }, true)}$$`);
+      steps.push(`##Parallelogram Area = |u × v|\n$$A = \\sqrt{${toFractionLatex(cx)}^2 + ${toFractionLatex(cy)}^2 + ${toFractionLatex(cz)}^2} = ${toFractionLatex(area)}$$`);
+    } else {
+      steps.push(`##2D Cross Product (a Determinant)\n$$A = \\left|\\begin{vmatrix}${toFractionLatex(u.x)}&${toFractionLatex(u.y)}\\\\${toFractionLatex(v.x)}&${toFractionLatex(v.y)}\\end{vmatrix}\\right| = |${toFractionLatex(cz)}| = ${toFractionLatex(area)}$$`);
+    }
+    steps.push(`##Triangle Area = Half of That\n$$A_{\\triangle} = \\tfrac{1}{2}A = ${toFractionLatex(area / 2)}$$`);
+    return { resultScalar: area, is3D, steps };
+  } catch (e) { return fail(is3D, e); }
+}
+
+/** Direction cosines (cos α, cos β, cos γ) of u. */
+export function vecDirectionCosines(u: Vec3, is3D: boolean): VectorResult {
+  try {
+    assertVectorsUsable(u, null, is3D);
+    const m = magnitude(u, is3D);
+    if (m === 0) throw new Error("The zero vector has no direction.");
+    const r: Vec3 = { x: u.x / m, y: u.y / m, z: is3D ? u.z / m : 0 };
+    const deg = (c: number) => toFractionLatex((Math.acos(Math.max(-1, Math.min(1, c))) * 180) / Math.PI);
+    const steps = [
+      `##Given\n$$${vecLatex(u, is3D, "u")}, \\quad ${magLatex("u", u, is3D)} = ${toFractionLatex(m)}$$`,
+      `##Direction Cosines\n$$\\cos\\alpha = \\frac{u_x}{|\\vec{u}|}, \\quad \\cos\\beta = \\frac{u_y}{|\\vec{u}|}${is3D ? ", \\quad \\cos\\gamma = \\frac{u_z}{|\\vec{u}|}" : ""}$$`,
+      `##Result\n$$\\langle\\cos\\alpha, \\cos\\beta${is3D ? ", \\cos\\gamma" : ""}\\rangle = ${vecLatex(r, is3D)}$$`,
+      `##Direction Angles\n$$\\alpha = ${deg(r.x)}^\\circ, \\quad \\beta = ${deg(r.y)}^\\circ${is3D ? `, \\quad \\gamma = ${deg(r.z)}^\\circ` : ""}$$`,
+      ...(is3D ? [`##Check\n$$\\cos^2\\alpha + \\cos^2\\beta + \\cos^2\\gamma = ${toFractionLatex(r.x * r.x + r.y * r.y + r.z * r.z)}$$`] : []),
+    ];
+    return { resultVector: r, is3D, steps };
+  } catch (e) { return fail(is3D, e); }
+}
+
+/** Are u and v orthogonal, parallel, or neither? */
+export function vecRelation(u: Vec3, v: Vec3, is3D: boolean): VectorResult {
+  try {
+    assertVectorsUsable(u, v, is3D);
+    const d = dot(u, v, is3D);
+    const cx = u.y * (is3D ? v.z : 0) - (is3D ? u.z : 0) * v.y;
+    const cy = (is3D ? u.z : 0) * v.x - u.x * (is3D ? v.z : 0);
+    const cz = u.x * v.y - u.y * v.x;
+    const crossZero = Math.abs(cx) < 1e-9 && Math.abs(cy) < 1e-9 && Math.abs(cz) < 1e-9;
+    const dotZero = Math.abs(d) < 1e-9;
+    let verdict = "Neither parallel nor orthogonal";
+    if (u.x === 0 && u.y === 0 && (!is3D || u.z === 0) || v.x === 0 && v.y === 0 && (!is3D || v.z === 0)) verdict = "A zero vector is both parallel and orthogonal to everything";
+    else if (dotZero) verdict = "Orthogonal (perpendicular)";
+    else if (crossZero) verdict = d > 0 ? "Parallel (same direction)" : "Parallel (opposite direction)";
+    const steps = [
+      `##Given\n$$${vecLatex(u, is3D, "u")}, \\quad ${vecLatex(v, is3D, "v")}$$`,
+      `##Test for Orthogonal: Dot Product = 0\n$$\\vec{u}\\cdot\\vec{v} = ${toFractionLatex(d)}${dotZero ? " = 0" : " \\ne 0"}$$`,
+      `##Test for Parallel: Cross Product = 0\n$$\\vec{u}\\times\\vec{v} = ${is3D ? vecLatex({ x: cx, y: cy, z: cz }, true) : toFractionLatex(cz)}${crossZero ? " = \\vec{0}" : " \\ne \\vec{0}"}$$`,
+      `##Conclusion\n${verdict}.`,
+    ];
+    return { verdict, is3D, steps };
+  } catch (e) { return fail(is3D, e); }
 }

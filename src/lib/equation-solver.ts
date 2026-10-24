@@ -1010,3 +1010,9 @@ export function solveAny(input: string, fmt: Fmt): EqResult {
 }
 
 export { fmtSet as _fmtSet };
+
+/** Roots (with multiplicity) of a real polynomial given by ascending coefficients. Used by the matrix eigenvalue solver. */
+export function rootsOfPolynomial(coeffs: number[]): { re: number; im: number; mult: number }[] {
+  const out = solvePolynomial(coeffs, [], (n) => String(n), "x");
+  return out.map((r) => ({ re: clean(r.value.re), im: clean(r.value.im), mult: r.mult }));
+}
