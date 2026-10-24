@@ -1,3 +1,5 @@
+import { evaluate as mathEvaluate } from "mathjs";
+import { cleanExpression } from "@/lib/expression-clean";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,6 +71,13 @@ function sqrtComplex(a: Complex): Complex {
 }
 
 function power(a: Complex, n: number): Complex {
+  if (Number.isInteger(n) && Math.abs(n) <= 200) {
+    let result: Complex = { re: 1, im: 0 };
+    let base = a;
+    let e = Math.abs(n);
+    while (e > 0) { if (e & 1) result = mul(result, base); base = mul(base, base); e >>= 1; }
+    return n < 0 ? div({ re: 1, im: 0 }, result) : result;
+  }
   const r = modulus(a);
   const theta = argument(a);
   const rn = Math.pow(r, n);
@@ -76,12 +85,16 @@ function power(a: Complex, n: number): Complex {
 }
 
 function parseComplex(re: string, im: string): Complex {
-  const reVal = parseFloat(re);
-  const imVal = parseFloat(im);
-  return {
-    re: Number.isNaN(reVal) ? 0 : reVal,
-    im: Number.isNaN(imVal) ? 0 : imVal,
+  const val = (raw: string, label: string): number => {
+    const t = raw.trim();
+    if (t === "") return 0;
+    try {
+      const v = mathEvaluate(cleanExpression(t));
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+    } catch { /* fall through */ }
+    throw new Error(`"${raw}" isn't a valid number for the ${label} part — use a number or something like 1/2, sqrt(2), pi.`);
   };
+  return { re: val(re, "real"), im: val(im, "imaginary") };
 }
 
 function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings): { result: string; steps: string[] } {
@@ -110,6 +123,7 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
       return { result: fmtComplex(r, s), steps };
     }
     case "divide": {
+      if (b.re === 0 && b.im === 0) throw new Error("Division by zero — z₂ can't be 0.");
       const r = div(a, b);
       const denom = b.re * b.re + b.im * b.im;
       steps.push(`##Multiply by the Conjugate\n$$\\frac{z_1}{z_2} = \\frac{z_1\\,\\overline{z_2}}{z_2\\,\\overline{z_2}} = \\frac{z_1\\,\\overline{z_2}}{|z_2|^2}, \\qquad \\overline{z_2} = ${czLatex(conjugate(b), s)}$$`);
@@ -118,6 +132,7 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
       return { result: fmtComplex(r, s), steps };
     }
     case "power": {
+      if (a.re === 0 && a.im === 0 && n <= 0) throw new Error("0 raised to a power ≤ 0 is undefined.");
       const r = power(a, n);
       const mod = modulus(a);
       const arg = argument(a);
@@ -158,6 +173,7 @@ function compute(op: ComplexOp, a: Complex, b: Complex, n: number, s: Settings):
       return { result: `|z₁| = ${fmt(r, s)}`, steps };
     }
     case "demoivre": {
+      if (a.re === 0 && a.im === 0 && n <= 0) throw new Error("0 raised to a power ≤ 0 is undefined.");
       const mod = modulus(a);
       const arg = argument(a);
       const nArg = n * arg;
@@ -208,8 +224,11 @@ export function ComplexCalculator() {
       setError(null);
       const za = parseComplex(a1, b1);
       const zb = parseComplex(a2, b2);
-      const nParsed = parseFloat(n);
-      const nVal = Number.isNaN(nParsed) ? 2 : nParsed;
+      let nVal = 2;
+      if (currentOp.needsN) {
+        try { const t = mathEvaluate(cleanExpression(n.trim())); if (typeof t === "number" && Number.isFinite(t)) nVal = t; else throw new Error(); }
+        catch { throw new Error(`"${n}" isn't a valid power — use a number like 3, -2 or 1/2.`); }
+      }
       setResult(compute(op, za, zb, nVal, settings));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error");

@@ -1,32 +1,31 @@
-import { useState, useEffect, useMemo, Suspense, lazy } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { MathInput } from "./MathInput";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Calculator, LineChart } from "lucide-react";
+import { Calculator } from "lucide-react";
 import { evaluate } from "mathjs";
 import { StepsReveal } from "./StepsReveal";
-import { GraphCanvas } from "./GraphCanvas";
 import { FunctionGraph, type PlotMarker } from "./FunctionGraph";
-import { makeEvaluator, findRoots, validate2D, validateImplicitSurface } from "@/lib/graph-utils";
+import { makeEvaluator, findRoots, validate2D } from "@/lib/graph-utils";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
 import { exprToLatex } from "@/lib/latex";
-import { generateGraphPoints, generateImplicitPoints2D, parseEquationToZeroForm } from "@/lib/math-solver";
-
-const ImplicitSurface3D = lazy(() => import("./ImplicitSurface3D").then(m => ({ default: m.ImplicitSurface3D })));
+import { solveAny, solveEquation } from "@/lib/equation-solver";
 
 export interface SolveResult {
   roots: string[];
   steps: string[];
   error?: string;
   numericRoots?: number[];
+  variable?: string;
+  graphExpr?: string;
+  setAnswer?: string;
 }
 
 export function solveLinear(equation: string, fmt: (n: number) => string): SolveResult {
@@ -43,6 +42,11 @@ export function solveLinear(equation: string, fmt: (n: number) => string): Solve
     const f0 = evaluate(expr, { x: 0 }) as number;
     const f1 = evaluate(expr, { x: 1 }) as number;
     const slope = f1 - f0;
+    const probes = [-3, 2, 5.5].map((t) => evaluate(expr, { x: t }) as number);
+    if (![f0, f1, ...probes].every((v) => typeof v === "number" && Number.isFinite(v)) || [-3, 2, 5.5].some((t, i) => Math.abs(probes[i] - (f0 + slope * t)) > 1e-8 * (1 + Math.abs(probes[i])))) {
+      const g = solveEquation(equation, fmt);
+      return { ...g, steps: ["##Note\nThis isn't linear, so the general solver was used instead.", ...g.steps] };
+    }
 
     if (Math.abs(slope) < 1e-10) {
       if (Math.abs(f0) < 1e-10) return { roots: ["All real numbers"], steps: [...steps, "##Identity\n$$0 = 0 \\;\\Rightarrow\\; x \\in \\mathbb{R}$$"] };
@@ -95,6 +99,7 @@ export function solveQuadratic(a: number, b: number, c: number, fmt: (n: number)
 export function solveQuadraticFromEquation(equation: string, fmt: (n: number) => string): SolveResult {
   const parts = equation.split("=");
   if (parts.length !== 2) return { roots: [], steps: [], error: "Use format: ax² + bx + c = 0 (any quadratic equation)" };
+  const general = (note: string) => { const g = solveEquation(equation, fmt); return { ...g, steps: [`##Note\n${note}`, ...g.steps] }; };
 
   const expr = `(${parts[0].trim()}) - (${parts[1].trim()})`;
   const steps: string[] = [
@@ -111,6 +116,7 @@ export function solveQuadraticFromEquation(equation: string, fmt: (n: number) =>
   } catch (e: unknown) {
     return { roots: [], steps: [], error: e instanceof Error ? e.message : "Invalid equation" };
   }
+  if (![f0, f1, fm1, f2].every((v) => typeof v === "number" && Number.isFinite(v))) return general("This isn't a plain quadratic, so the general solver was used.");
 
   const c = f0;
   const a = (f1 + fm1 - 2 * c) / 2;
@@ -118,118 +124,13 @@ export function solveQuadraticFromEquation(equation: string, fmt: (n: number) =>
 
   const predicted2 = a * 4 + b * 2 + c;
   if (Math.abs(predicted2 - f2) > Math.max(1e-6, Math.abs(f2) * 1e-6)) {
-    return {
-      roots: [], steps: [],
-      error: "This doesn't reduce to a quadratic (degree > 2 detected) — try the Graph Equation tab instead, or check your input.",
-    };
+    return general("This isn't a quadratic (higher degree or not a polynomial), so the general solver was used.");
   }
-  if (Math.abs(a) < 1e-9) {
-    return { roots: [], steps: [], error: "Coefficient of x² is 0 — this is linear, not quadratic. Use the Linear tab." };
-  }
+  if (Math.abs(a) < 1e-9) return general("The x² term cancels — it's linear, solved directly.");
 
   steps.push(`##Coefficients\n$$a = ${fmtNum2(a)}, \\quad b = ${fmtNum2(b)}, \\quad c = ${fmtNum2(c)}$$`);
   const quad = solveQuadratic(a, b, c, fmt);
   return { ...quad, steps: [...steps, ...quad.steps] };
-}
-
-function GraphEquationTab() {
-  const settings = useSettings();
-  const [equation, setEquation] = useState("x^2 + y^2 = 25");
-  const [range, setRange] = useState(settings.defaultGraphRange.toString());
-  const [parsed, setParsed] = useState<{ vars: string[]; expr: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const plot = () => {
-    const parsedResult = parseEquationToZeroForm(equation);
-    if ("error" in parsedResult) {
-      setError(parsedResult.error);
-      setParsed(null);
-      return;
-    }
-    setError(null);
-    setParsed(parsedResult);
-  };
-
-  const r = Math.abs(parseFloat(range)) || 10;
-
-  const problem1d = useMemo(() => (parsed && parsed.vars.length === 1 ? validate2D(parsed.expr, parsed.vars[0], -r, r) : null), [parsed, r]);
-  const roots1d = useMemo<PlotMarker[]>(() => {
-    if (!parsed || parsed.vars.length !== 1 || problem1d) return [];
-    const f = makeEvaluator(parsed.expr, parsed.vars[0]);
-    return f ? findRoots(f, -r, r).slice(0, 30).map((x) => ({ x, y: 0, filled: true, color: "#ef4444", label: String(parseFloat(x.toPrecision(5))) })) : [];
-  }, [parsed, r, problem1d]);
-  const problem3d = useMemo(() => (parsed && parsed.vars.length === 3 ? validateImplicitSurface(parsed.expr, parsed.vars, r) : null), [parsed, r]);
-
-  const implicit2d = useMemo(() => {
-    if (!parsed || parsed.vars.length !== 2) return [];
-    return generateImplicitPoints2D(parsed.expr, parsed.vars[0], parsed.vars[1], -r, r, -r, r);
-  }, [parsed, r]);
-
-  return (
-    <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Type any equation with x, y, and/or z. 1 variable → 2D function graph. 2 variables (x,y) → 2D implicit curve. 3 variables (x,y,z) → 3D surface.
-      </p>
-      <div className="space-y-1">
-        <Label className="text-xs">Equation</Label>
-        <MathInput
-          value={equation}
-          onChange={setEquation}
-          placeholder="e.g. x^2+y^2=25, x+2y-z=4, x^2-5=0"
-          onEnter={plot}
-        />
-      </div>
-      <div className="space-y-1">
-        <Label className="text-xs">Range (± from 0)</Label>
-        <Input value={range} onChange={(e) => setRange(e.target.value)} type="number" className="font-mono w-28" />
-      </div>
-      <Button onClick={plot} className="w-full gap-2">
-        <LineChart className="h-4 w-4" /> Plot Equation
-      </Button>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      {parsed && parsed.vars.length === 1 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <p className="text-xs text-muted-foreground mb-2">Single variable ({parsed.vars[0]}) → 2D graph of {parsed.expr} = 0 (roots are where it crosses zero)</p>
-          {problem1d ? (
-            <p className="text-sm text-destructive">{problem1d}</p>
-          ) : (
-            <FunctionGraph series={[{ expr: parsed.expr, label: `y = ${parsed.expr}` }]} variable={parsed.vars[0]} xRange={[-r, r]} markers={roots1d} />
-          )}
-        </motion.div>
-      )}
-
-      {parsed && parsed.vars.length === 2 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <p className="text-xs text-muted-foreground mb-2">Two variables ({parsed.vars.join(", ")}) → 2D implicit curve</p>
-          {implicit2d.length === 0 ? (
-            <p className="text-sm text-destructive">
-              The equation never holds inside [−{r}, {r}] × [−{r}, {r}] (or has no real values there), so there is no curve to draw. Try a larger range or check the equation.
-            </p>
-          ) : (
-            <GraphCanvas
-              series={[{ expr: equation, points: implicit2d, mode: "scatter" }]}
-              xMin={-r} xMax={r} yMin={-r} yMax={r}
-            />
-          )}
-        </motion.div>
-      )}
-
-      {parsed && parsed.vars.length === 3 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <p className="text-xs text-muted-foreground mb-2">Three variables ({parsed.vars.join(", ")}) → 3D surface</p>
-          {problem3d ? (
-            <p className="text-sm text-destructive">{problem3d}</p>
-          ) : (
-            <Suspense fallback={<div className="h-[460px] rounded-xl border border-border flex items-center justify-center text-sm text-muted-foreground">Loading 3D engine…</div>}>
-              <ImplicitSurface3D expression={parsed.expr} varNames={[parsed.vars[0], parsed.vars[1], parsed.vars[2]]} range={r} />
-            </Suspense>
-          )}
-        </motion.div>
-      )}
-    </div>
-  );
 }
 
 function RootGraph({ expr, range }: { expr: string; range?: number }) {
@@ -258,6 +159,7 @@ export function EquationSolver() {
   const [mode, setMode] = useState("quadratic");
   const [linearEq, setLinearEq] = useState("2x + 3 = 7");
   const [quadEq, setQuadEq] = useState("x^2 - 5x + 6 = 0");
+  const [genEq, setGenEq] = useState("x^3 - 6x^2 + 11x - 6 = 0");
   const [result, setResult] = useState<SolveResult | null>(null);
   const [showSteps, setShowSteps] = useState(settings.showSteps);
 
@@ -270,23 +172,26 @@ export function EquationSolver() {
       setResult(solveLinear(linearEq, fmt));
     } else if (mode === "quadratic") {
       setResult(solveQuadraticFromEquation(quadEq, fmt));
+    } else {
+      setResult(solveAny(genEq, fmt));
     }
   };
 
-  useAutoRun([mode, linearEq, quadEq], solve, settings.autoCalculate);
+  useAutoRun([mode, linearEq, quadEq, genEq], solve, settings.autoCalculate);
 
   const activeExpr = useMemo(() => {
+    if (mode === "general") {
+      return result && !result.error && result.variable === "x" && result.graphExpr && !result.setAnswer?.startsWith("system") ? result.graphExpr : null;
+    }
     const eq = mode === "linear" ? linearEq : quadEq;
     const parts = eq.split("=");
     if (parts.length !== 2) return null;
     return `(${parts[0].trim()}) - (${parts[1].trim()})`;
-  }, [mode, linearEq, quadEq]);
-
-  const splitLayout = mode !== "graph";
+  }, [mode, linearEq, quadEq, result]);
 
   return (
-    <div className={splitLayout ? "lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0" : "space-y-6"}>
-      <div className={splitLayout ? "space-y-6 min-w-0" : "space-y-6"}>
+    <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start space-y-6 lg:space-y-0">
+      <div className="space-y-6 min-w-0">
       <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -304,7 +209,7 @@ export function EquationSolver() {
             <TabsList className="w-full">
               <TabsTrigger value="linear" className="flex-1">Linear</TabsTrigger>
               <TabsTrigger value="quadratic" className="flex-1">Quadratic</TabsTrigger>
-              <TabsTrigger value="graph" className="flex-1">Graph Equation</TabsTrigger>
+              <TabsTrigger value="general" className="flex-1">Any Equation</TabsTrigger>
             </TabsList>
 
             <TabsContent value="linear" className="space-y-3 pt-2">
@@ -319,6 +224,19 @@ export function EquationSolver() {
               </div>
             </TabsContent>
 
+            <TabsContent value="general" className="space-y-3 pt-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Equation, inequality, or system (separate equations with commas)</Label>
+                <MathInput
+                  value={genEq}
+                  onChange={setGenEq}
+                  placeholder="e.g. x^3-6x^2+11x-6=0, sqrt(x+2)=x, x^2-4>0, 2x+y=5, x-y=1"
+                  onEnter={solve}
+                />
+                <p className="text-xs text-muted-foreground">Any degree polynomial, fractions, roots, |x|, trig, exp/log, inequalities, and systems of equations.</p>
+              </div>
+            </TabsContent>
+
             <TabsContent value="quadratic" className="space-y-3 pt-2">
               <div className="space-y-1">
                 <Label className="text-xs">Equation (use x) — any quadratic form</Label>
@@ -330,32 +248,24 @@ export function EquationSolver() {
                 />
               </div>
             </TabsContent>
-
-            <TabsContent value="graph" className="pt-2">
-              <GraphEquationTab />
-            </TabsContent>
           </Tabs>
 
-          {mode !== "graph" && (
-            <>
-              <div className="flex items-center gap-6 flex-wrap">
-                <label className="flex items-center gap-2 text-sm">
-                  <Switch checked={showSteps} onCheckedChange={setShowSteps} />
-                  Step-by-step
-                </label>
-              </div>
+          <div className="flex items-center gap-6 flex-wrap">
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={showSteps} onCheckedChange={setShowSteps} />
+              Step-by-step
+            </label>
+          </div>
 
-              {!settings.autoCalculate && (
-                <Button onClick={solve} className="w-full gap-2">
-                  <Calculator className="h-4 w-4" /> Solve
-                </Button>
-              )}
-            </>
+          {!settings.autoCalculate && (
+            <Button onClick={solve} className="w-full gap-2">
+              <Calculator className="h-4 w-4" /> Solve
+            </Button>
           )}
         </CardContent>
       </Card>
 
-      {mode !== "graph" && result && (
+      {result && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
         <Card className="shadow-lg border-border/50">
           <CardContent className="pt-6 space-y-4">
@@ -366,7 +276,7 @@ export function EquationSolver() {
                 <div className="flex flex-wrap gap-2">
                   {result.roots.map((r, i) => (
                     <Badge key={i} variant="secondary" className="text-base font-mono px-3 py-1">
-                      x{result.roots.length > 1 ? `₍${i + 1}₎` : ""} = {result.numericRoots?.[i] !== undefined ? formatNumber(result.numericRoots[i], settings) : r}
+                      {result.setAnswer && result.setAnswer !== "all" && !result.setAnswer.startsWith("system") ? `${result.variable ?? "x"} ∈ ${r}` : /[=∈]/.test(r) || r.startsWith("All") || r.startsWith("True") ? r : `${result.variable ?? "x"}${result.roots.length > 1 ? `₍${i + 1}₎` : ""} = ${result.numericRoots?.[i] !== undefined ? formatNumber(result.numericRoots[i], settings) : r}`}
                     </Badge>
                   ))}
                 </div>
@@ -379,7 +289,7 @@ export function EquationSolver() {
       )}
       </div>
 
-      {splitLayout && activeExpr && !result?.error && (
+      {activeExpr && !result?.error && (
         <div className="lg:sticky lg:top-4 min-w-0">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
             <Card className="shadow-lg border-border/50">

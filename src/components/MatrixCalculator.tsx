@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Grid3X3 } from "lucide-react";
-import { multiply, det as mathDet, inv as mathInv, add, subtract, transpose, Matrix } from "mathjs";
+import { multiply, det as mathDet, inv as mathInv, add, subtract, transpose, evaluate, Matrix } from "mathjs";
+import { cleanExpression } from "@/lib/expression-clean";
 import { useSettings, type Settings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { StepsReveal } from "./StepsReveal";
@@ -55,14 +56,19 @@ function resizeGrid(grid: string[][], rows: number, cols: number): string[][] {
   return out;
 }
 
-function parseGrid(grid: string[][], label: string): number[][] {
-  const parsed = grid.map((row) => row.map((v) => parseFloat(v)));
-  for (const row of parsed) {
-    if (row.some((v) => Number.isNaN(v))) {
-      throw new Error(`${label} has an empty or invalid cell — every cell needs a number.`);
-    }
+function parseCell(raw: string, label: string): number {
+  const t = (raw ?? "").trim();
+  if (t !== "") {
+    try {
+      const v = evaluate(cleanExpression(t));
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+    } catch { /* fall through */ }
   }
-  return parsed;
+  throw new Error(`${label} has an empty or invalid cell ("${raw}") — every cell needs a number (fractions like 1/2, sqrt(2) and pi are fine).`);
+}
+
+function parseGrid(grid: string[][], label: string): number[][] {
+  return grid.map((row) => row.map((v) => parseCell(v, label)));
 }
 
 function formatMatrix(m: number[][] | Matrix): string {
@@ -434,8 +440,7 @@ export function MatrixCalculator() {
       if (op === "cramer") {
         if (rowsA !== colsA) throw new Error("Cramer's rule needs a square coefficient matrix A.");
         const n = a.length;
-        const bv = vecB.map((v) => parseFloat(v));
-        if (bv.some((v) => Number.isNaN(v))) throw new Error("Vector b has an empty or invalid entry.");
+        const bv = vecB.map((v) => parseCell(v, "Vector b"));
         if (bv.length !== n) throw new Error(`Vector b must have ${n} entries to match A's ${n} rows.`);
 
         const D = mathDet(a) as number;
