@@ -303,6 +303,31 @@ function convertBars(s: string): string {
   return out + ")".repeat(stack.length);
 }
 
+/** sinc(u), heaviside(u), step(u) and the infix "a mod b" — written out in plain mathjs so they graph and evaluate. */
+function expandSpecialFunctions(src: string): string {
+  let s = src;
+  s = s.replace(/([A-Za-z0-9_.]+|\([^()]*\))\s+mod\s+([A-Za-z0-9_.]+|\([^()]*\))/gi, "mod($1,$2)");
+  const table: Record<string, (u: string) => string> = {
+    sinc: (u) => `(sin(${u})/(${u}))`,
+    heaviside: (u) => `((${u}) >= 0 ? 1 : 0)`,
+    step: (u) => `((${u}) >= 0 ? 1 : 0)`,
+  };
+  for (let guard = 0; guard < 30; guard++) {
+    const m = /\b(sinc|heaviside|step)\s*\(/i.exec(s);
+    if (!m) break;
+    const open = m.index + m[0].length - 1;
+    let depth = 0, close = -1;
+    for (let i = open; i < s.length; i++) {
+      if (s[i] === "(") depth++;
+      else if (s[i] === ")") { depth--; if (depth === 0) { close = i; break; } }
+    }
+    if (close < 0) break;
+    const inner = s.slice(open + 1, close);
+    s = s.slice(0, m.index) + table[m[1].toLowerCase()](inner) + s.slice(close + 1);
+  }
+  return s;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 export function cleanExpression(raw: string): string {
   if (raw === null || raw === undefined) return "";
@@ -331,6 +356,7 @@ export function cleanExpression(raw: string): string {
   if (!s) return "";
 
   s = s.replace(/\*\*/g, "^");
+  s = expandSpecialFunctions(s);
   // log_2(x), log_b(x) → log(x, 2)
   for (let guard = 0; guard < 20; guard++) {
     const lm = /\blog_(\w+)\s*\(/i.exec(s);
@@ -409,7 +435,7 @@ export function findUnknownFunctionNames(raw: string): string[] {
     const name = m[1];
     const lower = name.toLowerCase();
     if (name.length < 3 || /[\d_]/.test(name)) continue;
-    if (CANON.has(lower) || CONST_WORDS[lower]) continue;
+    if (CANON.has(lower) || CONST_WORDS[lower] || ["sinc", "heaviside", "step"].includes(lower)) continue;
     let hasKnownSuffix = false;
     for (let k = 1; k < lower.length; k++) if (CANON.has(lower.slice(k))) { hasKnownSuffix = true; break; }
     if (!hasKnownSuffix) out.add(name);

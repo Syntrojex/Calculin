@@ -19,7 +19,7 @@ const GREEK_LETTER_MAP: Record<string, string> = {
   "α": "alpha", "β": "beta", "γ": "gamma", "Γ": "gamma",
   "δ": "delta", "Δ": "delta",
   "λ": "lambda", "μ": "mu", "σ": "sigma", "Σ": "sigma",
-  "φ": "phi", "Φ": "phi", "ω": "omega", "Ω": "omega",
+  "φ": "phi", "Φ": "phi", "ω": "omega", "Ω": "omega", "ρ": "rho",
 };
 
 // Every function name this app's math language accepts. Typing "Cos(x)",

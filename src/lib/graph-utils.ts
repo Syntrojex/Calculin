@@ -9,6 +9,7 @@
  */
 import { evaluate as mjEvaluate, parse as mjParse, type MathNode } from "mathjs";
 import { cleanExpression, cleanVariable, findUnknownFunctionNames } from "./expression-clean";
+import { realParse } from "./real-parse";
 
 export type NumFn = (x: number) => number;
 
@@ -46,7 +47,7 @@ function freeSymbols(node: MathNode): string[] {
 /** Compile `expr` into a numeric function of the given variables (non-real → NaN). */
 export function makeEvaluatorN(expr: string, vars: string[]): ((...xs: number[]) => number) | null {
   try {
-    const code = mjParse(cleanExpression(expr)).compile();
+    const code = realParse(expr).compile();
     const scope: Record<string, number> = {};
     return (...xs: number[]) => {
       vars.forEach((v, i) => { scope[v] = xs[i]; });
@@ -142,7 +143,9 @@ export function explainBadExpression(raw: string, allowed: string[], what = "gra
   }
   const extra = freeSymbols(node).filter((s) => !allowed.includes(s));
   if (extra.length) {
-    return { node, message: `This ${what} can only use ${allowed.join(", ")} (and constants like pi, e), but it also contains "${extra.join(", ")}".`, expr };
+    const polarHint = what === "surface" && extra.some((v) => ["r", "theta", "rho", "phi", "t", "u", "v"].includes(v))
+      ? " For r, θ, ρ, φ or parameters like t, u, v, use the Parametric / Polar tab." : "";
+    return { node, message: `This ${what} can only use ${allowed.join(", ")} (and constants like pi, e), but it also contains "${extra.join(", ")}".${polarHint}`, expr };
   }
   return { node, message: null, expr };
 }
