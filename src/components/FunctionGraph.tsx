@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Minus, Plus, RotateCcw } from "lucide-react";
-import { parse } from "mathjs";
 import { Button } from "@/components/ui/button";
-import { cleanExpression, cleanVariable } from "@/lib/expression-clean";
+import { cleanVariable } from "@/lib/expression-clean";
+import { realParse } from "@/lib/real-parse";
 import { downloadCanvasPNG, slugifyForFilename } from "@/lib/canvas-export";
+import type { CurveView, Quality } from "@/lib/plane-curves";
 
 /**
  * An interactive function plot that samples the function itself at pixel
@@ -25,6 +26,19 @@ export interface PlotSeries {
   /** Only draw inside [lo, hi]. */
   domain?: [number, number];
 }
+/** A curve that is not y = f(x): implicit, parametric, polar, an inequality region… Rebuilt for every view so it stays sharp. */
+export interface PlotCurve {
+  id: string;
+  label?: string;
+  color?: string;
+  dashed?: boolean;
+  /** Polylines in data coordinates for the current view. */
+  build?: (view: CurveView, quality: Quality) => { x: number; y: number }[][];
+  /** Shade every point where this is true (inequalities). */
+  fill?: (x: number, y: number) => boolean;
+  /** [x0, x1, y0, y1] used to frame a graph that has no y = f(x) series. */
+  bounds?: [number, number, number, number];
+}
 export interface PlotShade { seriesIndex: number; from: number; to: number }
 export interface PlotMarker { x: number; y: number; filled?: boolean; label?: string; color?: string }
 export interface PlotLine { value: number; label?: string; color?: string; dashed?: boolean }
@@ -42,6 +56,11 @@ interface Props {
   title?: string;
   downloadFilename?: string;
   showDownload?: boolean;
+  curves?: PlotCurve[];
+  /** Frame the view around the curves' own bounds (curve-only graphs) instead of xRange. */
+  fit?: boolean;
+  /** Keep 1 unit on x the same length as 1 unit on y (circles stay round). Used when there is no y = f(x). */
+  equalAspect?: boolean;
 }
 
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"];
@@ -55,7 +74,7 @@ function makeEvaluator(s: PlotSeries, variable: string): ((x: number) => number)
   if (s.fn) f = s.fn;
   else if (s.expr && s.expr.trim()) {
     try {
-      const code = parse(cleanExpression(s.expr)).compile();
+      const code = realParse(s.expr).compile();
       const scope: Record<string, number> = {};
       f = (x: number) => {
         scope[variable] = x;
@@ -208,8 +227,11 @@ function fmtTick(v: number, step: number): string {
 }
 
 export function FunctionGraph({
-  series, variable = "x", xRange, yRange, shades, markers, vlines, hlines, height = 360, title, downloadFilename, showDownload = true,
+  series, variable = "x", xRange, yRange, shades, markers, vlines, hlines, height = 360, title, downloadFilename, showDownload = true, curves, equalAspect = false, fit = false,
 }: Props) {
+  const [quality, setQuality] = useState<Quality>("fine");
+  const settleTimer = useRef<number | null>(null);
+  const settleSoon = () => { if (settleTimer.current) window.clearTimeout(settleTimer.current); settleTimer.current = window.setTimeout(() => setQuality("fine"), 160); };
   const v = cleanVariable(variable);
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -222,7 +244,17 @@ export function FunctionGraph({
   const evals = useMemo(() => series.map((s) => makeEvaluator(s, v)), [series, v]);
 
   // default x-window: explicit range, else wrap the points of interest, else [-10, 10]
+  const padL = 54, padR = 14, padT = 14, padB = 30;
   const defaultX = useMemo<[number, number]>(() => {
+    if (fit && curves?.length && curves.every((c) => c.bounds)) {
+      const bs = curves.map((c) => c.bounds!);
+      const bx0 = Math.min(...bs.map((b) => b[0])), bx1 = Math.max(...bs.map((b) => b[1]));
+      const by0 = Math.min(...bs.map((b) => b[2])), by1 = Math.max(...bs.map((b) => b[3]));
+      const pw = Math.max(100, width - padL - padR), ph = Math.max(60, height - padT - padB);
+      const scale = Math.max((bx1 - bx0) / pw, (by1 - by0) / ph, 1e-9) * 1.18;
+      const cx = (bx0 + bx1) / 2;
+      return [cx - (scale * pw) / 2, cx + (scale * pw) / 2];
+    }
     if (xRange && xRange[1] > xRange[0]) return xRange;
     const hints: number[] = [];
     shades?.forEach((s) => hints.push(s.from, s.to));
@@ -234,11 +266,11 @@ export function FunctionGraph({
     const span = hi - lo;
     if (span === 0) return [lo - 5, hi + 5];
     return [lo - span * 0.35 - 0.5, hi + span * 0.35 + 0.5];
-  }, [xRange, shades, markers, vlines]);
+  }, [xRange, shades, markers, vlines, fit, curves, width, height]);
 
   const signature = useMemo(
-    () => JSON.stringify([series.map((s) => [s.expr, s.label, s.domain, s.fn ? "fn" : ""]), xRange, yRange, shades, markers?.map((m) => [m.x, m.y]), vlines?.map((l) => l.value), v]),
-    [series, xRange, yRange, shades, markers, vlines, v],
+    () => JSON.stringify([series.map((s) => [s.expr, s.label, s.domain, s.fn ? "fn" : ""]), xRange, yRange, shades, markers?.map((m) => [m.x, m.y]), vlines?.map((l) => l.value), v, curves?.map((c) => c.id)]),
+    [series, xRange, yRange, shades, markers, vlines, v, curves],
   );
   useEffect(() => { setOverride(null); setHoverX(null); }, [signature]);
 
@@ -251,7 +283,6 @@ export function FunctionGraph({
     return () => ro.disconnect();
   }, []);
 
-  const padL = 54, padR = 14, padT = 14, padB = 30;
 
   /** Everything that depends on the view: samples + resolved y-range. */
   const frame = useMemo(() => {
@@ -271,16 +302,31 @@ export function FunctionGraph({
       let hi = all.length ? percentile(all, 0.985) : 5;
       markers?.forEach((m) => { if (Number.isFinite(m.y) && m.x >= x0 && m.x <= x1) { lo = Math.min(lo, m.y); hi = Math.max(hi, m.y); } });
       hlines?.forEach((l) => { if (Number.isFinite(l.value)) { lo = Math.min(lo, l.value); hi = Math.max(hi, l.value); } });
-      shades?.length && (lo = Math.min(lo, 0), hi = Math.max(hi, 0));
+      if (shades?.length) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
       if (!(hi - lo > 1e-12 * (1 + Math.abs(hi) + Math.abs(lo)))) { const c = Number.isFinite(lo) ? lo : 0; lo = c - 1; hi = c + 1; }
       // pull zero into view when it's nearby (axes read better)
       if (lo > 0 && lo < 0.7 * hi) lo = 0;
       if (hi < 0 && hi > 0.7 * lo) hi = 0;
       const pad = (hi - lo) * 0.12;
       y0 = lo - pad; y1 = hi + pad;
+      const noExplicit = all.length === 0;
+      if (noExplicit && curves?.length) {
+        const bs = curves.map((c) => c.bounds).filter(Boolean) as [number, number, number, number][];
+        const yc = bs.length ? (Math.min(...bs.map((b) => b[2])) + Math.max(...bs.map((b) => b[3]))) / 2 : 0;
+        if (equalAspect) {
+          const half = ((x1 - x0) * Math.max(60, height - padT - padB)) / plotW / 2;
+          y0 = yc - half; y1 = yc + half;
+        } else if (bs.length) {
+          const lo2 = Math.min(...bs.map((b) => b[2])), hi2 = Math.max(...bs.map((b) => b[3]));
+          const pd = Math.max(hi2 - lo2, 1e-6) * 0.12;
+          y0 = lo2 - pd; y1 = hi2 + pd;
+        }
+      }
     }
-    return { x0, x1, y0, y1, sampled, plotW };
-  }, [override, defaultX, evals, width, yRange, markers, hlines, shades]);
+    const plotHpx = Math.max(60, height - padT - padB);
+    const curveSegs = (curves ?? []).map((c) => (c.build ? c.build({ x0, x1, y0, y1, plotW, plotH: plotHpx }, quality) : []));
+    return { x0, x1, y0, y1, sampled, plotW, curveSegs };
+  }, [override, defaultX, evals, width, yRange, markers, hlines, shades, curves, equalAspect, quality, height]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -363,6 +409,21 @@ export function FunctionGraph({
       [a, b].forEach((x) => { ctx.strokeStyle = "rgba(16,185,129,0.8)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(sx(x), padT); ctx.lineTo(sx(x), padT + plotH); ctx.stroke(); ctx.setLineDash([]); });
     });
 
+    // inequality regions (below the curves so the boundary stays crisp)
+    (curves ?? []).forEach((c, ci) => {
+      if (!c.fill) return;
+      const color = c.color ?? COLORS[(series.length + ci) % COLORS.length];
+      const step = quality === "fine" ? 4 : 8;
+      ctx.fillStyle = color + "40";
+      for (let px = padL; px < padL + plotW; px += step) {
+        for (let py = padT; py < padT + plotH; py += step) {
+          const x = x0 + ((px + step / 2 - padL) / plotW) * (x1 - x0);
+          const y = y1 - ((py + step / 2 - padT) / plotH) * (y1 - y0);
+          if (c.fill(x, y)) ctx.fillRect(px, py, step, step);
+        }
+      }
+    });
+
     // user lines
     const drawLine = (l: PlotLine, vertical: boolean) => {
       ctx.strokeStyle = l.color ?? "rgba(245,158,11,0.9)"; ctx.lineWidth = 1.4;
@@ -395,6 +456,22 @@ export function FunctionGraph({
       ctx.setLineDash([]);
     });
 
+    // non-function curves (implicit / parametric / polar / inequality boundaries)
+    (curves ?? []).forEach((c, ci) => {
+      const segs = frame.curveSegs[ci];
+      if (!segs || segs.length === 0) return;
+      const color = c.color ?? COLORS[(series.length + ci) % COLORS.length];
+      ctx.strokeStyle = color; ctx.lineWidth = 2.3; ctx.lineJoin = "round"; ctx.lineCap = "round";
+      ctx.setLineDash(c.dashed ? [7, 5] : []);
+      segs.forEach((seg) => {
+        if (seg.length === 1) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(sx(seg[0].x), clampY(sy(seg[0].y)), 2.4, 0, Math.PI * 2); ctx.fill(); return; }
+        ctx.beginPath();
+        seg.forEach((p, k) => { const px = sx(p.x), py = clampY(sy(p.y)); if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); });
+        ctx.stroke();
+      });
+      ctx.setLineDash([]);
+    });
+
     // markers
     markers?.forEach((m) => {
       if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) return;
@@ -419,7 +496,10 @@ export function FunctionGraph({
     ctx.restore();
 
     // legend
-    const labelled = series.map((s, i) => ({ s, i })).filter(({ s }) => s.label);
+    const labelled = [
+      ...series.map((s, i) => ({ s: { label: s.label, color: s.color, dashed: s.dashed }, i })),
+      ...(curves ?? []).map((c, ci) => ({ s: { label: c.label, color: c.color, dashed: c.dashed }, i: series.length + ci })),
+    ].filter(({ s }) => s.label);
     if (labelled.length > 0 && (labelled.length > 1 || title === undefined)) {
       ctx.font = "12px ui-sans-serif, system-ui, sans-serif";
       let lx = padL + 10;
@@ -433,7 +513,7 @@ export function FunctionGraph({
         lx += w + 38;
       });
     }
-  }, [frame, width, height, series, evals, shades, markers, vlines, hlines, hoverX, title]);
+  }, [frame, width, height, series, evals, shades, markers, vlines, hlines, hoverX, title, curves, quality]);
 
   useEffect(() => { draw(); }, [draw]);
   useEffect(() => {
@@ -484,6 +564,7 @@ export function FunctionGraph({
       return;
     }
     d.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (curves?.length) { setQuality("fast"); settleSoon(); }
     if (d.pointers.size === 2 && d.startDist) {
       const [a, b] = [...d.pointers.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -524,6 +605,7 @@ export function FunctionGraph({
     const onWheel = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return; // plain scrolling keeps scrolling the page
       e.preventDefault();
+      if (curves?.length) { setQuality("fast"); settleSoon(); }
       const rect = el.getBoundingClientRect();
       const plotW = rect.width - padL - padR;
       const plotH = rect.height - padT - padB;

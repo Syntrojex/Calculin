@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { parse } from "mathjs";
-import { cleanExpression } from "@/lib/expression-clean";
+import { realParse } from "@/lib/real-parse";
 
 interface Graph3DProps {
   expression: string;
@@ -47,7 +46,7 @@ export function Graph3D({ expression, range = 5, resolution = 80, fillParent = f
 
     let compiled: { evaluate: (scope: Record<string, number>) => unknown };
     try {
-      compiled = parse(cleanExpression(expression)).compile();
+      compiled = realParse(expression).compile();
     } catch (e: unknown) {
       setError(e instanceof Error ? `Parse error: ${e.message}` : "Invalid expression");
       return;
