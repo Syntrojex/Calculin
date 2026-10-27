@@ -74,7 +74,7 @@ function AboutPage() {
       <section>
         <h2>Version</h2>
         <p>
-          You're using <strong>Calculin v3.8.3</strong>. Calculin follows{" "}
+          You're using <strong>Calculin v3.8.4</strong> — the <strong>Exception Handling Update</strong>: every calculator now explains clearly what is wrong with a mistyped input (missing brackets, too many signs, empty fields, invalid digits…) instead of guessing or staying silent. Calculin follows{" "}
           <a href="https://semver.org" target="_blank" rel="noopener noreferrer">
             semantic versioning
           </a>{" "}
