@@ -3,6 +3,7 @@ import {
 } from "mathjs";
 import { formatNumber, type FormatSettings } from "./number-format";
 import { integrate1D, integrate2D, recognizeConstant, type IntegralStatus } from "./numeric-integrate";
+import { checkExpression, checkVariableName, checkNumberField } from "./input-check";
 import { cleanExpression, cleanVariable, parseNumericInput, findUnknownFunctionNames } from "./expression-clean";
 import { exprToLatex, derivativeLatex, integralLatex, deepCleanNode } from "./latex";
 import { stripParens } from "./expr-parens";
@@ -84,6 +85,15 @@ const ALLOWED_EXPRESSION_CHARS =
 
 /** Clean the raw input — but first reject unknown function names (foo(x)) with a clear message instead of reading them as a product of letters. */
 function prepareInput(raw: string): string {
+  const typed = checkExpression(raw, { what: "an expression" });
+  if (typed) throw new MathInputError(typed);
+  // a constant like ln(-1) or sqrt(-1) isn't a real number — say so instead of differentiating/integrating it
+  const noVars = !/[A-Za-z]/.test(raw.replace(/\b(pi|e|sin|cos|tan|cot|sec|csc|asin|acos|atan|sinh|cosh|tanh|ln|log|log2|log10|exp|sqrt|cbrt|abs|floor|ceil|round|sign)\b/gi, ""));
+  if (noVars) {
+    let v: unknown;
+    try { v = _mathjsEvaluate(cleanExpression(raw)); } catch { v = undefined; }
+    if (v !== undefined && (typeof v !== "number" || Number.isNaN(v))) throw new MathInputError(`“${raw.trim()}” isn't a real number (for example the square root or log of a negative number) — there is nothing to calculate.`);
+  }
   const unknown = findUnknownFunctionNames(raw);
   if (unknown.length > 0) {
     throw new MathInputError(`Unknown function${unknown.length > 1 ? "s" : ""} "${unknown.join(", ")}" — supported ones include sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, ln, log, sqrt, abs, exp, floor, ceil.`);
@@ -92,40 +102,7 @@ function prepareInput(raw: string): string {
 }
 
 function assertNonEmptyExpression(expression: string): void {
-  if (!expression || !expression.trim()) {
-    throw new MathInputError("Please enter an expression.");
-  }
-  if (/[<>]/.test(expression)) {
-    throw new MathInputError(
-      "Please enter a valid math expression — HTML/script-style tags (< >) aren't supported here."
-    );
-  }
-  if (!ALLOWED_EXPRESSION_CHARS.test(expression)) {
-    throw new MathInputError(
-      "Please enter a valid math expression — only numbers, letters, and standard math symbols (+ − × ÷ ^ ( ) √ π) are allowed."
-    );
-  }
-  let depth = 0;
-  for (const ch of expression) {
-    if (ch === "(") depth++;
-    else if (ch === ")") { depth--; if (depth < 0) break; }
-  }
-  if (depth !== 0) {
-    throw new MathInputError("Please check your parentheses — they don't look balanced.");
-  }
-  const t = expression.trim();
-  if (/[+\-*/^]$/.test(t)) {
-    throw new MathInputError("The expression looks incomplete — it ends with an operator.");
-  }
-  if (/^[*/^]/.test(t)) {
-    throw new MathInputError("The expression can't start with * / or ^.");
-  }
-  if (/\(\s*\)/.test(t) && !/[A-Za-z]\w*\s*\(\s*\)/.test(t)) {
-    throw new MathInputError("There are empty parentheses — put something inside ( ).");
-  }
-  if (/[*/^]\s*[*/^]|\+\s*[*/^]|-\s*[*/^]/.test(t)) {
-    throw new MathInputError("Two operators are in a row — please check the expression.");
-  }
+  if (!expression || !expression.trim()) throw new MathInputError("Please enter an expression.");
 }
 
 function assertFiniteBound(value: number, label: string): void {
@@ -965,6 +942,7 @@ export function solveDerivative(
 ): MathResult {
   try {
     expression = prepareInput(expression);
+    { const vm = checkVariableName(variable); if (vm) throw new MathInputError(vm); }
     variable = cleanVariable(variable);
     assertNonEmptyExpression(expression);
     const given = parse(expression);
@@ -1007,6 +985,7 @@ export function solveNthDerivative(
 ): MathResult {
   try {
     expression = prepareInput(expression);
+    { const vm = checkVariableName(variable); if (vm) throw new MathInputError(vm); }
     variable = cleanVariable(variable);
     assertNonEmptyExpression(expression);
     if (!Number.isInteger(order) || order < 1) {
@@ -1160,10 +1139,18 @@ export function solveDefiniteIntegral(
 ): MathResult {
   try {
     expression = prepareInput(expression);
+    { const vm = checkVariableName(variable); if (vm) throw new MathInputError(vm); }
     variable = cleanVariable(variable);
     assertNonEmptyExpression(expression);
-    if (typeof lower !== "number" || Number.isNaN(lower)) throw new MathInputError("Please enter a valid lower bound (a number, or something like pi/2, 1/3, -inf).");
-    if (typeof upper !== "number" || Number.isNaN(upper)) throw new MathInputError("Please enter a valid upper bound (a number, or something like pi/2, 1/3, inf).");
+    const boundMsg = (raw: string | undefined, which: "lower" | "upper"): string => {
+      if (raw !== undefined) {
+        const r = checkNumberField(raw, `the ${which} bound`, (t) => _mathjsEvaluate(cleanExpression(t)), { allowInfinity: true });
+        if (r.error) return r.error;
+      }
+      return `Please enter a valid ${which} bound (a number, or something like pi/2, 1/3, ${which === "lower" ? "-inf" : "inf"}).`;
+    };
+    if (typeof lower !== "number" || Number.isNaN(lower)) throw new MathInputError(boundMsg(labels?.lower, "lower"));
+    if (typeof upper !== "number" || Number.isNaN(upper)) throw new MathInputError(boundMsg(labels?.upper, "upper"));
 
     const node = parse(expression);
     assertOnlyKnownSymbols(node, [variable]);
@@ -1256,6 +1243,7 @@ export function solveDoubleIntegral(
 ): MathResult {
   try {
     expression = prepareInput(expression);
+    { const m1 = checkVariableName(varX, "first variable"), m2 = checkVariableName(varY, "second variable"); if (m1 || m2) throw new MathInputError((m1 ?? m2)!); }
     varX = cleanVariable(varX, "x");
     varY = cleanVariable(varY, "y");
     assertNonEmptyExpression(expression);
@@ -1270,9 +1258,13 @@ export function solveDoubleIntegral(
     }
 
     const asNumber = (b: number | string, label: string): number => {
-      const v = typeof b === "number" ? b : parseNumericInput(b);
-      if (Number.isNaN(v)) throw new MathInputError(`Please enter a valid ${label} (a number, or something like pi/2, 1/3, inf).`);
-      return v;
+      if (typeof b === "string") {
+        const r = checkNumberField(b, label, (t) => _mathjsEvaluate(cleanExpression(t)), { allowInfinity: true });
+        if (r.error) throw new MathInputError(r.error);
+        return r.value!;
+      }
+      if (Number.isNaN(b)) throw new MathInputError(`Please enter a valid ${label} (a number, or something like pi/2, 1/3, inf).`);
+      return b;
     };
     const xLo = asNumber(xLower, `${varX} lower bound`);
     const xHi = asNumber(xUpper, `${varX} upper bound`);
@@ -1284,6 +1276,8 @@ export function solveDoubleIntegral(
       }
       const constant = parseNumericInput(b);
       if (!Number.isNaN(constant)) return { kind: "const", value: constant, label: b };
+      const typedBound = checkExpression(b, { what: `the ${label}` });
+      if (typedBound) throw new MathInputError(`The ${label}: ${typedBound}`);
       const cleaned = cleanExpression(b);
       if (!cleaned) throw new MathInputError(`Please enter a valid ${label}.`);
       let n: MathNode;
@@ -4047,6 +4041,7 @@ export function solveIndefiniteIntegral(
 ): MathResult {
   try {
     expression = prepareInput(expression);
+    { const vm = checkVariableName(variable); if (vm) throw new MathInputError(vm); }
     variable = cleanVariable(variable);
     assertNonEmptyExpression(expression);
     const steps: string[] = [];
@@ -4147,6 +4142,7 @@ export function solvePartialDerivative(
 ): MathResult {
   try {
     expression = prepareInput(expression);
+    { const vm = checkVariableName(variable); if (vm) throw new MathInputError(vm); }
     variable = cleanVariable(variable);
     allVars = [...new Set([...allVars.map((v) => cleanVariable(v)), ...(sequence ?? []).map((v) => cleanVariable(v))])];
     assertNonEmptyExpression(expression);
@@ -4334,8 +4330,13 @@ export function parseEquationToZeroForm(
   equation: string
 ): { vars: string[]; expr: string } | { error: string } {
   const parts = equation.split("=");
-  if (parts.length !== 2) {
-    return { error: "Use format: expression = expression, e.g. x^2 + y^2 + z^2 = 25" };
+  if (!equation.trim()) return { error: "Type an equation first, for example x^2 + y^2 + z^2 = 25." };
+  if (parts.length < 2) return { error: "This needs an “=” sign — write it like x^2 + y^2 + z^2 = 25." };
+  if (parts.length > 2) return { error: `Only one “=” sign is allowed — you typed ${parts.length - 1}.` };
+  if (!parts[0].trim() || !parts[1].trim()) return { error: `The ${!parts[0].trim() ? "left" : "right"} side of the “=” is empty — write something on both sides (e.g. x^2 + y^2 + z^2 = 25).` };
+  for (const [i, side] of parts.entries()) {
+    const m = checkExpression(side, { what: i === 0 ? "the left side" : "the right side" });
+    if (m) return { error: `${i === 0 ? "Left" : "Right"} side: ${m}` };
   }
   const expr = `(${parts[0].trim()}) - (${parts[1].trim()})`;
   const vars = extractVariables(expr);

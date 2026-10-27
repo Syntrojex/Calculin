@@ -15,6 +15,7 @@
 import { parse, type MathNode } from "mathjs";
 import { cleanExpression } from "./expression-clean";
 import { realParse } from "./real-parse";
+import { checkExpression } from "./input-check";
 
 export interface Pt { x: number; y: number }
 export interface CurveView { x0: number; x1: number; y0: number; y1: number; plotW: number; plotH: number }
@@ -88,6 +89,14 @@ export function classifyPlaneInput(raw: string): PlaneSpec {
   const s = tidy(raw);
   if (!s) return { kind: "explicit", label: "", error: "empty" };
   const bad = (msg: string): PlaneSpec => ({ kind: "explicit", label: s, error: msg });
+  // look at every comma / "=" / "<" separated piece on its own, so the message can say which part is broken
+  const pieces = s.split(/(?:<=|>=|[<>=]|,|;)/).map((t) => t.trim());
+  if (pieces.every((t) => t === "")) return bad("Type a function, equation or curve — for example y = x^2, x^2 + y^2 = 25 or r = 1 + cos(theta).");
+  const whole = checkExpression(s, { allowComma: true, allowRelation: true });
+  if (whole && !/ends with “[=,;<>]”/.test(whole)) return bad(whole);
+  if (/[=<>]\s*$/.test(s)) return bad("The right side of the sign is empty — write something after it (for example y = x^2).");
+  if (/^\s*[=<>]/.test(s)) return bad("The left side of the sign is empty — write something before it (for example y = x^2).");
+  if (/[,;]\s*$|^\s*[,;]/.test(s)) return bad("A comma has nothing before or after it. A parametric curve needs two parts: (cos(t), sin(t)).");
 
   // ── inequality ──
   const ineq = s.match(/^(.*?)(<=|>=|<|>)(.*)$/);

@@ -10,6 +10,7 @@
 import { evaluate as mjEvaluate, parse as mjParse, type MathNode } from "mathjs";
 import { cleanExpression, cleanVariable, findUnknownFunctionNames } from "./expression-clean";
 import { realParse } from "./real-parse";
+import { checkExpression } from "./input-check";
 
 export type NumFn = (x: number) => number;
 
@@ -123,6 +124,7 @@ function syntaxProblem(raw: string): string | null {
 
 /** null if the string is a readable expression whose only free symbol(s) are `allowed` (+ constants). */
 export function explainBadExpression(raw: string, allowed: string[], what = "graph"): { node: MathNode | null; message: string | null; expr: string } {
+  { const typed = checkExpression(raw, { what: "a function" }); if (typed) return { node: null, message: typed, expr: "" }; }
   const early = syntaxProblem(raw);
   if (early) return { node: null, message: early, expr: raw };
   const unknownRaw = findUnknownFunctionNames(raw);

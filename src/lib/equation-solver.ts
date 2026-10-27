@@ -18,6 +18,7 @@ import { parse, evaluate, type MathNode } from "mathjs";
 import { cleanExpression } from "./expression-clean";
 import { polyFromNode, rationalFromNode, polyToString } from "./math-solver";
 import { exprToLatex } from "./latex";
+import { checkExpression } from "./input-check";
 
 export interface EqResult {
   roots: string[];
@@ -494,6 +495,24 @@ function prepSide(raw: string): string {
 
 function fmtSet(v: number, fmt: Fmt): string { return fmt(v); }
 
+/** Look at the typed text of ONE equation and name the first thing that is wrong with either side (null = fine). */
+export function checkEquationText(input: string, o: { requireEquals?: boolean } = {}): string | null {
+  const s = tidy(input);
+  if (!s) return "Type an equation first, for example x^2 - 5x + 6 = 0.";
+  const sides = s.split("=");
+  if (sides.length > 2) return "Only one “=” sign is allowed in a single equation — you typed " + (sides.length - 1) + ".";
+  if (sides.length === 1) {
+    if (o.requireEquals) return "This needs an “=” sign — write it like 2x + 3 = 7.";
+    return checkExpression(sides[0], { what: "an equation" });
+  }
+  if (!sides[0].trim() || !sides[1].trim()) return `The ${!sides[0].trim() ? "left" : "right"} side of the “=” is empty — write something on both sides (e.g. 2x + 3 = 7).`;
+  const L = checkExpression(sides[0], { what: "the left side" });
+  if (L) return `Left side: ${L}`;
+  const R = checkExpression(sides[1], { what: "the right side" });
+  if (R) return `Right side: ${R}`;
+  return null;
+}
+
 // ──────────────────────────── single equation ────────────────────────────
 
 function dedupeRoots(vals: number[], tol = 1e-8): number[] {
@@ -564,8 +583,9 @@ export function solveEquation(input: string, fmt: Fmt, forcedVar?: string): EqRe
   try {
     const s = tidy(input);
     if (!s) return { roots: [], steps: [], error: "Type an equation first, for example x^2 - 5x + 6 = 0." };
+    const typed = checkEquationText(s);
+    if (typed) return { roots: [], steps: [], error: typed };
     const sides = s.split("=");
-    if (sides.length > 2) return { roots: [], steps: [], error: "Only one \"=\" sign is allowed in a single equation." };
     const Ls = prepSide(sides[0]);
     const Rs = sides.length === 2 ? prepSide(sides[1]) : "0";
     if (!Ls || !Rs) return { roots: [], steps: [], error: "Both sides of the equation need something on them (e.g. 2x + 3 = 7)." };
@@ -585,6 +605,11 @@ export function solveEquation(input: string, fmt: Fmt, forcedVar?: string): EqRe
     const graphExpr = `(${Ls}) - (${Rs})`;
 
     if (syms.length === 0) {
+      for (const [side, txt] of [["left", Ls], ["right", Rs]] as const) {
+        let v: unknown;
+        try { v = evaluate(txt); } catch { v = undefined; }
+        if (typeof v !== "number" || !Number.isFinite(v)) return { roots: [], steps, error: `The ${side} side (“${sides[side === "left" ? 0 : 1].trim()}”) isn't a real number (for example the square root or log of a negative number), so the equation can't be checked.` };
+      }
       const val = evaluate(graphExpr) as number;
       if (typeof val === "number" && Math.abs(val) < 1e-9) {
         steps.push(`##Check\n$$${givenTex}$$ is always true — there is no unknown.`);
@@ -685,6 +710,9 @@ export function solveInequality(input: string, fmt: Fmt): EqResult {
     if (!m) return { roots: [], steps: [], error: "No inequality sign found." };
     const [, lhsRaw, op, rhsRaw] = m;
     if (/[<>]/.test(rhsRaw.replace(/^=/, ""))) return { roots: [], steps: [], error: "Only one inequality sign is supported (a < b), not chained ones like a < b < c." };
+    if (!lhsRaw.trim() || !rhsRaw.trim()) return { roots: [], steps: [], error: `The ${!lhsRaw.trim() ? "left" : "right"} side of “${op}” is empty — write something on both sides (e.g. x^2 - 4 ${op} 0).` };
+    const lc = checkExpression(lhsRaw, { what: "the left side" }); if (lc) return { roots: [], steps: [], error: `Left side: ${lc}` };
+    const rc = checkExpression(rhsRaw, { what: "the right side" }); if (rc) return { roots: [], steps: [], error: `Right side: ${rc}` };
     const Ls = prepSide(lhsRaw), Rs = prepSide(rhsRaw);
     if (!Ls || !Rs) return { roots: [], steps: [], error: "Both sides of the inequality need something on them." };
     const L = parse(Ls), R = parse(Rs);
@@ -806,7 +834,9 @@ function numToFrac(x: number): Frac | null {
 
 export function solveSystem(parts: string[], fmt: Fmt): EqResult {
   try {
-    const eqs = parts.map((p) => {
+    const eqs = parts.map((p, i) => {
+      const bad = checkEquationText(p, { requireEquals: true });
+      if (bad) throw new Error(`Equation ${i + 1} (“${p.trim()}”): ${bad}`);
       const t = tidy(p).split("=");
       if (t.length !== 2) throw new Error(`"${p}" needs exactly one "=" sign.`);
       return { L: prepSide(t[0]), R: prepSide(t[1]) };

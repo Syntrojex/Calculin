@@ -12,6 +12,8 @@
  */
 import { derivative, evaluate, parse as mjParse, simplify, type MathNode } from "mathjs";
 import { cleanExpression, cleanVariable, parseNumericInput, findUnknownFunctionNames } from "./expression-clean";
+import { checkExpression, checkNumberField, checkVariableName } from "./input-check";
+import { evaluate as mjEvaluateNum } from "mathjs";
 import { exprToLatex } from "./latex";
 import { recognizeConstant } from "./numeric-integrate";
 import { polyDeg, polyFromNode } from "./math-solver";
@@ -163,6 +165,17 @@ export function solveLimit(
   fmt: (n: number) => string,
 ): LimitResult {
   try {
+    const typed = checkExpression(exprIn, { what: "a function" });
+    if (typed) return { value: "", steps: [], error: typed };
+    if (!/[A-Za-z]/.test(exprIn.replace(/\b(pi|e|sin|cos|tan|cot|sec|csc|asin|acos|atan|sinh|cosh|tanh|ln|log|log2|log10|exp|sqrt|cbrt|abs|floor|ceil|round|sign)\b/gi, ""))) {
+      let cv: unknown;
+      try { cv = mjEvaluateNum(cleanExpression(exprIn)); } catch { cv = undefined; }
+      if (cv !== undefined && (typeof cv !== "number" || Number.isNaN(cv))) return { value: "", steps: [], error: `“${exprIn.trim()}” isn't a real number (for example the square root or log of a negative number) — there is no limit to find.` };
+    }
+    const vErr = checkVariableName(variableIn);
+    if (vErr) return { value: "", steps: [], error: vErr };
+    const pt = checkNumberField(approachingIn, "the value the variable approaches", (t) => mjEvaluateNum(cleanExpression(t)), { allowInfinity: true });
+    if (pt.error) return { value: "", steps: [], error: pt.error };
     const unknownFns = findUnknownFunctionNames(exprIn);
     if (unknownFns.length) return { value: "", steps: [], error: `Unknown function${unknownFns.length > 1 ? "s" : ""} "${unknownFns.join(", ")}" — supported ones include sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, ln, log, sqrt, abs, exp, floor, ceil.` };
     const expr = cleanExpression(exprIn);

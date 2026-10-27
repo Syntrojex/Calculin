@@ -12,6 +12,7 @@
 import { parse, type MathNode } from "mathjs";
 import { cleanExpression } from "./expression-clean";
 import { realParse } from "./real-parse";
+import { checkExpression } from "./input-check";
 
 export type Fn1 = (t: number) => number;
 export type Fn2 = (u: number, v: number) => number;
@@ -84,6 +85,9 @@ export function classify3D(raw: string, R = 5): Param3DSpec {
   const s = raw.replace(/[−–—]/g, "-").replace(/\s+/g, " ").trim();
   const fail = (error: string): Param3DSpec => ({ kind: "curve", label: s, params: [], defaults: [], fx: "", fy: "", fz: "", error });
   if (!s) return fail("Type a shape first, for example (cos(t), sin(t), t).");
+  const whole = checkExpression(s, { allowComma: true, allowRelation: false });
+  if (whole) return fail(whole);
+  if (/,\s*$|^\s*,|,\s*,/.test(s)) return fail("A comma has nothing before or after it — a 3D curve needs three parts: (x(t), y(t), z(t)).");
 
   // ── (X, Y, Z) ──
   const parts = splitTop(stripParens(s));
