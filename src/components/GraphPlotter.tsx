@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { extractVariables } from "@/lib/math-solver";
 import { FunctionGraph, type PlotMarker, type PlotCurve } from "./FunctionGraph";
 import { findHoles } from "@/lib/graph-holes";
+import { checkNumberField } from "@/lib/input-check";
 import { classifyPlaneInput, compile1, compile2, buildImplicit, buildParametric, buildPolar, autoPolarRange, boundsOf, inequalityHolds, type PlaneSpec, type Pt } from "@/lib/plane-curves";
 import { evaluate as mjEvaluate } from "mathjs";
 import { makeEvaluator, findIntersections, validate2D, validateSurface, validateImplicitSurface } from "@/lib/graph-utils";
@@ -40,9 +41,20 @@ function parseNum(s: string | undefined): number | null {
   try { const v = mjEvaluate(cleanExpression(s)); return typeof v === "number" && Number.isFinite(v) ? v : null; } catch { return null; }
 }
 
+/** Optional range field: blank = automatic; anything typed must be a real number. Returns an error message or null. */
+function rangeFieldProblem(raw: string | undefined, label: string): string | null {
+  if (!raw || !raw.trim()) return null;
+  return checkNumberField(raw, label, (t) => mjEvaluate(cleanExpression(t))).error ?? null;
+}
+
 /** Turn a classified non-explicit spec into something FunctionGraph can draw. */
 function makeCurve(spec: PlaneSpec, id: number, color: string, tLo?: string, tHi?: string): { curve?: PlotCurve; error?: string } {
   const cid = `${id}:${spec.kind}:${spec.label}:${tLo ?? ""}:${tHi ?? ""}`;
+  if (spec.kind === "parametric" || spec.kind === "polar") {
+    const nm = spec.kind === "polar" ? "θ" : spec.param ?? "t";
+    const pLo = rangeFieldProblem(tLo, `the ${nm} range minimum`), pHi = rangeFieldProblem(tHi, `the ${nm} range maximum`);
+    if (pLo || pHi) return { error: (pLo ?? pHi)! };
+  }
   if (spec.kind === "implicit" || spec.kind === "inequality") {
     const F = compile2(spec.implicit!, ["x", "y"]);
     if (!F) return { error: "Couldn't read this equation." };
@@ -142,6 +154,14 @@ export function GraphPlotter() {
   const [is3dFullscreen, setIs3dFullscreen] = useState(false);
   const [range3dInput, setRange3dInput] = useState("");
   const range3d = (() => { const v = parseNum(range3dInput); return v !== null && v >= 0.5 && v <= 500 ? v : settings.defaultGraphRange; })();
+  const range3dProblem = (() => {
+    if (!range3dInput.trim()) return null;
+    const bad = rangeFieldProblem(range3dInput, "the range");
+    if (bad) return `${bad} Using ±${settings.defaultGraphRange} instead.`;
+    const v = parseNum(range3dInput);
+    if (v === null || v < 0.5 || v > 500) return `The range must be between 0.5 and 500 — using ±${settings.defaultGraphRange} instead.`;
+    return null;
+  })();
   const chart3dRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -195,6 +215,10 @@ export function GraphPlotter() {
     const spec = classify3D(raw, settings.defaultGraphRange);
     if (spec.error) { setParamError(spec.error); setParamShape(null); return; }
     const rr = rangesIn ?? paramRanges;
+    for (const d of spec.defaults) {
+      const e1 = rangeFieldProblem(rr[d.name]?.lo, `the ${d.name} range minimum`), e2 = rangeFieldProblem(rr[d.name]?.hi, `the ${d.name} range maximum`);
+      if (e1 || e2) { setParamError((e1 ?? e2)!); setParamShape(null); return; }
+    }
     const ranges = spec.defaults.map((d) => {
       const lo = parseNum(rr[d.name]?.lo) ?? d.lo, hi = parseNum(rr[d.name]?.hi) ?? d.hi;
       return (lo <= hi ? [lo, hi] : [hi, lo]) as [number, number];
@@ -597,6 +621,7 @@ export function GraphPlotter() {
                     <Input value={range3dInput} onChange={(e) => setRange3dInput(e.target.value)} placeholder={String(settings.defaultGraphRange)} className="h-7 w-24 text-xs font-mono" />
                     <span className="text-[11px] text-muted-foreground">blank = default</span>
                   </div>
+                  {range3dProblem && <p className="text-xs text-destructive leading-snug">{range3dProblem}</p>}
                   <Button onClick={() => plotSurface(expr3d)} className="w-full gap-2">
                     <Box className="h-4 w-4" /> Plot 3D Surface
                   </Button>
@@ -636,6 +661,7 @@ export function GraphPlotter() {
                     <Input value={range3dInput} onChange={(e) => setRange3dInput(e.target.value)} placeholder={String(settings.defaultGraphRange)} className="h-7 w-24 text-xs font-mono" />
                     <span className="text-[11px] text-muted-foreground">blank = default</span>
                   </div>
+                  {range3dProblem && <p className="text-xs text-destructive leading-snug">{range3dProblem}</p>}
                   <Button onClick={() => plotImplicit(implicitEq)} className="w-full gap-2">
                     <Sigma className="h-4 w-4" /> Plot Implicit Surface
                   </Button>

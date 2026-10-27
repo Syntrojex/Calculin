@@ -16,7 +16,7 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
 import { exprToLatex } from "@/lib/latex";
-import { solveAny, solveEquation } from "@/lib/equation-solver";
+import { solveAny, solveEquation, checkEquationText } from "@/lib/equation-solver";
 
 export interface SolveResult {
   roots: string[];
@@ -31,8 +31,9 @@ export interface SolveResult {
 export function solveLinear(equation: string, fmt: (n: number) => string): SolveResult {
   try {
     const steps: string[] = [];
+    const bad = checkEquationText(equation, { requireEquals: true });
+    if (bad) return { roots: [], steps: [], error: bad };
     const parts = equation.split("=");
-    if (parts.length !== 2) return { roots: [], steps: [], error: "Use format: ax + b = c" };
 
     steps.push(`##Given\n$$${exprToLatex(parts[0].trim())} = ${exprToLatex(parts[1].trim())}$$`);
 
@@ -59,7 +60,9 @@ export function solveLinear(equation: string, fmt: (n: number) => string): Solve
 
     return { roots: [root.toString()], steps, numericRoots: [root] };
   } catch (e: unknown) {
-    return { roots: [], steps: [], error: e instanceof Error ? e.message : "Invalid equation" };
+    // another letter than x (2y + 3 = 7), or something mathjs rejects: let the general solver explain or solve it
+    const g = solveEquation(equation, fmt);
+    return g.error || g.roots.length ? g : { roots: [], steps: [], error: e instanceof Error ? e.message : "Invalid equation" };
   }
 }
 
@@ -97,8 +100,9 @@ export function solveQuadratic(a: number, b: number, c: number, fmt: (n: number)
 // Extracts a, b, c for any quadratic-in-x equation (terms can be on both sides,
 // e.g. "2x^2 + 3x = x^2 - 5") using finite differences — no manual coefficient entry needed.
 export function solveQuadraticFromEquation(equation: string, fmt: (n: number) => string): SolveResult {
+  const bad = checkEquationText(equation, { requireEquals: true });
+  if (bad) return { roots: [], steps: [], error: bad };
   const parts = equation.split("=");
-  if (parts.length !== 2) return { roots: [], steps: [], error: "Use format: ax² + bx + c = 0 (any quadratic equation)" };
   const general = (note: string) => { const g = solveEquation(equation, fmt); return { ...g, steps: [`##Note\n${note}`, ...g.steps] }; };
 
   const expr = `(${parts[0].trim()}) - (${parts[1].trim()})`;
@@ -114,7 +118,8 @@ export function solveQuadraticFromEquation(equation: string, fmt: (n: number) =>
     fm1 = evaluate(expr, { x: -1 }) as number;
     f2 = evaluate(expr, { x: 2 }) as number;
   } catch (e: unknown) {
-    return { roots: [], steps: [], error: e instanceof Error ? e.message : "Invalid equation" };
+    const g = solveEquation(equation, fmt);
+    return g.error || g.roots.length ? g : { roots: [], steps: [], error: e instanceof Error ? e.message : "Invalid equation" };
   }
   if (![f0, f1, fm1, f2].every((v) => typeof v === "number" && Number.isFinite(v))) return general("This isn't a plain quadratic, so the general solver was used.");
 

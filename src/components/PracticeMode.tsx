@@ -8,6 +8,7 @@ import { MathText } from "./MathText";
 import { MathTex } from "./MathTex";
 import { StepsReveal } from "./StepsReveal";
 import { useSettings } from "@/contexts/SettingsContext";
+import { checkExpression } from "@/lib/input-check";
 import { GraduationCap, CheckCircle2, XCircle, RefreshCw, Eye, Trophy } from "lucide-react";
 import {
   generateProblem, CATEGORY_LABELS, ALL_CATEGORIES,
@@ -56,15 +57,27 @@ export function PracticeMode() {
     setProblem(generateProblem(cat, diff));
     setAnswer("");
     setFeedback(null);
+    setAnswerProblem(null);
     setShowAnswer(false);
     setProblemKey((k) => k + 1);
   }, []);
 
+  const [answerProblem, setAnswerProblem] = useState<string | null>(null);
+
   const checkAnswer = () => {
     if (!answer.trim()) {
+      setAnswerProblem(null);
       setFeedback("empty");
       return;
     }
+    // a malformed answer is a typing slip, not a wrong answer — say what's wrong and don't count it against the score
+    const typed = checkExpression(answer, { allowComma: true, allowRelation: true, what: "your answer" });
+    if (typed) {
+      setAnswerProblem(typed);
+      setFeedback(null);
+      return;
+    }
+    setAnswerProblem(null);
     const ok = problem.check(answer);
     setFeedback(ok ? "correct" : "incorrect");
     setScore((s) => ({ correct: s.correct + (ok ? 1 : 0), total: s.total + 1 }));
@@ -167,6 +180,13 @@ export function PracticeMode() {
                   <p className="text-[11px] text-muted-foreground">Expected: {problem.answerFormat}</p>
                 )}
               </div>
+
+              {answerProblem && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300">
+                  <XCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm font-medium">Your answer isn't a valid expression yet — {answerProblem[0].toLowerCase() + answerProblem.slice(1)} (This wasn't counted as an attempt.)</span>
+                </div>
+              )}
 
               <AnimatePresence>
                 {feedback && (

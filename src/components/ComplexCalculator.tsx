@@ -1,5 +1,6 @@
 import { evaluate as mathEvaluate } from "mathjs";
 import { cleanExpression } from "@/lib/expression-clean";
+import { checkNumberField } from "@/lib/input-check";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,15 +85,13 @@ function power(a: Complex, n: number): Complex {
   return { re: rn * Math.cos(n * theta), im: rn * Math.sin(n * theta) };
 }
 
-function parseComplex(re: string, im: string): Complex {
-  const val = (raw: string, label: string): number => {
-    const t = raw.trim();
-    if (t === "") return 0;
-    try {
-      const v = mathEvaluate(cleanExpression(t));
-      if (typeof v === "number" && Number.isFinite(v)) return v;
-    } catch { /* fall through */ }
-    throw new Error(`"${raw}" isn't a valid number for the ${label} part — use a number or something like 1/2, sqrt(2), pi.`);
+function parseComplex(re: string, im: string, name = "z₁"): Complex {
+  if (!re.trim() && !im.trim()) throw new Error(`${name} is empty — type its real part and/or its imaginary part (for a real number leave the imaginary part blank).`);
+  const val = (raw: string, part: string): number => {
+    if (!raw.trim()) return 0;
+    const r = checkNumberField(raw, `the ${part} part of ${name}`, (t) => mathEvaluate(cleanExpression(t)));
+    if (r.error) throw new Error(r.error);
+    return r.value!;
   };
   return { re: val(re, "real"), im: val(im, "imaginary") };
 }
@@ -263,12 +262,13 @@ export function ComplexCalculator() {
   const calculate = () => {
     try {
       setError(null);
-      const za = parseComplex(a1, b1);
-      const zb = parseComplex(a2, b2);
+      const za = parseComplex(a1, b1, "z₁");
+      const zb = currentOp.needsB ? parseComplex(a2, b2, "z₂") : { re: 0, im: 0 };
       let nVal = 2;
       if (currentOp.needsN) {
-        try { const t = mathEvaluate(cleanExpression(n.trim())); if (typeof t === "number" && Number.isFinite(t)) nVal = t; else throw new Error(); }
-        catch { throw new Error(`"${n}" isn't a valid power — use a number like 3, -2 or 1/2.`); }
+        const r = checkNumberField(n, op === "nroots" ? "the root number n" : "the power n", (t) => mathEvaluate(cleanExpression(t)));
+        if (r.error) throw new Error(r.error);
+        nVal = r.value!;
       }
       setResult(compute(op, za, zb, nVal, settings));
     } catch (e: unknown) {

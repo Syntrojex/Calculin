@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Grid3X3 } from "lucide-react";
 import { multiply, det as mathDet, inv as mathInv, add, subtract, transpose, evaluate, Matrix } from "mathjs";
 import { cleanExpression } from "@/lib/expression-clean";
+import { checkExpression } from "@/lib/input-check";
 import { useSettings, type Settings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
 import { StepsReveal } from "./StepsReveal";
@@ -58,19 +59,34 @@ function resizeGrid(grid: string[][], rows: number, cols: number): string[][] {
   return out;
 }
 
-function parseCell(raw: string, label: string): number {
+/** One cell / entry → number, or an Error naming exactly which cell and what is wrong. */
+function parseCell(raw: string, label: string, r?: number, c?: number): number {
+  const where = r === undefined ? label : `${label}, row ${r + 1}, column ${(c ?? 0) + 1}`;
   const t = (raw ?? "").trim();
-  if (t !== "") {
-    try {
-      const v = evaluate(cleanExpression(t));
-      if (typeof v === "number" && Number.isFinite(v)) return v;
-    } catch { /* fall through */ }
-  }
-  throw new Error(`${label} has an empty or invalid cell ("${raw}") — every cell needs a number (fractions like 1/2, sqrt(2) and pi are fine).`);
+  if (!t) throw new Error(`${where} is empty — type a number there (use 0 if you mean zero).`);
+  const typed = checkExpression(t, { what: "a number" });
+  if (typed) throw new Error(`${where}: ${typed}`);
+  let v: unknown;
+  try { v = evaluate(cleanExpression(t)); } catch { v = undefined; }
+  if (typeof v !== "number") throw new Error(`${where}: “${t}” isn't a number${/[A-Za-z]/.test(t.replace(/\b(pi|e|sqrt|sin|cos|tan|ln|log|abs|exp)\b/gi, "")) ? " — matrices here hold numbers, not letters/variables" : ""}. Use digits like 3 or -2.5, a fraction like 1/2, or sqrt(2), pi.`);
+  if (!Number.isFinite(v)) throw new Error(`${where}: “${t}” is not a finite number (for example 0/0 or something too large).`);
+  return v;
 }
 
 function parseGrid(grid: string[][], label: string): number[][] {
-  return grid.map((row) => row.map((v) => parseCell(v, label)));
+  return grid.map((row, r) => row.map((v, c) => parseCell(v, label, r, c)));
+}
+
+/** The k / n field: must be filled in and be a real number. */
+function parseScalarField(raw: string, label: string): number {
+  const t = (raw ?? "").trim();
+  if (!t) throw new Error(`Please enter ${label} (for example 2, -1 or 1/2).`);
+  const typed = checkExpression(t, { what: label });
+  if (typed) throw new Error(`${label[0].toUpperCase()}${label.slice(1)}: ${typed}`);
+  let v: unknown;
+  try { v = evaluate(cleanExpression(t)); } catch { v = undefined; }
+  if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`“${t}” isn't a valid number for ${label} — use digits like 3, -2 or a fraction 1/2 (letters like x aren't allowed here).`);
+  return v;
 }
 
 function formatMatrix(m: number[][] | Matrix): string {
@@ -400,14 +416,12 @@ export function MatrixCalculator() {
       if (op === "adjugate") { const r = adjugate(a); setSteps(r.steps); setResult(formatMatrix(r.matrix!)); setResultMatrix(r.matrix!); return; }
       if (op === "eigen") { const r = eigen(a, fmtN); setSteps(r.steps); setResult(r.text); return; }
       if (op === "scalar" || op === "power") {
-        let k: number;
-        try { k = Number(evaluate(cleanExpression(scalarIn.trim() || "0"))); } catch { k = NaN; }
-        if (!Number.isFinite(k)) throw new Error(`"${scalarIn}" isn't a valid ${op === "scalar" ? "scalar k" : "power n"} — use a number like 3, -2 or 1/2.`);
+        const k = parseScalarField(scalarIn, op === "scalar" ? "the scalar k" : "the power n");
         const r = op === "scalar" ? scalarMultiple(a, k) : matrixPower(a, k);
         setSteps(r.steps); setResult(formatMatrix(r.matrix!)); setResultMatrix(r.matrix!); return;
       }
       if (op === "solve") {
-        const bv = vecB.map((v) => parseCell(v, "Vector b"));
+        const bv = vecB.map((v, i) => parseCell(v, "Vector b", i, 0));
         if (bv.length !== a.length) throw new Error(`Vector b must have ${a.length} entries to match A's ${a.length} rows.`);
         const r = solveSystemGeneral(a, bv, fmtN);
         setSteps(r.steps); setResult(r.text); return;
@@ -461,7 +475,7 @@ export function MatrixCalculator() {
       if (op === "cramer") {
         if (rowsA !== colsA) throw new Error("Cramer's rule needs a square coefficient matrix A.");
         const n = a.length;
-        const bv = vecB.map((v) => parseCell(v, "Vector b"));
+        const bv = vecB.map((v, i) => parseCell(v, "Vector b", i, 0));
         if (bv.length !== n) throw new Error(`Vector b must have ${n} entries to match A's ${n} rows.`);
 
         const D = mathDet(a) as number;

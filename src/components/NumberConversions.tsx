@@ -30,6 +30,30 @@ export function isValidForBase(value: string, base: number): boolean {
   return true;
 }
 
+const BASE_NAMES: Record<number, string> = { 2: "binary", 8: "octal", 10: "decimal", 16: "hexadecimal" };
+
+/** Specific reason a typed number doesn't fit the chosen base (null = it fits). */
+export function explainBaseError(value: string, base: number): string | null {
+  const raw = (value ?? "");
+  const t = raw.trim();
+  if (!t) return "Please type a number to convert.";
+  if (/\s/.test(t)) return `“${t}” has a space in it — type the digits together, with no spaces.`;
+  const body = t.startsWith("-") ? t.slice(1) : t;
+  if (!body) return "A lone “-” isn't a number — type the digits after it.";
+  if (body.includes("-") || body.includes("+")) return `“${t}” has a “${body.includes("-") ? "-" : "+"}” in the middle — a sign can only come at the very start.`;
+  if ((body.match(/\./g) ?? []).length > 1) return `“${t}” has more than one point “.” — a number can have only one.`;
+  if (body === ".") return "A lone point “.” isn't a number — type digits (like 0.1 or 1.01).";
+  const name = BASE_NAMES[base] ? `${BASE_NAMES[base]} (base ${base})` : `base ${base}`;
+  const allowed = base <= 10 ? `0–${base - 1}` : `0–9 and A–${DIGITS[base - 1]}`;
+  for (const ch of body.toUpperCase()) {
+    if (ch === ".") continue;
+    const idx = DIGITS.indexOf(ch);
+    if (idx === -1) return `“${ch}” isn't a digit — ${name} uses only ${allowed}.`;
+    if (idx >= base) return `The digit “${ch}” isn't allowed in ${name} — it uses only ${allowed}.`;
+  }
+  return null;
+}
+
 /** Integer part kept as a string (BigInt later, so long binaries don't lose precision) + fractional digits. */
 function splitParts(value: string): { neg: boolean; int: string; frac: string } {
   let v = value.trim().toUpperCase();
@@ -114,8 +138,8 @@ function performBaseArithmetic(aStr: string, bStr: string, baseA: number, baseB:
     };
   }
   const base = baseA;
-  if (!isValidForBase(aStr, base)) return { result: "", steps: [], error: `"${aStr}" has digits invalid for base ${base}` };
-  if (!isValidForBase(bStr, base)) return { result: "", steps: [], error: `"${bStr}" has digits invalid for base ${base}` };
+  const ea = explainBaseError(aStr, base); if (ea) return { result: "", steps: [], error: `First number: ${ea}` };
+  const eb = explainBaseError(bStr, base); if (eb) return { result: "", steps: [], error: `Second number: ${eb}` };
 
   const aDec = toDecimal(aStr, base);
   const bDec = toDecimal(bStr, base);
@@ -178,8 +202,9 @@ export function NumberConversions() {
     const fb = parseInt(fromBase);
     const tb = parseInt(toBase);
 
-    if (!isValidForBase(value, fb)) {
-      setError(`"${value}" has digits invalid for base ${fb}`);
+    const why = explainBaseError(value, fb);
+    if (why) {
+      setError(why);
       setAllResults(null);
       setCustom(null);
       return;

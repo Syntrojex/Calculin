@@ -12,7 +12,9 @@ import { StepsReveal } from "./StepsReveal";
 import { VectorGraph2D } from "./VectorGraph2D";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAutoRun } from "@/hooks/useAutoRun";
-import { parseNumericInput } from "@/lib/expression-clean";
+import { parseNumericInput, cleanExpression } from "@/lib/expression-clean";
+import { checkNumberField } from "@/lib/input-check";
+import { evaluate as mathEvaluate } from "mathjs";
 import { toFractionLatex } from "@/lib/number-format";
 import * as V from "@/lib/vector-solver";
 import { buildScene, COLORS } from "@/lib/vector-scene";
@@ -54,6 +56,18 @@ function parseComponent(s: string): number {
   return parseNumericInput(s.trim() === "" ? "0" : s);
 }
 
+/** First problem in the vector fields, named by vector and axis (null = all fine). Empty fields are errors — never a silent 0. */
+function firstComponentError(comps: Comp[], count: number, is3D: boolean, names: readonly string[]): string | null {
+  for (let i = 0; i < count; i++) {
+    for (const axis of (is3D ? ["x", "y", "z"] : ["x", "y"]) as (keyof Comp)[]) {
+      const raw = comps[i][axis];
+      const r = checkNumberField(raw, `the ${axis} component of vector ${names[i] ?? i + 1}`, (t) => mathEvaluate(cleanExpression(t)));
+      if (r.error) return r.error.replace(/^Please enter/, "Please type a number for").replace(/\.$/, ` (use 0 if it is zero).`);
+    }
+  }
+  return null;
+}
+
 export function VectorCalculator() {
   const settings = useSettings();
   const [is3D, setIs3D] = useState(false);
@@ -85,6 +99,12 @@ export function VectorCalculator() {
   const setComp = (i: number, key: keyof Comp, value: string) => setComps((cs) => cs.map((c, idx) => (idx === i ? { ...c, [key]: value } : c)));
 
   const solve = useCallback(() => {
+    const bad = firstComponentError(comps, count, is3D, names);
+    if (bad) { setResult({ is3D, steps: [], error: bad }); return; }
+    if (op === "scale") {
+      const kr = checkNumberField(k, "the scalar k", (t) => mathEvaluate(cleanExpression(t)));
+      if (kr.error) { setResult({ is3D, steps: [], error: kr.error }); return; }
+    }
     const [u, v, w] = vecs;
     switch (op) {
       case "add": setResult(V.vecSumMany(vecs, is3D)); break;
@@ -105,7 +125,7 @@ export function VectorCalculator() {
       case "dircos": setResult(V.vecDirectionCosines(u, is3D)); break;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [op, JSON.stringify(vecs), kVal, is3D]);
+  }, [op, JSON.stringify(vecs), JSON.stringify(comps.slice(0, count)), count, k, kVal, is3D]);
 
   useAutoRun([op, JSON.stringify(comps.slice(0, count)), count, k, is3D, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);
 

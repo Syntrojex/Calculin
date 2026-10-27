@@ -19,6 +19,8 @@ import { cleanExpression, cleanVariable, parseNumericInput } from "@/lib/express
 import { extractVariables } from "@/lib/math-solver";
 import { solveLimit } from "@/lib/limit-solver";
 import { solveAny, type EqResult } from "@/lib/equation-solver";
+import { checkExpression, checkNumberField } from "@/lib/input-check";
+import { evaluate as mjEval } from "mathjs";
 import { GitBranch, Plus, Trash2, CheckCircle2, XCircle, CircleDot } from "lucide-react";
 
 // ── Data model ────────────────────────────────────────────────────────────────
@@ -331,11 +333,24 @@ export function PiecewiseCalculator() {
   const plotRange = useMemo<[number, number]>(() => [graphRange.lo, graphRange.hi], [graphRange]);
 
   const problemFor = (p: Piece): string | null => {
-    const cleaned = cleanExpression(p.formula);
-    if (p.formula.trim() === "") return null;
-    try { mjParse(cleaned); } catch { return "I couldn't read this formula — check the brackets and operators."; }
+    if (p.formula.trim() === "") return p.op === "otherwise" || p.boundary.trim() !== "" ? "This piece has no formula yet — type f(x) for this case." : null;
+    const typed = checkExpression(p.formula, { what: "the formula" });
+    if (typed) return typed;
+    try { mjParse(cleanExpression(p.formula)); } catch { return "I couldn't read this formula — check the brackets and operators."; }
     return null; // other letters (a, k …) are treated as unknown constants to solve for
   };
+  /** The "a" in the condition (x < a …): needed unless the piece is "otherwise". */
+  const boundaryProblem = (p: Piece, i: number): string | null => {
+    if (p.op === "otherwise") return null;
+    if (p.formula.trim() === "" && p.boundary.trim() === "") return null;
+    const r = checkNumberField(p.boundary, `the number a for piece ${i + 1}`, (t) => mjEval(cleanExpression(t)));
+    return r.error ?? null;
+  };
+  const otherwiseCount = pieces.filter((p) => p.op === "otherwise").length;
+  const pointProblem = (() => {
+    if (!evalPoint.trim()) return null;
+    return checkNumberField(evalPoint, `the value of ${variable} to evaluate at`, (t) => mjEval(cleanExpression(t))).error ?? null;
+  })();
 
   return (
     <div className="space-y-6">
@@ -369,6 +384,8 @@ export function PiecewiseCalculator() {
                     <Label className="text-[11px] text-muted-foreground">Piece {i + 1}: f({variable}) =</Label>
                     <MathInput value={p.formula} onChange={(v) => updatePiece(p.id, { formula: v })} placeholder="e.g. x^2" withKeypad={false} />
                     {problemFor(p) && <p className="text-[11px] text-destructive">{problemFor(p)}</p>}
+                    {boundaryProblem(p, i) && <p className="text-[11px] text-destructive">{boundaryProblem(p, i)}</p>}
+                    {p.op === "otherwise" && otherwiseCount > 1 && <p className="text-[11px] text-destructive">Only one piece can be “otherwise” — change this condition.</p>}
                   </div>
                   <div className="w-32 space-y-1">
                     <Label className="text-[11px] text-muted-foreground">Condition</Label>
@@ -428,6 +445,7 @@ export function PiecewiseCalculator() {
             <div className="flex-1 space-y-1">
               <Label className="text-xs">{variable} =</Label>
               <Input value={evalPoint} onChange={(e) => setEvalPoint(e.target.value)} className="text-center font-mono" />
+              {pointProblem && <p className="text-[11px] text-destructive">{pointProblem}</p>}
             </div>
           </div>
           {evalResult && (

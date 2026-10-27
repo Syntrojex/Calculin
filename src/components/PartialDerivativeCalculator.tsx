@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { solvePartialDerivative, extractVariables, partialNotation } from "@/lib/math-solver";
 import type { MathResult } from "@/lib/math-solver";
 import { cleanExpression, parseNumericInput } from "@/lib/expression-clean";
+import { checkNumberField } from "@/lib/input-check";
 import { formatNumber } from "@/lib/number-format";
 import { PieChart, ArrowRight, Undo2, X } from "lucide-react";
 import { ResultMath } from "./ResultMath";
@@ -171,6 +172,18 @@ export function PartialDerivativeCalculator() {
                   </div>
                 ))}
               </div>
+              {(() => {
+                const filled = detected.filter((v) => (point[v] ?? "").trim() !== "");
+                const problems = filled
+                  .map((v) => checkNumberField(point[v], `the value of ${v}`, (t) => evaluate(cleanExpression(t))).error)
+                  .filter(Boolean) as string[];
+                if (problems.length) return <p className="mt-1.5 text-xs text-destructive">{problems[0]}</p>;
+                if (filled.length > 0 && filled.length < detected.length) {
+                  const missing = detected.filter((v) => (point[v] ?? "").trim() === "");
+                  return <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">Fill in {missing.join(", ")} too — every variable needs a value to evaluate at a point.</p>;
+                }
+                return null;
+              })()}
               {pointComplete && (
                 <div className="mt-2 space-y-1 text-sm font-mono">
                   {gradient.map(({ v, res }) => (
