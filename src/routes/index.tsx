@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, Suspense, lazy } from "react";
+import { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -8,7 +8,7 @@ import {
   Infinity as InfinityIcon, LineChart, Calculator, Grid3X3,
   ArrowRight,
   Zap, GraduationCap, Menu, Binary, BookOpen, Library, ChevronDown,
-  Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart, Move3d,
+  Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart, Move3d, Search,
 } from "lucide-react";
 import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
 import { DEFINITION_TOPICS } from "@/lib/definitions-data";
@@ -162,13 +162,99 @@ function Index() {
   };
 
   const activeCategory = categoryOf(tab);
-  const activeCategoryTools = toolsOf(activeCategory.key);
+
+  // Desktop sidebar only: search filter, Ctrl/Cmd+K to focus it, and which
+  // reference sections are expanded. None of this touches the mobile menu.
+  const [query, setQuery] = useState("");
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const toggleSection = (key: string) =>
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  const q = query.trim().toLowerCase();
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background sm:flex">
+      {/* ── Desktop sidebar (hidden on mobile, which keeps its hamburger menu) ── */}
+      <aside className="hidden sm:flex sticky top-0 h-screen w-64 shrink-0 flex-col border-r border-border/60 bg-sidebar">
+        <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-lg shadow-sm">∫</div>
+          <span className="text-lg font-bold tracking-tight text-foreground">Calculin</span>
+        </div>
+        <div className="px-3 pb-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search tools…"
+              className="w-full rounded-lg border border-border bg-background py-2 pl-8 pr-12 text-sm outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+            />
+            <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Ctrl K</kbd>
+          </div>
+        </div>
+        <nav className="flex-1 overflow-y-auto px-3 pb-4 space-y-4 no-scrollbar">
+          {CATEGORIES.map((cat) => {
+            const all = toolsOf(cat.key);
+            const tools = q ? all.filter((v) => tabByValue(v).label.toLowerCase().includes(q) || cat.label.toLowerCase().includes(q)) : all;
+            if (tools.length === 0) return null;
+            const collapsible = cat.collapsedOnMobile === true && !q;
+            const open = !collapsible || openSections.has(cat.key) || activeCategory.key === cat.key;
+            return (
+              <div key={cat.key}>
+                {collapsible ? (
+                  <button onClick={() => toggleSection(cat.key)} className="mb-1 flex w-full items-center justify-between px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground">
+                    <span className="flex items-center gap-1.5">{cat.icon}{cat.label}</span>
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+                  </button>
+                ) : (
+                  <div className="mb-1 flex items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{cat.icon}{cat.label}</div>
+                )}
+                {open && (
+                  <div className="space-y-0.5">
+                    {tools.map((value) => {
+                      const t = tabByValue(value);
+                      const active = tab === value;
+                      return (
+                        <button
+                          key={value}
+                          onClick={() => setTab(value)}
+                          className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
+                            active ? "bg-primary/10 text-primary" : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                          }`}
+                        >
+                          <span className={`flex w-5 items-center justify-center ${active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}>{t.icon}</span>
+                          <span className="truncate">{t.label}</span>
+                          {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col min-h-screen">
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-lg">
         <div className="mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4">
-          <div className="flex items-center gap-2 lg:gap-6 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
+          <div className="flex items-center gap-2 lg:gap-6 py-3 sm:py-2.5 sm:justify-between">
             <button
               className="sm:hidden mr-1 p-1.5 -ml-1.5 rounded-md hover:bg-muted/60 text-foreground"
               onClick={() => setMobileMenuOpen(true)}
@@ -176,64 +262,25 @@ function Index() {
             >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="flex items-center gap-2 shrink-0 sm:justify-self-start">
+            <div className="flex items-center gap-2 shrink-0 sm:hidden">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-primary-foreground font-bold text-lg shadow-sm">
                 ∫
               </div>
               <h1 className="text-lg font-bold tracking-tight text-foreground">Calculin</h1>
             </div>
 
-            {/* Desktop category row — mobile keeps the hamburger Sheet below instead */}
-            <nav className="hidden sm:flex items-center justify-center gap-1 min-w-0 max-w-full overflow-x-auto no-scrollbar">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.key}
-                  onClick={() => selectCategory(cat.key)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                    activeCategory.key === cat.key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                  }`}
-                >
-                  {cat.icon}
-                  {cat.label}
-                </button>
-              ))}
-            </nav>
+            {/* Desktop breadcrumb (categories now live in the sidebar) */}
+            <div className="hidden sm:flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">{activeCategory.label}</span>
+              <span className="text-muted-foreground/50">/</span>
+              <span className="font-semibold text-foreground">{TABS.find((t) => t.value === tab)?.label}</span>
+            </div>
 
-            <div className="ml-auto sm:ml-0 sm:justify-self-end">
+            <div className="ml-auto sm:ml-0">
               <SettingsPanel />
             </div>
           </div>
 
-          {/* Sub-row: a tinted toolbar strip of pill chips for the active
-              category's specific tools, when it has more than one — bleeds
-              to the header's full width (negative margin) rather than
-              sitting inside the same padding as the row above it, so it
-              reads as its own distinct "toolbar" band. It wraps onto extra
-              lines when the chips don't fit — never scrolls sideways. */}
-          {activeCategoryTools.length > 1 && (
-            <div className="hidden sm:flex justify-center py-2 px-3 sm:px-4 -mx-3 sm:-mx-4 bg-primary/5 border-t border-border/50">
-              <div className="flex flex-wrap items-center justify-center gap-1.5 mx-auto">
-                {activeCategoryTools.map((value) => {
-                const t = tabByValue(value);
-                const active = tab === value;
-                return (
-                  <button
-                    key={value}
-                    onClick={() => selectTab(value)}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
-                      active
-                        ? "bg-background border-primary/40 text-primary shadow-sm"
-                        : "border-transparent text-muted-foreground hover:bg-background/60 hover:text-foreground"
-                    }`}
-                  >
-                    <span className="[&_svg]:h-3.5 [&_svg]:w-3.5">{t.icon}</span>
-                    {t.label}
-                  </button>
-                );
-              })}
-              </div>
-            </div>
-          )}
         </div>
       </header>
 
@@ -294,7 +341,7 @@ function Index() {
         </SheetContent>
       </Sheet>
 
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden sm:hidden">
         <div
           className="absolute inset-0 -z-10 opacity-[0.15] pointer-events-none"
           style={{
@@ -317,7 +364,7 @@ function Index() {
         </motion.section>
       </div>
 
-      <main className="mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4 pb-16 flex-1 w-full">
+      <main className="mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-6 sm:pt-6 pb-16 flex-1 w-full">
         <Tabs value={tab} onValueChange={setTab}>
           {/* Current tool name shown on mobile, since the tab bar is hidden in favor of the hamburger menu */}
           <div className="sm:hidden mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -350,8 +397,19 @@ function Index() {
       </main>
 
       <footer className="border-t border-border/50 bg-muted/30">
-        <div className="mx-auto max-w-4xl px-4 py-10">
-          <div className="grid grid-cols-2 gap-12 sm:gap-24 justify-center text-center sm:text-left max-w-sm sm:max-w-md mx-auto">
+        <div className="mx-auto max-w-4xl px-4 py-10 sm:py-6">
+          {/* Desktop: all links in one horizontal row */}
+          <nav className="hidden sm:flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-xs text-muted-foreground">
+            <a href="/documentation" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Documentation</a>
+            <a href="https://github.com/Syntrojex/Calculin" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">GitHub</a>
+            <a href="/usage-terms" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Usage Terms</a>
+            <a href="/feedback" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Feedback</a>
+            <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Privacy Policy</a>
+            <a href="/terms-of-service" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Terms of Service</a>
+            <a href="/about" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">About</a>
+          </nav>
+          {/* Mobile: original two-column footer, unchanged */}
+          <div className="sm:hidden grid grid-cols-2 gap-12 justify-center text-center max-w-sm mx-auto">
             <div>
               <h3 className="text-sm font-semibold text-foreground mb-3">Resources</h3>
               <ul className="space-y-2 text-xs text-muted-foreground">
@@ -394,6 +452,7 @@ function Index() {
           </div>
         </div>
       </footer>
+      </div>
     </div>
   );
 }
