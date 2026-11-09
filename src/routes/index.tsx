@@ -123,6 +123,36 @@ const PREMIUM_CSS = `
       radial-gradient(700px 420px at 40% 105%, rgba(18, 181, 165, 0.16), transparent 70%);
   }
   .dark .calc-aurora { opacity: 0.9; }
+  /* ── Tool tile hover: lift + rotating gradient ring + cursor spotlight ── */
+  .calc-tile {
+    transition: transform .28s cubic-bezier(.2,.9,.3,1.2), box-shadow .28s, border-color .28s, background-color .28s;
+  }
+  .calc-tile::before {
+    content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none;
+    background: linear-gradient(120deg, var(--primary), #35d0ff, #bf5aff, var(--primary));
+    background-size: 300% 100%;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    opacity: 0; transition: opacity .3s;
+    animation: calcRing 3s linear infinite;
+  }
+  .calc-tile::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
+    background: radial-gradient(170px circle at var(--mx, 50%) var(--my, 50%), color-mix(in oklab, var(--primary) 34%, transparent), transparent 70%);
+    opacity: 0; transition: opacity .25s;
+  }
+  .calc-tile:hover { transform: translateY(-4px); box-shadow: 0 16px 38px -14px color-mix(in oklab, var(--primary) 70%, transparent); }
+  .calc-tile:hover::before, .calc-tile:hover::after { opacity: 1; }
+  .calc-tile-sym { display: inline-block; transition: transform .3s cubic-bezier(.2,.9,.3,1.3), text-shadow .3s; transform-origin: left center; }
+  .calc-tile:hover .calc-tile-sym { transform: scale(1.14) translateY(-2px); text-shadow: 0 0 22px color-mix(in oklab, var(--primary) 80%, transparent); }
+  .calc-tile:active { transform: translateY(-1px) scale(.985); }
+  @keyframes calcRing { to { background-position: 300% 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .calc-tile, .calc-tile-sym { transition: none; }
+    .calc-tile::before { animation: none; }
+    .calc-tile:hover, .calc-tile:hover .calc-tile-sym { transform: none; }
+  }
+
   .premium-main .rounded-xl.border.bg-card {
     border-radius: 22px;
     background: linear-gradient(180deg, color-mix(in oklab, var(--card) 90%, white 4%), color-mix(in oklab, var(--card) 72%, transparent));
@@ -334,14 +364,19 @@ function Index() {
                     <button
                       key={value}
                       onClick={() => selectTab(value)}
-                      className={`relative rounded-2xl border px-4 pt-4 pb-3.5 text-left transition-all ${
+                      onMouseMove={(e) => {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+                        e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+                      }}
+                      className={`calc-tile relative rounded-2xl border px-4 pt-4 pb-3.5 text-left ${
                         active
                           ? "border-primary/60 bg-gradient-to-br from-primary/30 to-cyan-400/10 shadow-[0_18px_50px_-14px] shadow-primary/50"
                           : "border-border/60 bg-card/40 hover:border-primary/30 hover:bg-card/70"
                       }`}
                     >
-                      <div className={`font-display h-9 text-[32px] leading-none ${active ? "text-foreground" : "text-foreground/70"}`}>{t.shortLabel}</div>
-                      <div className={`mt-2.5 text-sm font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}>{t.label}</div>
+                      <div className={`relative z-[1] font-display h-9 text-[32px] leading-none ${active ? "text-foreground" : "text-foreground/70"}`}><span className="calc-tile-sym">{t.shortLabel}</span></div>
+                      <div className={`relative z-[1] mt-2.5 text-sm font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}>{t.label}</div>
                       {active && <span className="absolute inset-x-4 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-primary to-cyan-400" />}
                     </button>
                   );
