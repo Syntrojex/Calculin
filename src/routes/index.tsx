@@ -8,7 +8,7 @@ import {
   Infinity as InfinityIcon, LineChart, Calculator, Grid3X3,
   ArrowRight,
   Zap, GraduationCap, Menu, Binary, BookOpen, Library, ChevronDown,
-  Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart, Move3d,
+  Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart, Move3d, PencilRuler,
 } from "lucide-react";
 import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
 import { DEFINITION_TOPICS } from "@/lib/definitions-data";
@@ -63,8 +63,8 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
   { value: "equation", label: "Equations", shortLabel: "ax=b", icon: <Calculator className="h-3.5 w-3.5" />, component: <EquationSolver />, category: "algebra" },
   { value: "matrix", label: "Matrix", shortLabel: "[ ]", icon: <Grid3X3 className="h-3.5 w-3.5" />, component: <MatrixCalculator />, category: "algebra" },
   { value: "vector", label: "Vectors", shortLabel: "v⃗", icon: <Move3d className="h-3.5 w-3.5" />, component: <VectorCalculator />, category: "algebra" },
-  { value: "complex", label: "Complex", shortLabel: "z", icon: <Zap className="h-3.5 w-3.5" />, component: <ComplexCalculator />, category: "algebra" },
-  { value: "numconv", label: "Num Systems", shortLabel: "0b1", icon: <Binary className="h-3.5 w-3.5" />, component: <NumberConversions />, category: "algebra" },
+  { value: "complex", label: "Complex", shortLabel: "a+bi", icon: <Zap className="h-3.5 w-3.5" />, component: <ComplexCalculator />, category: "algebra" },
+  { value: "numconv", label: "Num Systems", shortLabel: "0xFF", icon: <Binary className="h-3.5 w-3.5" />, component: <NumberConversions />, category: "algebra" },
   { value: "graph", label: "Graph", shortLabel: "📈", icon: <LineChart className="h-3.5 w-3.5" />, component: <GraphPlotter />, category: "graph" },
   { value: "practice", label: "Practice", shortLabel: "✏︎", icon: <GraduationCap className="h-3.5 w-3.5" />, component: <PracticeMode />, category: "practice" },
   // One tab per formula-sheet topic — generated from the same data used to
@@ -136,7 +136,7 @@ const CATEGORIES: { key: string; label: string; icon: React.ReactNode; collapsed
   { key: "calculus", label: "Calculus", icon: <span className="text-xs font-bold">d/dx</span> },
   { key: "algebra", label: "Algebra", icon: <Calculator className="h-3.5 w-3.5" /> },
   { key: "graph", label: "Graph", icon: <LineChart className="h-3.5 w-3.5" /> },
-  { key: "practice", label: "Practice", icon: <GraduationCap className="h-3.5 w-3.5" /> },
+  { key: "practice", label: "Practice", icon: <PencilRuler className="h-3.5 w-3.5" /> },
   // Only these two reference-heavy categories (10 topics each) collapse
   // into a dropdown on mobile — every other category always lists its
   // tools flat, an explicit per-category flag rather than a tool-count
