@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, FileDown, Loader2 } from "lucide-react";
+import { BookOpen, FileDown, Loader2, Search, Copy, Check } from "lucide-react";
 import { MathTex } from "./MathTex";
 import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
 import { exportFormulaSheetPDF } from "@/lib/pdf-export";
@@ -27,6 +27,9 @@ function NoteText({ text }: { text: string }) {
 export function FormulaSheet({ topicKey }: FormulaSheetProps) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // Desktop-only extras: filter box and copy-LaTeX on hover.
+  const [query, setQuery] = useState("");
+  const [copied, setCopied] = useState<number | null>(null);
   const topic = FORMULA_TOPICS.find((t) => t.key === topicKey);
 
   if (!topic) {
@@ -51,7 +54,7 @@ export function FormulaSheet({ topicKey }: FormulaSheetProps) {
 
   return (
     <div className="space-y-6">
-      <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md">
+      <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md sm:rounded-3xl sm:border-l sm:border-l-border/50">
         <CardHeader className="pb-4">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
@@ -72,16 +75,37 @@ export function FormulaSheet({ topicKey }: FormulaSheetProps) {
         </CardHeader>
       </Card>
 
+
+      <div className="hidden sm:flex items-center gap-3 rounded-2xl border border-border/60 bg-foreground/[0.03] px-4 py-2.5 focus-within:border-primary/60 focus-within:shadow-[0_0_0_4px] focus-within:shadow-primary/15 transition-all">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter formulas…"
+          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+        {query && <span className="text-xs text-muted-foreground">{topic.formulas.filter((f) => `${f.name} ${f.latex} ${f.note ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).length} found</span>}
+      </div>
+
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
         className="grid sm:grid-cols-2 gap-3"
       >
-        {topic.formulas.map((f, i) => (
-          <Card key={i} className="shadow-sm border-border/50 border-l-4 border-l-primary">
+        {topic.formulas.map((f, i) => ({ f, i })).filter(({ f }) => `${f.name} ${f.latex} ${f.note ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).map(({ f, i }) => (
+          <Card key={i} className="group relative shadow-sm border-border/50 border-l-4 border-l-primary sm:rounded-2xl sm:border-l sm:border-l-border/50 sm:transition-all sm:hover:-translate-y-0.5 sm:hover:border-primary/40 sm:hover:shadow-[0_16px_36px_-16px] sm:hover:shadow-primary/50">
             <CardContent className="pt-4 pb-4">
-              <div className="text-sm font-semibold text-foreground mb-1.5">{f.name}</div>
+              <button
+                type="button"
+                aria-label="Copy LaTeX"
+                title="Copy LaTeX"
+                onClick={() => { navigator.clipboard?.writeText(f.latex).then(() => { setCopied(i); setTimeout(() => setCopied((c) => (c === i ? null : c)), 1200); }).catch(() => {}); }}
+                className="hidden sm:flex absolute right-3 top-3 h-7 w-7 items-center justify-center rounded-lg border border-border/60 bg-background/70 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 hover:text-primary hover:border-primary/40"
+              >
+                {copied === i ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+              <div className="text-sm font-semibold text-foreground mb-1.5 sm:text-[11px] sm:uppercase sm:tracking-[0.14em] sm:text-primary">{f.name}</div>
               <div className="overflow-x-auto">
                 <MathTex latex={f.latex} display />
               </div>

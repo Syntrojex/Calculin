@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Library, FileDown, Loader2 } from "lucide-react";
+import { Library, FileDown, Loader2, Search } from "lucide-react";
 import { MathTex } from "./MathTex";
 import { DEFINITION_TOPICS } from "@/lib/definitions-data";
 import { exportDefinitionsPDF } from "@/lib/definitions-pdf-export";
@@ -28,6 +28,8 @@ function RichText({ text }: { text: string }) {
 export function Definitions({ topicKey }: DefinitionsProps) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // Desktop-only filter box.
+  const [query, setQuery] = useState("");
   const topic = DEFINITION_TOPICS.find((t) => t.key === topicKey);
 
   if (!topic) {
@@ -52,7 +54,7 @@ export function Definitions({ topicKey }: DefinitionsProps) {
 
   return (
     <div className="space-y-6">
-      <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md">
+      <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md sm:rounded-3xl sm:border-l sm:border-l-border/50">
         <CardHeader className="pb-4">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
@@ -71,11 +73,23 @@ export function Definitions({ topicKey }: DefinitionsProps) {
         </CardHeader>
       </Card>
 
+
+      <div className="hidden sm:flex items-center gap-3 rounded-2xl border border-border/60 bg-foreground/[0.03] px-4 py-2.5 focus-within:border-primary/60 focus-within:shadow-[0_0_0_4px] focus-within:shadow-primary/15 transition-all">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter definitions…"
+          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+        {query && <span className="text-xs text-muted-foreground">{topic.definitions.filter((d) => `${d.term} ${d.definition} ${d.example ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).length} found</span>}
+      </div>
+
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-3">
-        {topic.definitions.map((d, i) => (
-          <Card key={i} className="shadow-sm border-border/50 border-l-4 border-l-primary">
+        {topic.definitions.filter((d) => `${d.term} ${d.definition} ${d.example ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).map((d, i) => (
+          <Card key={i} className="shadow-sm border-border/50 border-l-4 border-l-primary sm:rounded-2xl sm:border-l sm:border-l-border/50 sm:transition-all sm:hover:border-primary/40 sm:hover:shadow-[0_16px_36px_-16px] sm:hover:shadow-primary/50">
             <CardContent className="pt-4 pb-4 space-y-1.5">
-              <div className="text-sm font-semibold text-foreground">{d.term}</div>
+              <div className="text-sm font-semibold text-foreground sm:text-base sm:text-primary">{d.term}</div>
               <div className="text-sm text-foreground/90 leading-relaxed"><RichText text={d.definition} /></div>
               {d.diagram && <ShapeDiagram name={d.diagram} />}
               {d.example && (

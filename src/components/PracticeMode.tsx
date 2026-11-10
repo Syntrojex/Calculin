@@ -85,7 +85,7 @@ export function PracticeMode() {
 
   return (
     <div className="space-y-6">
-      <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md">
+      <Card className="border-border/50 shadow-lg border-l-[3px] border-l-primary/50 rounded-l-md sm:rounded-3xl sm:border-l sm:border-l-border/50">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <GraduationCap className="h-5 w-5 text-primary" />
@@ -102,8 +102,8 @@ export function PracticeMode() {
               <button
                 key={c}
                 onClick={() => { setCategory(c); newProblem(c, difficulty); }}
-                className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  category === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"
+                className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all sm:rounded-full sm:px-4 sm:py-2 sm:text-[13px] ${
+                  category === c ? "bg-primary text-primary-foreground sm:bg-gradient-to-br sm:from-primary sm:to-cyan-400/80 sm:shadow-[0_8px_22px_-8px] sm:shadow-primary" : "bg-muted text-muted-foreground hover:bg-muted/70 sm:border sm:border-border/60 sm:bg-transparent sm:hover:border-primary/40 sm:hover:text-foreground"
                 }`}
               >
                 {c === "mixed" ? "Mixed" : CATEGORY_LABELS[c]}
@@ -128,7 +128,7 @@ export function PracticeMode() {
               </button>
             ))}
             <div className="flex-1" />
-            <Badge variant="secondary" className="gap-1.5 font-mono">
+            <Badge variant="secondary" className="gap-1.5 font-mono sm:rounded-full sm:border sm:border-primary/30 sm:bg-primary/10 sm:text-primary sm:px-3 sm:py-1 sm:text-sm">
               <Trophy className="h-3 w-3" /> {score.correct}/{score.total}
             </Badge>
           </div>
@@ -159,7 +159,7 @@ export function PracticeMode() {
                 <Badge variant="secondary" className="text-xs capitalize">{difficulty}</Badge>
               </div>
 
-              <div className="text-base font-medium text-foreground whitespace-pre-line leading-relaxed break-words">
+              <div className="text-base font-medium text-foreground whitespace-pre-line leading-relaxed break-words sm:text-lg sm:rounded-2xl sm:border sm:border-border/50 sm:bg-foreground/[0.03] sm:p-5">
                 <PromptText text={problem.prompt} />
               </div>
 
@@ -193,9 +193,9 @@ export function PracticeMode() {
                   <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className={`flex items-center gap-2 p-3 rounded-lg ${
+                    className={`flex items-center gap-2 p-3 rounded-lg sm:rounded-2xl sm:p-4 ${
                       feedback === "correct"
-                        ? "bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-300"
+                        ? "bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-300 sm:shadow-[0_12px_32px_-14px] sm:shadow-green-500/60"
                         : feedback === "empty"
                         ? "bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300"
                         : "bg-destructive/10 border border-destructive/20 text-destructive"

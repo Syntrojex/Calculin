@@ -152,6 +152,31 @@ const PREMIUM_CSS = `
   /* Number fields: hide the grey native spinner (themed -/+ buttons are in ui/input) */
   input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  /* ── Result card ── */
+  .premium-main [class~="bg-primary/5"][class~="border-primary/10"] {
+    background: linear-gradient(135deg, color-mix(in oklab, var(--primary) 20%, transparent), color-mix(in oklab, #35d0ff 7%, transparent));
+    border-color: color-mix(in oklab, var(--primary) 40%, transparent);
+    border-radius: 18px; padding: 1.1rem 1.4rem;
+    box-shadow: 0 18px 40px -24px var(--primary);
+  }
+  .premium-main [class~="bg-primary/5"][class~="border-primary/10"] .katex-display { font-size: 1.3em; margin: .55rem 0 .2rem; }
+  .premium-main [class~="bg-primary/5"][class~="border-primary/10"] > .flex:first-child > .text-muted-foreground { text-transform: uppercase; letter-spacing: .16em; font-size: 11px; font-weight: 600; }
+
+  /* ── Loading shimmer (tool panels while their code loads) ── */
+  .premium-main .animate-pulse { animation: none; }
+  .premium-main .animate-pulse > div {
+    background-image: linear-gradient(100deg, transparent 30%, color-mix(in oklab, var(--primary) 16%, transparent) 50%, transparent 70%);
+    background-size: 250% 100%; animation: calcShimmerBg 1.4s linear infinite;
+  }
+  @keyframes calcShimmerBg { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+
+  /* ── Scrollbars + selection ── */
+  html { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--primary) 45%, transparent) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--primary) 40%, transparent); border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: color-mix(in oklab, var(--primary) 70%, transparent); background-clip: padding-box; border: 2px solid transparent; }
+  ::selection { background: color-mix(in oklab, var(--primary) 35%, transparent); }
   /* ── Input card polish ── */
   .premium-main .math-preview { border-top: 1px dashed color-mix(in oklab, var(--foreground) 14%, transparent); margin-top: .5rem; }
   .premium-main button.w-full.gap-2 {

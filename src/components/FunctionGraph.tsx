@@ -622,19 +622,19 @@ export function FunctionGraph({
 
   return (
     <div ref={wrapRef} className="relative w-full select-none">
-      <div className="absolute right-2 top-2 z-10 flex gap-1">
-        <Button type="button" variant="outline" size="icon" className="h-7 w-7 bg-background/80" onClick={() => zoomAbout(centre().x, centre().y, 0.7)} aria-label="Zoom in"><Plus className="h-3.5 w-3.5" /></Button>
-        <Button type="button" variant="outline" size="icon" className="h-7 w-7 bg-background/80" onClick={() => zoomAbout(centre().x, centre().y, 1.4)} aria-label="Zoom out"><Minus className="h-3.5 w-3.5" /></Button>
-        <Button type="button" variant="outline" size="icon" className="h-7 w-7 bg-background/80" onClick={() => setOverride(null)} aria-label="Reset view"><RotateCcw className="h-3.5 w-3.5" /></Button>
+      <div className="absolute right-2 top-2 z-10 flex gap-1 sm:right-3 sm:top-3 sm:gap-0.5 sm:rounded-xl sm:border sm:border-border/60 sm:bg-background/60 sm:p-1 sm:backdrop-blur-md sm:shadow-lg">
+        <Button type="button" variant="outline" size="icon" className="h-7 w-7 bg-background/80 sm:border-transparent sm:bg-transparent sm:hover:bg-primary/15 sm:hover:text-primary sm:rounded-lg" onClick={() => zoomAbout(centre().x, centre().y, 0.7)} aria-label="Zoom in"><Plus className="h-3.5 w-3.5" /></Button>
+        <Button type="button" variant="outline" size="icon" className="h-7 w-7 bg-background/80 sm:border-transparent sm:bg-transparent sm:hover:bg-primary/15 sm:hover:text-primary sm:rounded-lg" onClick={() => zoomAbout(centre().x, centre().y, 1.4)} aria-label="Zoom out"><Minus className="h-3.5 w-3.5" /></Button>
+        <Button type="button" variant="outline" size="icon" className="h-7 w-7 bg-background/80 sm:border-transparent sm:bg-transparent sm:hover:bg-primary/15 sm:hover:text-primary sm:rounded-lg" onClick={() => setOverride(null)} aria-label="Reset view"><RotateCcw className="h-3.5 w-3.5" /></Button>
         {showDownload && (
-          <Button type="button" variant="outline" size="icon" className="h-7 w-7 bg-background/80" onClick={() => canvasRef.current && downloadCanvasPNG(canvasRef.current, name)} aria-label="Download graph as PNG"><Camera className="h-3.5 w-3.5" /></Button>
+          <Button type="button" variant="outline" size="icon" className="h-7 w-7 bg-background/80 sm:border-transparent sm:bg-transparent sm:hover:bg-primary/15 sm:hover:text-primary sm:rounded-lg" onClick={() => canvasRef.current && downloadCanvasPNG(canvasRef.current, name)} aria-label="Download graph as PNG"><Camera className="h-3.5 w-3.5" /></Button>
         )}
       </div>
       <canvas
         ref={canvasRef}
         role="img"
         aria-label={title ?? `Graph of ${series.map((s) => s.label ?? s.expr).filter(Boolean).join(", ")}`}
-        className="block w-full touch-none cursor-crosshair rounded-md"
+        className="block w-full touch-none cursor-crosshair rounded-md sm:rounded-xl sm:border sm:border-border/50"
         style={{ height }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -645,7 +645,7 @@ export function FunctionGraph({
       />
       {hoverX !== null && hoverPos && (
         <div
-          className="pointer-events-none absolute z-20 rounded-md bg-background/95 px-2 py-1 text-[11px] font-mono leading-tight text-muted-foreground shadow-md ring-1 ring-border"
+          className="pointer-events-none absolute z-20 rounded-md bg-background/95 px-2 py-1 text-[11px] sm:rounded-xl sm:bg-background/80 sm:backdrop-blur-md sm:px-3 sm:py-2 font-mono leading-tight text-muted-foreground shadow-md ring-1 ring-border"
           style={{
             left: hoverPos.x + (hoverPos.x > width * 0.6 ? -14 : 14),
             top: hoverPos.y + (hoverPos.y > height * 0.62 ? -14 : 14),
