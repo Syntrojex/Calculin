@@ -129,7 +129,7 @@ const PREMIUM_CSS = `
   }
   .calc-tile::before {
     content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none;
-    background: linear-gradient(120deg, var(--primary), #35d0ff, #bf5aff, var(--primary));
+    background: linear-gradient(120deg, var(--primary), color-mix(in oklab, var(--primary) 40%, white), var(--primary), color-mix(in oklab, var(--primary) 55%, black), var(--primary));
     background-size: 300% 100%;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor; mask-composite: exclude;
@@ -147,7 +147,30 @@ const PREMIUM_CSS = `
   .calc-tile:hover .calc-tile-sym { transform: scale(1.14) translateY(-2px); text-shadow: 0 0 22px color-mix(in oklab, var(--primary) 80%, transparent); }
   .calc-tile:active { transform: translateY(-1px) scale(.985); }
   @keyframes calcRing { to { background-position: 300% 0; } }
+
+  /* ── Subtle desktop animations (all accent-coloured) ── */
+  .premium-main button.w-full.gap-2 { position: relative; overflow: hidden; transition: transform .25s cubic-bezier(.2,.9,.3,1.2), box-shadow .25s; }
+  .premium-main button.w-full.gap-2::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%; pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent); transform: skewX(-20deg); opacity: 0;
+  }
+  .premium-main button.w-full.gap-2:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 14px 30px -10px color-mix(in oklab, var(--primary) 75%, transparent); }
+  .premium-main button.w-full.gap-2:hover:not(:disabled)::after { opacity: 1; animation: calcShimmer .8s ease-out; }
+  .premium-main button.w-full.gap-2:active:not(:disabled) { transform: translateY(0) scale(.99); }
+  @keyframes calcShimmer { from { left: -40%; } to { left: 120%; } }
+  .premium-main input, .premium-main textarea { transition: box-shadow .25s, border-color .25s; }
+  .premium-main input:focus-visible, .premium-main textarea:focus-visible {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--primary) 24%, transparent), 0 0 26px color-mix(in oklab, var(--primary) 38%, transparent);
+  }
+  .premium-main canvas { animation: calcDraw .9s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes calcDraw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  header nav button { transition: background-color .2s, color .2s, transform .2s, box-shadow .2s; }
+  header nav button:hover { transform: translateY(-1px); box-shadow: 0 6px 18px -8px color-mix(in oklab, var(--primary) 70%, transparent); }
+  footer nav a { background: linear-gradient(currentColor, currentColor) 0 100% / 0 1.5px no-repeat; padding-bottom: 3px; transition: background-size .25s, color .2s; }
+  footer nav a:hover { background-size: 100% 1.5px; }
   @media (prefers-reduced-motion: reduce) {
+    .premium-main canvas, .premium-main button.w-full.gap-2::after { animation: none !important; }
     .calc-tile, .calc-tile-sym { transition: none; }
     .calc-tile::before { animation: none; }
     .calc-tile:hover, .calc-tile:hover .calc-tile-sym { transform: none; }
