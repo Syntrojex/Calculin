@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { MathKeypad } from "./MathKeypad";
 import { cn } from "@/lib/utils";
 import { normalizeMathInput } from "@/lib/text-normalize";
+import { exprToLatex } from "@/lib/latex";
+import { MathTex } from "./MathTex";
 
 interface MathInputProps {
   value: string;
@@ -83,6 +85,13 @@ export function MathInput({
     onEnter?.();
   }, [onEnter]);
 
+  // Desktop-only live preview of what is typed, as real maths. If the text
+  // can't be converted it simply shows nothing; the input itself is untouched.
+  let previewTex = "";
+  if (value.trim()) {
+    try { previewTex = exprToLatex(value); } catch { previewTex = ""; }
+  }
+
   return (
     <div className="space-y-1">
       <div className="flex gap-1.5">
@@ -92,7 +101,7 @@ export function MathInput({
           onChange={(e) => onChange(normalizeMathInput(e.target.value))}
           onKeyDown={(e) => e.key === "Enter" && onEnter?.()}
           placeholder={placeholder}
-          className={cn("font-mono text-sm flex-1", className)}
+          className={cn("font-mono text-sm flex-1 sm:h-12 sm:rounded-xl sm:bg-black/[0.03] sm:text-base dark:sm:bg-black/25", className)}
           /* Suppress native keyboard on mobile when our keypad is open */
           inputMode={showKeypad ? "none" : undefined}
         />
@@ -103,7 +112,7 @@ export function MathInput({
             aria-label={showKeypad ? "Hide math keypad" : "Show math keypad"}
             title={showKeypad ? "Hide math keypad" : "Show math keypad"}
             className={cn(
-              "shrink-0 h-10 w-10 rounded-lg border flex items-center justify-center transition-all",
+              "shrink-0 h-10 w-10 rounded-lg border flex items-center justify-center transition-all sm:h-12 sm:w-12 sm:rounded-xl",
               showKeypad
                 ? "bg-primary text-primary-foreground border-primary shadow-sm"
                 : "bg-muted/60 text-muted-foreground border-border hover:bg-muted hover:text-foreground"
@@ -113,6 +122,13 @@ export function MathInput({
           </button>
         )}
       </div>
+
+      {previewTex && (
+        <div className="math-preview hidden sm:flex items-center gap-3 px-1 pt-2 text-lg overflow-x-auto">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground shrink-0">Preview</span>
+          <MathTex latex={previewTex} />
+        </div>
+      )}
 
       {withKeypad && showKeypad && (
         <MathKeypad
