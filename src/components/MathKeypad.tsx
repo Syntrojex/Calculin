@@ -164,10 +164,10 @@ const PAGES: { key: PageKey; label: string; rows: Key[][] }[] = [
 const ENTER_KEY: Key = { label: "enter", action: "enter", category: "action" };
 
 const CAT_STYLES: Record<Key["category"], string> = {
-  fn:     "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 active:bg-primary/30 font-semibold",
+  fn:     "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 active:bg-primary/30 font-semibold sm:bg-primary/[0.12] sm:border-primary/25",
   const:  "bg-violet-500/10 text-violet-600 dark:text-violet-300 border-violet-500/20 hover:bg-violet-500/20 active:bg-violet-500/30 font-mono font-bold",
-  op:     "bg-muted/60 text-foreground border-border hover:bg-muted active:bg-muted/80",
-  num:    "bg-background text-foreground border-border hover:bg-muted/60 active:bg-muted font-mono font-semibold",
+  op:     "bg-muted/60 text-foreground border-border hover:bg-muted active:bg-muted/80 sm:bg-foreground/[0.06] sm:border-transparent",
+  num:    "bg-background text-foreground border-border hover:bg-muted/60 active:bg-muted font-mono font-semibold sm:bg-foreground/[0.03] sm:border-border/60 sm:text-base",
   action: "text-foreground border-border",
 };
 
@@ -197,18 +197,18 @@ export function MathKeypad({ onInput, onBackspace, onClear, onEnter }: MathKeypa
         exit={{ opacity: 0, y: -4, scaleY: 0.97 }}
         transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
         style={{ transformOrigin: "top" }}
-        className="mt-1.5 rounded-xl border border-border/60 bg-card shadow-xl overflow-hidden select-none"
+        className="mt-1.5 rounded-xl border border-border/60 bg-card shadow-xl overflow-hidden select-none sm:mt-3 sm:rounded-2xl sm:border-border/50 sm:bg-card/80 sm:backdrop-blur-xl sm:shadow-2xl"
         onPointerDown={(e) => e.preventDefault()} // prevents input from losing focus
       >
         {/* Page switcher */}
-        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-muted/40 border-b border-border/40">
+        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-muted/40 border-b border-border/40 sm:bg-transparent sm:border-0 sm:px-3 sm:pt-3 sm:pb-0 sm:gap-1">
           {PAGES.map((p) => (
             <button
               key={p.key}
               onPointerDown={(e) => { e.preventDefault(); setPage(p.key); }}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors sm:rounded-full sm:px-4 sm:py-1.5 sm:text-xs ${
                 page === p.key
-                  ? "bg-primary text-primary-foreground shadow-sm"
+                  ? "bg-primary text-primary-foreground shadow-sm sm:bg-gradient-to-br sm:from-primary sm:to-cyan-400/80 sm:shadow-[0_6px_18px_-6px] sm:shadow-primary"
                   : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
               }`}
             >
@@ -220,9 +220,9 @@ export function MathKeypad({ onInput, onBackspace, onClear, onEnter }: MathKeypa
           </span>
         </div>
 
-        <div className="p-2 space-y-1">
+        <div className="p-2 space-y-1 sm:p-3 sm:space-y-1.5">
           {activePage.rows.map((row, ri) => (
-            <div key={`${page}-${ri}`} className="flex gap-1">
+            <div key={`${page}-${ri}`} className="flex gap-1 sm:gap-1.5">
               {row.map((key, ki) => (
                 <KeyButton key={ki} k={key} onPress={() => handleKey(key)} />
               ))}
@@ -231,7 +231,7 @@ export function MathKeypad({ onInput, onBackspace, onClear, onEnter }: MathKeypa
 
           {/* Enter — full width */}
           <button
-            className="w-full h-10 rounded-lg border flex items-center justify-center gap-2 text-sm font-semibold transition-all bg-primary text-primary-foreground border-primary hover:bg-primary/90 active:scale-[0.98]"
+            className="w-full h-10 rounded-lg border flex items-center justify-center gap-2 text-sm font-semibold transition-all bg-primary text-primary-foreground border-primary hover:bg-primary/90 active:scale-[0.98] sm:h-12 sm:rounded-xl sm:border-transparent sm:bg-gradient-to-br sm:from-primary sm:to-cyan-400/80 sm:shadow-[0_10px_26px_-10px] sm:shadow-primary sm:mt-1"
             onPointerDown={(e) => { e.preventDefault(); handleKey(ENTER_KEY); }}
           >
             <CornerDownLeft className="h-4 w-4" />
@@ -247,7 +247,7 @@ function KeyButton({ k, onPress }: { k: Key; onPress: () => void }) {
   const isBackspace = k.action === "backspace";
   const isClear     = k.action === "clear";
 
-  const base = "flex-1 h-10 min-w-0 rounded-lg border text-xs transition-all active:scale-[0.93] flex items-center justify-center";
+  const base = "flex-1 h-10 min-w-0 rounded-lg border text-xs transition-all active:scale-[0.93] flex items-center justify-center sm:h-11 sm:rounded-xl sm:text-sm sm:hover:-translate-y-px";
 
   const style = isBackspace
     ? "bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20 active:bg-rose-500/30"
