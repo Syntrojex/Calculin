@@ -149,6 +149,9 @@ const PREMIUM_CSS = `
   @keyframes calcRing { to { background-position: 300% 0; } }
 
 
+  /* Number fields: hide the grey native spinner (themed -/+ buttons are in ui/input) */
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   /* ── Input card polish ── */
   .premium-main .math-preview { border-top: 1px dashed color-mix(in oklab, var(--foreground) 14%, transparent); margin-top: .5rem; }
   .premium-main button.w-full.gap-2 {
