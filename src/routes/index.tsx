@@ -148,6 +148,15 @@ const PREMIUM_CSS = `
   .calc-tile:active { transform: translateY(-1px) scale(.985); }
   @keyframes calcRing { to { background-position: 300% 0; } }
 
+
+  /* ── Input card polish ── */
+  .premium-main .math-preview { border-top: 1px dashed color-mix(in oklab, var(--foreground) 14%, transparent); margin-top: .5rem; }
+  .premium-main button.w-full.gap-2 {
+    height: 3rem; border-radius: 14px; font-weight: 600; font-size: .95rem; border: 0;
+    color: #0a0818;
+    background: linear-gradient(135deg, color-mix(in oklab, var(--primary) 70%, white), color-mix(in oklab, var(--primary) 50%, #35d0ff));
+    box-shadow: 0 10px 30px -10px color-mix(in oklab, var(--primary) 70%, transparent);
+  }
   /* ── Subtle desktop animations (all accent-coloured) ── */
   .premium-main button.w-full.gap-2 { position: relative; overflow: hidden; transition: transform .25s cubic-bezier(.2,.9,.3,1.2), box-shadow .25s; }
   .premium-main button.w-full.gap-2::after {
