@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Binary, ArrowLeftRight, Calculator } from "lucide-react";
+import { Binary, ArrowLeftRight, Calculator, Copy, Check } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StepsReveal } from "./StepsReveal";
 import { useSettings } from "@/contexts/SettingsContext";
@@ -190,6 +190,20 @@ export function NumberConversions() {
   const [error, setError] = useState<string | null>(null);
   const [allResults, setAllResults] = useState<Record<number, string> | null>(null);
   const [custom, setCustom] = useState<{ decimal: number; result: string; steps: string[] } | null>(null);
+  // Desktop-only: which base card was just copied.
+  const [copiedBase, setCopiedBase] = useState<number | null>(null);
+  const copyBase = (base: number, text: string) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopiedBase(base);
+      setTimeout(() => setCopiedBase((c) => (c === base ? null : c)), 1200);
+    }).catch(() => {});
+  };
+  // Desktop-only swap: exchange the two bases and carry the result over as the new number.
+  const swapBases = () => {
+    if (custom && !error) setValue(custom.result);
+    setFromBase(toBase);
+    setToBase(fromBase);
+  };
 
   const [arithA, setArithA] = useState("1010");
   const [arithB, setArithB] = useState("11");
@@ -285,7 +299,7 @@ export function NumberConversions() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Tabs value={mode} onValueChange={(v) => setMode(v as "convert" | "arithmetic")}>
-            <TabsList className="grid grid-cols-2 w-full">
+            <TabsList className="grid grid-cols-2 w-full seg-tabs">
               <TabsTrigger value="convert" className="gap-1.5"><ArrowLeftRight className="h-3.5 w-3.5" /> Convert</TabsTrigger>
               <TabsTrigger value="arithmetic" className="gap-1.5"><Calculator className="h-3.5 w-3.5" /> Arithmetic</TabsTrigger>
             </TabsList>
@@ -309,7 +323,7 @@ export function NumberConversions() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
                 <div className="space-y-1">
                   <Label className="text-xs">From base</Label>
                   <Select value={fromBase} onValueChange={setFromBase}>
@@ -323,6 +337,15 @@ export function NumberConversions() {
                     </SelectContent>
                   </Select>
                 </div>
+                <button
+                  type="button"
+                  onClick={swapBases}
+                  aria-label="Swap bases"
+                  title="Swap bases"
+                  className="hidden sm:flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-foreground/[0.04] text-primary transition-all hover:bg-primary/15 hover:rotate-180 active:scale-90"
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                </button>
                 <div className="space-y-1">
                   <Label className="text-xs">To base</Label>
                   <Select value={toBase} onValueChange={setToBase}>
@@ -447,9 +470,23 @@ export function NumberConversions() {
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {COMMON_BASES.map(({ base, name }) => (
-                  <div key={base} className="p-3 rounded-lg bg-muted/50 border border-border/30 text-center">
-                    <div className="text-xs text-muted-foreground">{name}</div>
-                    <div className="text-base font-mono font-semibold break-all">{allResults[base]}</div>
+                  <div
+                    key={base}
+                    className={`group relative p-3 rounded-lg bg-muted/50 border border-border/30 text-center sm:text-left sm:rounded-2xl sm:p-4 sm:transition-colors ${
+                      base === parseInt(toBase) ? "sm:border-primary sm:bg-primary/10" : ""
+                    }`}
+                  >
+                    <div className="text-xs text-muted-foreground sm:text-[11px] sm:font-semibold sm:uppercase sm:tracking-[0.14em]">{name}</div>
+                    <div className="text-base font-mono font-semibold break-all sm:mt-1.5 sm:text-lg">{allResults[base]}</div>
+                    <button
+                      type="button"
+                      aria-label={`Copy ${name}`}
+                      title="Copy"
+                      onClick={() => copyBase(base, allResults[base])}
+                      className="hidden sm:flex absolute right-2.5 top-2.5 h-7 w-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all group-hover:opacity-100 hover:text-primary hover:bg-primary/10"
+                    >
+                      {copiedBase === base ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
                   </div>
                 ))}
               </div>

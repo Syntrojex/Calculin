@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Calculator } from "lucide-react";
+
 import { evaluate } from "mathjs";
 import { StepsReveal } from "./StepsReveal";
 import { FunctionGraph, type PlotMarker } from "./FunctionGraph";
@@ -26,6 +27,8 @@ export interface SolveResult {
   variable?: string;
   graphExpr?: string;
   setAnswer?: string;
+  /** Set by solveQuadratic: coefficients and discriminant (used for the desktop info chips). */
+  quad?: { a: number; b: number; c: number; disc: number };
 }
 
 export function solveLinear(equation: string, fmt: (n: number) => string): SolveResult {
@@ -84,16 +87,16 @@ export function solveQuadratic(a: number, b: number, c: number, fmt: (n: number)
     const x1 = (-b + Math.sqrt(discriminant)) / (2 * a);
     const x2 = (-b - Math.sqrt(discriminant)) / (2 * a);
     steps.push(`##Two Real Roots ($D > 0$)\n$$x_1 = \\frac{-(${bL}) + \\sqrt{${fmtNum2(discriminant)}}}{${fmtNum2(2 * a)}} = ${fmt(x1)}$$\n$$x_2 = \\frac{-(${bL}) - \\sqrt{${fmtNum2(discriminant)}}}{${fmtNum2(2 * a)}} = ${fmt(x2)}$$`);
-    return { roots: [x1.toFixed(6), x2.toFixed(6)], steps, numericRoots: [x1, x2] };
+    return { roots: [x1.toFixed(6), x2.toFixed(6)], steps, numericRoots: [x1, x2], quad: { a, b, c, disc: discriminant } };
   } else if (Math.abs(discriminant) < 1e-9) {
     const x = -b / (2 * a);
     steps.push(`##One Repeated Root ($D = 0$)\n$$x = \\frac{-(${bL})}{${fmtNum2(2 * a)}} = ${fmt(x)}$$`);
-    return { roots: [x.toFixed(6)], steps, numericRoots: [x] };
+    return { roots: [x.toFixed(6)], steps, numericRoots: [x], quad: { a, b, c, disc: discriminant } };
   } else {
     const real = fmt(-b / (2 * a));
     const imag = fmt(Math.sqrt(-discriminant) / (2 * a));
     steps.push(`##Complex Roots ($D < 0$)\n$$x_1 = ${real} + ${imag}i, \\qquad x_2 = ${real} - ${imag}i$$`);
-    return { roots: [`${real} + ${imag}i`, `${real} - ${imag}i`], steps };
+    return { roots: [`${real} + ${imag}i`, `${real} - ${imag}i`], steps, quad: { a, b, c, disc: discriminant } };
   }
 }
 
@@ -136,6 +139,18 @@ export function solveQuadraticFromEquation(equation: string, fmt: (n: number) =>
   steps.push(`##Coefficients\n$$a = ${fmtNum2(a)}, \\quad b = ${fmtNum2(b)}, \\quad c = ${fmtNum2(c)}$$`);
   const quad = solveQuadratic(a, b, c, fmt);
   return { ...quad, steps: [...steps, ...quad.steps] };
+}
+
+const SUB_DIGITS = "₀₁₂₃₄₅₆₇₈₉";
+const toSub = (n: number) => String(n).split("").map((d) => SUB_DIGITS[Number(d)] ?? d).join("");
+
+/** Label + value for one solution, used by the desktop solution cards. */
+function rootCardParts(result: SolveResult, r: string, i: number, settings: ReturnType<typeof useSettings>) {
+  const v = result.variable ?? "x";
+  if (result.setAnswer && result.setAnswer !== "all" && !result.setAnswer.startsWith("system")) return { label: `${v} ∈`, value: r };
+  if (/[=∈]/.test(r) || r.startsWith("All") || r.startsWith("True")) return { label: "", value: r };
+  const n = result.numericRoots?.[i];
+  return { label: `${v}${result.roots.length > 1 ? toSub(i + 1) : ""}`, value: n !== undefined ? formatNumber(n, settings) : r };
 }
 
 function RootGraph({ expr, range }: { expr: string; range?: number }) {
@@ -211,7 +226,7 @@ export function EquationSolver() {
           }}
         >
           <Tabs value={mode} onValueChange={setMode}>
-            <TabsList className="w-full">
+            <TabsList className="w-full seg-tabs">
               <TabsTrigger value="linear" className="flex-1">Linear</TabsTrigger>
               <TabsTrigger value="quadratic" className="flex-1">Quadratic</TabsTrigger>
               <TabsTrigger value="general" className="flex-1">Any Equation</TabsTrigger>
@@ -278,7 +293,32 @@ export function EquationSolver() {
               <p className="text-destructive font-medium">{result.error}</p>
             ) : (
               <>
-                <div className="flex flex-wrap gap-2">
+                {/* Desktop: solutions as cards, plus discriminant / root type / vertex for quadratics */}
+                <div className={`hidden sm:grid gap-3 ${result.roots.length === 1 ? "sm:grid-cols-1" : result.roots.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+                  {result.roots.map((r, i) => {
+                    const { label, value } = rootCardParts(result, r, i, settings);
+                    return (
+                      <div key={i} className="min-w-0 rounded-2xl border border-primary/40 bg-gradient-to-br from-primary/20 to-cyan-400/10 px-5 py-3.5">
+                        {label && <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</div>}
+                        <div className={`font-display break-words ${value.length <= 10 ? "text-4xl" : "text-xl"} ${label ? "mt-1" : ""}`}>{value}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {result.quad && (
+                  <div className="hidden sm:flex flex-wrap gap-2">
+                    {[
+                      ["Discriminant", formatNumber(result.quad.disc, settings)],
+                      [Math.abs(result.quad.disc) < 1e-9 ? "One repeated root" : result.quad.disc > 0 ? "Two real roots" : "Two complex roots", ""],
+                      ["Vertex", `(${formatNumber(-result.quad.b / (2 * result.quad.a), settings)}, ${formatNumber(result.quad.c - (result.quad.b * result.quad.b) / (4 * result.quad.a), settings)})`],
+                    ].map(([k, v]) => (
+                      <div key={k} className="rounded-xl border border-border/60 bg-foreground/[0.03] px-3.5 py-1.5 text-sm text-muted-foreground">
+                        {k}{v && <b className="ml-2 font-semibold text-foreground">{v}</b>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 sm:hidden">
                   {result.roots.map((r, i) => (
                     <Badge key={i} variant="secondary" className="text-base font-mono px-3 py-1">
                       {result.setAnswer && result.setAnswer !== "all" && !result.setAnswer.startsWith("system") ? `${result.variable ?? "x"} ∈ ${r}` : /[=∈]/.test(r) || r.startsWith("All") || r.startsWith("True") ? r : `${result.variable ?? "x"}${result.roots.length > 1 ? `₍${i + 1}₎` : ""} = ${result.numericRoots?.[i] !== undefined ? formatNumber(result.numericRoots[i], settings) : r}`}

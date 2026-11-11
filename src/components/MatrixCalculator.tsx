@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Grid3X3 } from "lucide-react";
+import { Grid3X3, Minus, Plus } from "lucide-react";
 import { multiply, det as mathDet, inv as mathInv, add, subtract, transpose, evaluate, Matrix } from "mathjs";
 import { cleanExpression } from "@/lib/expression-clean";
 import { checkExpression } from "@/lib/input-check";
@@ -297,8 +297,22 @@ function gaussianElim(matrix: number[][], toRREF: boolean): { ref: number[][]; s
  *  multi-character value. Landing on a cell selects its contents so typing
  *  immediately replaces it, matching spreadsheet muscle memory.
  */
-function MatrixGrid({ label, rows, cols, values, onCellChange }: {
+function SizeStepper({ value, onChange, aria }: { value: number; onChange: (n: number) => void; aria: string }) {
+  const min = SIZES[0], max = SIZES[SIZES.length - 1];
+  const btn = "grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition hover:bg-primary/15 hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent";
+  return (
+    <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted/30 px-1" role="group" aria-label={aria}>
+      <button type="button" className={btn} disabled={value <= min} onClick={() => onChange(value - 1)} aria-label={`Decrease ${aria}`}><Minus className="h-3.5 w-3.5" /></button>
+      <span className="w-5 text-center font-mono text-sm tabular-nums">{value}</span>
+      <button type="button" className={btn} disabled={value >= max} onClick={() => onChange(value + 1)} aria-label={`Increase ${aria}`}><Plus className="h-3.5 w-3.5" /></button>
+    </div>
+  );
+}
+
+function MatrixGrid({ label, rows, cols, values, onCellChange, onRows, onCols }: {
   label: string;
+  onRows?: (n: number) => void;
+  onCols?: (n: number) => void;
   rows: number;
   cols: number;
   values: string[][];
@@ -343,10 +357,21 @@ function MatrixGrid({ label, rows, cols, values, onCellChange }: {
 
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs">{label} ({rows}×{cols})</Label>
+      <Label className={"text-xs" + (onRows && onCols ? " sm:hidden" : "")}>{label} ({rows}×{cols})</Label>
+      {onRows && onCols && (
+        <div className="hidden sm:flex items-center gap-2 pb-1">
+          <span className="text-sm font-semibold">{label}</span>
+          <SizeStepper value={rows} onChange={onRows} aria={`${label} rows`} />
+          <span className="text-muted-foreground text-sm">×</span>
+          <SizeStepper value={cols} onChange={onCols} aria={`${label} columns`} />
+        </div>
+      )}
+      <div className="relative inline-block">
+      <span aria-hidden className="hidden sm:block pointer-events-none absolute left-0 top-0 bottom-0 w-2.5 rounded-l-md border-2 border-r-0 border-foreground/50" />
+      <span aria-hidden className="hidden sm:block pointer-events-none absolute right-0 top-0 bottom-0 w-2.5 rounded-r-md border-2 border-l-0 border-foreground/50" />
       <div
         ref={containerRef}
-        className="inline-grid gap-1 p-2 rounded-md border border-input bg-background"
+        className="inline-grid gap-1 p-2 rounded-md border border-input bg-background sm:border-0 sm:bg-transparent sm:gap-2 sm:px-5 sm:py-3"
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(2.5rem, 1fr))` }}
       >
         {Array.from({ length: rows }).flatMap((_, r) =>
@@ -359,10 +384,11 @@ function MatrixGrid({ label, rows, cols, values, onCellChange }: {
               onChange={(e) => onCellChange(r, c, e.target.value)}
               onKeyDown={(e) => handleKeyDown(e, r, c)}
               inputMode="decimal"
-              className="w-full h-9 rounded border border-border bg-muted/30 text-center font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-full h-9 rounded border border-border bg-muted/30 text-center font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring sm:h-11 sm:w-14 sm:rounded-xl sm:focus:border-primary sm:focus:bg-primary/15 sm:focus:ring-primary/40"
             />
           ))
         )}
+      </div>
       </div>
     </div>
   );
@@ -593,7 +619,7 @@ export function MatrixCalculator() {
 
           <div className={`grid gap-4 ${needsB ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
             <div className="space-y-2">
-              <div className="flex items-end gap-2">
+              <div className="flex sm:hidden items-end gap-2">
                 <div className="space-y-1">
                   <Label className="text-xs">A rows</Label>
                   <Select value={rowsA.toString()} onValueChange={(v) => changeRowsA(parseInt(v))}>
@@ -610,12 +636,12 @@ export function MatrixCalculator() {
                   </Select>
                 </div>
               </div>
-              <MatrixGrid label="Matrix A" rows={rowsA} cols={colsA} values={gridA} onCellChange={setCellA} />
+              <MatrixGrid label="Matrix A" rows={rowsA} cols={colsA} values={gridA} onCellChange={setCellA} onRows={changeRowsA} onCols={changeColsA} />
             </div>
 
             {needsB && (
               <div className="space-y-2">
-                <div className="flex items-end gap-2">
+                <div className="flex sm:hidden items-end gap-2">
                   <div className="space-y-1">
                     <Label className="text-xs">B rows</Label>
                     <Select value={rowsB.toString()} onValueChange={(v) => changeRowsB(parseInt(v))}>
@@ -632,7 +658,7 @@ export function MatrixCalculator() {
                     </Select>
                   </div>
                 </div>
-                <MatrixGrid label="Matrix B" rows={rowsB} cols={colsB} values={gridB} onCellChange={setCellB} />
+                <MatrixGrid label="Matrix B" rows={rowsB} cols={colsB} values={gridB} onCellChange={setCellB} onRows={changeRowsB} onCols={changeColsB} />
               </div>
             )}
           </div>

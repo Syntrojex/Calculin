@@ -19,6 +19,7 @@ import { useAutoRun } from "@/hooks/useAutoRun";
 import { formatNumber } from "@/lib/number-format";
 import { LineChart, Plus, Trash2, Box, Crosshair, Maximize2, X, Sigma, Camera } from "lucide-react";
 import { normalizeMathInput } from "@/lib/text-normalize";
+import { MathPreview } from "./MathPreview";
 import { downloadCanvasPNG } from "@/lib/canvas-export";
 import { classify3D, buildShape, type Param3DSpec, type ShapeData } from "@/lib/param3d";
 
@@ -416,7 +417,8 @@ export function GraphPlotter() {
                 <div key={g.id} className="flex items-end gap-2">
                   <div className="flex-1 space-y-1">
                     <Label className="text-xs">Function {idx + 1}</Label>
-                    <Input
+                    <div>
+                      <Input
                       value={g.expr}
                       onChange={(e) => updateExpr(g.id, normalizeMathInput(e.target.value))}
                       placeholder="y = x^2 · x^2+y^2=25 · r=1+cos(theta) · (cos(t), sin(t)) · y > x"
@@ -424,6 +426,8 @@ export function GraphPlotter() {
                       onKeyDown={(e) => e.key === "Enter" && plot()}
                       aria-invalid={Boolean(graphErrors[g.id])}
                     />
+                      <MathPreview value={g.expr} />
+                    </div>
                     {graphErrors[g.id] && (
                       <p className="text-xs text-destructive leading-snug">{graphErrors[g.id]}</p>
                     )}
@@ -545,13 +549,16 @@ export function GraphPlotter() {
                 <>
                   <div className="space-y-1">
                     <Label className="text-xs">Curve, surface, cylindrical or spherical shape</Label>
-                    <Input
+                    <div>
+                      <Input
                       value={paramInput}
                       onChange={(e) => setParamInput(normalizeMathInput(e.target.value))}
                       placeholder="(cos(t), sin(t), t)  ·  (u cos v, u sin v, u)  ·  z = r^2  ·  rho = 2 + sin(3 theta)"
                       className="font-mono text-sm"
                       onKeyDown={(e) => e.key === "Enter" && plotParam(paramInput)}
                     />
+                      <MathPreview value={paramInput} />
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {examplesParam.map((ex) => (
@@ -593,13 +600,16 @@ export function GraphPlotter() {
                 <>
                   <div className="space-y-1">
                     <Label className="text-xs">Function f(x, y)</Label>
-                    <Input
+                    <div>
+                      <Input
                       value={expr3d}
                       onChange={(e) => setExpr3d(normalizeMathInput(e.target.value))}
                       placeholder="e.g. sin(x) * cos(y), x^2 - y^2"
                       className="font-mono text-sm"
                       onKeyDown={(e) => e.key === "Enter" && plotSurface(expr3d)}
                     />
+                      <MathPreview value={expr3d} />
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {examples3d.map((ex) => (
@@ -632,13 +642,16 @@ export function GraphPlotter() {
                 <>
                   <div className="space-y-1">
                     <Label className="text-xs">Equation in x, y, z</Label>
-                    <Input
+                    <div>
+                      <Input
                       value={implicitEq}
                       onChange={(e) => setImplicitEq(normalizeMathInput(e.target.value))}
                       placeholder="e.g. x^2 + y^2 + z^2 = 25"
                       className="font-mono text-sm"
                       onKeyDown={(e) => e.key === "Enter" && plotImplicit(implicitEq)}
                     />
+                      <MathPreview value={implicitEq} />
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {examplesImplicit.map(({ label, eq, range }) => (
@@ -685,7 +698,7 @@ export function GraphPlotter() {
               : "relative"
           }
         >
-          <div className="flex items-center justify-between gap-2 mb-2 px-1">
+          <div className="flex sm:hidden items-center justify-between gap-2 mb-2 px-1">
             <p className="font-mono text-sm font-semibold text-foreground truncate">
               {surfaceType === "explicit" ? `z = ${plotted3d}` : surfaceType === "parametric" ? (paramShape?.spec.label ?? "") : plottedImplicit ? plottedImplicit.original : ""}
             </p>
@@ -724,7 +737,36 @@ export function GraphPlotter() {
               </div>
             }
           >
-            <div ref={chart3dRef} className={is3dFullscreen ? "flex-1 min-h-0" : ""}>
+            <div className={"relative " + (is3dFullscreen ? "flex-1 min-h-0 flex flex-col" : "")}>
+            <div className="hidden sm:flex absolute inset-0 z-10 pointer-events-none p-3 flex-col justify-between">
+              <div className="flex items-start justify-between gap-3">
+                <div className="glass-chip max-w-[60%] truncate rounded-xl px-3 py-1.5 font-mono text-sm font-semibold text-foreground">
+                  {surfaceType === "explicit" ? `z = ${plotted3d}` : surfaceType === "parametric" ? (paramShape?.spec.label ?? "") : plottedImplicit ? plottedImplicit.original : ""}
+                </div>
+                <div className="glass-chip pointer-events-auto flex flex-col gap-1 rounded-xl p-1">
+                  <button type="button" onClick={() => downloadCanvasPNG(chart3dRef, surfaceType === "explicit" ? `calculin-3d-${plotted3d.slice(0, 20)}` : surfaceType === "parametric" ? "calculin-3d-parametric" : "calculin-implicit-surface")} className="grid h-8 w-8 place-items-center rounded-lg text-foreground/80 transition hover:bg-primary/20 hover:text-primary" aria-label="Download PNG" title="Download PNG">
+                    <Camera className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                  </button>
+                  <button type="button" onClick={() => setIs3dFullscreen((v) => !v)} className="grid h-8 w-8 place-items-center rounded-lg text-foreground/80 transition hover:bg-primary/20 hover:text-primary" aria-label={is3dFullscreen ? "Exit fullscreen" : "View fullscreen"} title={is3dFullscreen ? "Exit fullscreen" : "View fullscreen"}>
+                    {is3dFullscreen ? <X className="h-[18px] w-[18px]" strokeWidth={1.75} /> : <Maximize2 className="h-[18px] w-[18px]" strokeWidth={1.75} />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-end justify-between gap-3">
+                {surfaceType === "explicit" ? (
+                  <div className="glass-chip flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] text-muted-foreground">
+                    <span>low z</span>
+                    <span className="h-2 w-24 rounded-full" style={{ background: "linear-gradient(90deg,#4f46e5,#3b82f6,#14b8a6,#22c55e,#eab308,#f97316,#dc2626)" }} />
+                    <span>high z</span>
+                  </div>
+                ) : <span />}
+                <div className="glass-chip rounded-full px-3 py-1 text-xs text-muted-foreground">drag to rotate · scroll to zoom</div>
+                <div className="glass-chip rounded-xl px-3 py-1.5 font-mono text-xs text-muted-foreground">
+                  {surfaceType === "explicit" ? "x · y · z = f(x, y)" : "x · y · z"}
+                </div>
+              </div>
+            </div>
+            <div ref={chart3dRef} className={"sm:[&_p.text-xs]:hidden " + (is3dFullscreen ? "flex-1 min-h-0" : "")}>
               {surfaceType === "parametric" ? (
                 paramShape ? (
                   <ParametricGraph3D data={paramShape.data} range={settings.defaultGraphRange} fillParent={is3dFullscreen} label={paramShape.spec.label} />
@@ -753,6 +795,7 @@ export function GraphPlotter() {
                   {implicitError ?? "Enter an equation in x, y, and z, then hit \"Plot Implicit Surface\" to render it."}
                 </div>
               )}
+            </div>
             </div>
           </Suspense>
         </motion.div>
