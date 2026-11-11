@@ -152,6 +152,20 @@ const PREMIUM_CSS = `
   /* Number fields: hide the grey native spinner (themed -/+ buttons are in ui/input) */
   input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  /* ── Segmented tab bars (Equation Solver, Number Systems) ── */
+  .seg-tabs { padding: 4px; border-radius: 14px; height: auto; }
+  .seg-tabs [data-state="active"] {
+    color: #fff !important; border-radius: 10px;
+    background-image: linear-gradient(135deg, color-mix(in oklab, var(--primary) 85%, black), color-mix(in oklab, var(--primary) 55%, #35d0ff));
+    box-shadow: 0 6px 20px -6px var(--primary);
+  }
+  .seg-tabs [role="tab"] { padding-top: .5rem; padding-bottom: .5rem; border-radius: 10px; }
+
+  /* ── 3D glass overlay ── */
+  .glass-chip { background: rgba(15,18,32,.55); border: 1px solid rgba(255,255,255,.12); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 8px 24px -10px rgba(0,0,0,.5); }
+  .glass-chip, .glass-chip * { color-scheme: dark; }
+  :root:not(.dark) .glass-chip { background: rgba(255,255,255,.65); border-color: rgba(0,0,0,.08); }
+
   /* ── Result card ── */
   .premium-main [class~="bg-primary/5"][class~="border-primary/10"] {
     background: linear-gradient(135deg, color-mix(in oklab, var(--primary) 20%, transparent), color-mix(in oklab, #35d0ff 7%, transparent));
@@ -200,14 +214,12 @@ const PREMIUM_CSS = `
     border-color: var(--primary);
     box-shadow: 0 0 0 4px color-mix(in oklab, var(--primary) 24%, transparent), 0 0 26px color-mix(in oklab, var(--primary) 38%, transparent);
   }
-  .premium-main canvas { animation: calcDraw .9s cubic-bezier(.2,.8,.2,1) both; }
-  @keyframes calcDraw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
   header nav button { transition: background-color .2s, color .2s, transform .2s, box-shadow .2s; }
   header nav button:hover { transform: translateY(-1px); box-shadow: 0 6px 18px -8px color-mix(in oklab, var(--primary) 70%, transparent); }
   footer nav a { background: linear-gradient(currentColor, currentColor) 0 100% / 0 1.5px no-repeat; padding-bottom: 3px; transition: background-size .25s, color .2s; }
   footer nav a:hover { background-size: 100% 1.5px; }
   @media (prefers-reduced-motion: reduce) {
-    .premium-main canvas, .premium-main button.w-full.gap-2::after { animation: none !important; }
+    .premium-main button.w-full.gap-2::after { animation: none !important; }
     .calc-tile, .calc-tile-sym { transition: none; }
     .calc-tile::before { animation: none; }
     .calc-tile:hover, .calc-tile:hover .calc-tile-sym { transform: none; }

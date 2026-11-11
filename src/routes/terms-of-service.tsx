@@ -8,7 +8,7 @@ export const Route = createFileRoute("/terms-of-service")({
 
 function TermsOfServicePage() {
   return (
-    <LegalPageLayout title="Terms of Service" lastUpdated="September 2026">
+    <LegalPageLayout title="Terms of Service" lastUpdated="November 2026">
       <section>
         <h2>1. Overview</h2>
         <p>

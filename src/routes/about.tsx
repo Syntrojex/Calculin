@@ -8,7 +8,7 @@ export const Route = createFileRoute("/about")({
 
 function AboutPage() {
   return (
-    <LegalPageLayout title="About Calculin" lastUpdated="September 2026">
+    <LegalPageLayout title="About Calculin" lastUpdated="November 2026">
       <section>
         <h2>What is Calculin?</h2>
         <p>
