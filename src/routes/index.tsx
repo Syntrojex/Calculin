@@ -261,7 +261,13 @@ function categoryOf(tabValue: string) {
 }
 
 function Index() {
-  const [tab, setTab] = useState("derivative");
+  const [tab, setTabRaw] = useState<string>(() => {
+    try { return sessionStorage.getItem("calculin-tab") || "derivative"; } catch { return "derivative"; }
+  });
+  const setTab = (t: string) => {
+    setTabRaw(t);
+    try { sessionStorage.setItem("calculin-tab", t); } catch { /* ignore */ }
+  };
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedMobileCategories, setExpandedMobileCategories] = useState<Set<string>>(new Set());
   const toggleMobileCategory = (key: string) => {
