@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, FileDown, Loader2, Search, Copy, Check } from "lucide-react";
+import { BookOpen, FileDown, Loader2, Copy, Check } from "lucide-react";
 import { MathTex } from "./MathTex";
 import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
 import { exportFormulaSheetPDF } from "@/lib/pdf-export";
@@ -28,7 +28,7 @@ export function FormulaSheet({ topicKey }: FormulaSheetProps) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   // Desktop-only extras: filter box and copy-LaTeX on hover.
-  const [query, setQuery] = useState("");
+  const query = "";
   const [copied, setCopied] = useState<number | null>(null);
   const topic = FORMULA_TOPICS.find((t) => t.key === topicKey);
 
@@ -75,17 +75,6 @@ export function FormulaSheet({ topicKey }: FormulaSheetProps) {
         </CardHeader>
       </Card>
 
-
-      <div className="hidden sm:flex items-center gap-3 rounded-2xl border border-border/60 bg-foreground/[0.03] px-4 py-2.5 focus-within:border-primary/60 focus-within:shadow-[0_0_0_4px] focus-within:shadow-primary/15 transition-all">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter formulas…"
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
-        {query && <span className="text-xs text-muted-foreground">{topic.formulas.filter((f) => `${f.name} ${f.latex} ${f.note ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).length} found</span>}
-      </div>
 
       <motion.div
         initial={{ opacity: 0, y: 10 }}

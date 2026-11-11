@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Library, FileDown, Loader2, Search } from "lucide-react";
+import { Library, FileDown, Loader2 } from "lucide-react";
 import { MathTex } from "./MathTex";
 import { DEFINITION_TOPICS } from "@/lib/definitions-data";
 import { exportDefinitionsPDF } from "@/lib/definitions-pdf-export";
@@ -29,7 +29,7 @@ export function Definitions({ topicKey }: DefinitionsProps) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   // Desktop-only filter box.
-  const [query, setQuery] = useState("");
+  const query = "";
   const topic = DEFINITION_TOPICS.find((t) => t.key === topicKey);
 
   if (!topic) {
@@ -73,17 +73,6 @@ export function Definitions({ topicKey }: DefinitionsProps) {
         </CardHeader>
       </Card>
 
-
-      <div className="hidden sm:flex items-center gap-3 rounded-2xl border border-border/60 bg-foreground/[0.03] px-4 py-2.5 focus-within:border-primary/60 focus-within:shadow-[0_0_0_4px] focus-within:shadow-primary/15 transition-all">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter definitions…"
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
-        {query && <span className="text-xs text-muted-foreground">{topic.definitions.filter((d) => `${d.term} ${d.definition} ${d.example ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).length} found</span>}
-      </div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-3">
         {topic.definitions.filter((d) => `${d.term} ${d.definition} ${d.example ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).map((d, i) => (

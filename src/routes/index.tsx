@@ -512,31 +512,31 @@ function Index() {
         <div className="mx-auto max-w-4xl px-4 py-10 sm:py-6">
           {/* Desktop: all links in one horizontal row */}
           <nav className="hidden sm:flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-xs text-muted-foreground">
-            <a href="/documentation" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Documentation</a>
+            <a href="/documentation" className="hover:text-primary transition-colors">Documentation</a>
             <a href="https://github.com/Syntrojex/Calculin" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">GitHub</a>
-            <a href="/usage-terms" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Usage Terms</a>
-            <a href="/feedback" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Feedback</a>
-            <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Privacy Policy</a>
-            <a href="/terms-of-service" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Terms of Service</a>
-            <a href="/about" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">About</a>
+            <a href="/usage-terms" className="hover:text-primary transition-colors">Usage Terms</a>
+            <a href="/feedback" className="hover:text-primary transition-colors">Feedback</a>
+            <a href="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</a>
+            <a href="/terms-of-service" className="hover:text-primary transition-colors">Terms of Service</a>
+            <a href="/about" className="hover:text-primary transition-colors">About</a>
           </nav>
           {/* Mobile: original two-column footer, unchanged */}
           <div className="sm:hidden grid grid-cols-2 gap-12 justify-center text-center max-w-sm mx-auto">
             <div>
               <h3 className="text-sm font-semibold text-foreground mb-3">Resources</h3>
               <ul className="space-y-2 text-xs text-muted-foreground">
-                <li><a href="/documentation" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Documentation</a></li>
+                <li><a href="/documentation" className="hover:text-primary transition-colors">Documentation</a></li>
                 <li><a href="https://github.com/Syntrojex/Calculin" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">GitHub</a></li>
-                <li><a href="/usage-terms" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Usage Terms</a></li>
-                <li><a href="/feedback" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Feedback</a></li>
+                <li><a href="/usage-terms" className="hover:text-primary transition-colors">Usage Terms</a></li>
+                <li><a href="/feedback" className="hover:text-primary transition-colors">Feedback</a></li>
               </ul>
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground mb-3">Legal & Support</h3>
               <ul className="space-y-2 text-xs text-muted-foreground">
-                <li><a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Privacy Policy</a></li>
-                <li><a href="/terms-of-service" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Terms of Service</a></li>
-                <li><a href="/about" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">About</a></li>
+                <li><a href="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</a></li>
+                <li><a href="/terms-of-service" className="hover:text-primary transition-colors">Terms of Service</a></li>
+                <li><a href="/about" className="hover:text-primary transition-colors">About</a></li>
               </ul>
             </div>
           </div>
