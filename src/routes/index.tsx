@@ -2,13 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, Suspense, lazy } from "react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import {
   Infinity as InfinityIcon, LineChart, Calculator, Grid3X3,
   ArrowRight,
-  Zap, GraduationCap, Menu, Binary, BookOpen, Library, ChevronDown,
-  Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart, Move3d, PencilRuler,
+  Zap, Menu, Binary, BookOpen, Library, ChevronDown,
+  Github, Linkedin, ArrowUp, GitBranch, Layers, PieChart, Move3d,
 } from "lucide-react";
 import { FORMULA_TOPICS } from "@/lib/formula-sheet-data";
 import { DEFINITION_TOPICS } from "@/lib/definitions-data";
@@ -25,7 +24,6 @@ const VectorCalculator = lazy(() => import("@/components/VectorCalculator").then
 const ComplexCalculator = lazy(() => import("@/components/ComplexCalculator").then(m => ({ default: m.ComplexCalculator })));
 const NumberConversions = lazy(() => import("@/components/NumberConversions").then(m => ({ default: m.NumberConversions })));
 const GraphPlotter = lazy(() => import("@/components/GraphPlotter").then(m => ({ default: m.GraphPlotter })));
-const PracticeMode = lazy(() => import("@/components/PracticeMode").then(m => ({ default: m.PracticeMode })));
 const FormulaSheet = lazy(() => import("@/components/FormulaSheet").then(m => ({ default: m.FormulaSheet })));
 const Definitions = lazy(() => import("@/components/Definitions").then(m => ({ default: m.Definitions })));
 
@@ -37,14 +35,14 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Free online calculator: derivatives, integrals, equations, limits, matrices, complex numbers, number systems, 2D/3D graphs & practice mode.",
+          "Free online calculator: derivatives, integrals, equations, limits, matrices, complex numbers, number systems, 2D/3D graphs, definitions & formula sheets.",
       },
     ],
   }),
 });
 
 // Tab order: Derivative, Integral, Double ∫, Partial Deriv., Limits, Piecewise,
-// Equations, Matrix, Vectors, Complex, Num Systems, Graph, Practice
+// Equations, Matrix, Vectors, Complex, Num Systems, Graph
 //
 // Each tab declares its own `category` (matching a CATEGORIES key below)
 // instead of being listed a second time in a separate per-category "tools"
@@ -66,7 +64,6 @@ const TABS: { value: string; label: string; shortLabel: string; icon: React.Reac
   { value: "complex", label: "Complex", shortLabel: "a+bi", icon: <Zap className="h-3.5 w-3.5" />, component: <ComplexCalculator />, category: "algebra" },
   { value: "numconv", label: "Num Systems", shortLabel: "0xFF", icon: <Binary className="h-3.5 w-3.5" />, component: <NumberConversions />, category: "algebra" },
   { value: "graph", label: "Graph", shortLabel: "📈", icon: <LineChart className="h-3.5 w-3.5" />, component: <GraphPlotter />, category: "graph" },
-  { value: "practice", label: "Practice", shortLabel: "✏︎", icon: <GraduationCap className="h-3.5 w-3.5" />, component: <PracticeMode />, category: "practice" },
   // One tab per formula-sheet topic — generated from the same data used to
   // render each sheet, so adding a topic to formula-sheet-data.ts is enough
   // to make it navigable from both the desktop header and the mobile menu.
@@ -105,8 +102,8 @@ function tabByValue(value: string) {
 
 // Desktop-only grouping: the header shows this row of categories, and clicking
 // one that holds more than one tool opens a second row underneath listing
-// just that category's tools. "Graph" and "Practice" are single-tool
-// categories, so clicking them jumps straight to that tool with no sub-row.
+// just that category's tools. "Graph" is a single-tool
+// category, so clicking them jumps straight to that tool with no sub-row.
 // Mobile is untouched — it still uses the hamburger Sheet with the flat
 // TABS list above, regardless of this grouping.
 // All premium-desktop styling lives here so this one file is self-contained.
@@ -114,7 +111,7 @@ function tabByValue(value: string) {
 const PREMIUM_CSS = `
 @import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap");
 .font-display { font-family: "Instrument Serif", "Cormorant Garamond", Georgia, "Times New Roman", serif; }
-@media (min-width: 640px) {
+@media (min-width: 0px) {
   .calc-aurora {
     position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.45;
     background:
@@ -231,21 +228,41 @@ const PREMIUM_CSS = `
     backdrop-filter: blur(14px);
     box-shadow: 0 18px 50px -20px rgba(0, 0, 0, 0.45);
   }
+
+  /* ── Glass, both themes ── */
+  .premium-main .rounded-xl.border.bg-card {
+    border-color: rgba(255,255,255,.10);
+    box-shadow: 0 18px 50px -20px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  :root:not(.dark) .calc-aurora { opacity: .85; }
+  :root:not(.dark) .premium-main .rounded-xl.border.bg-card {
+    background: linear-gradient(160deg, rgba(255,255,255,.78), rgba(255,255,255,.46));
+    backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    border-color: rgba(255,255,255,.85);
+    box-shadow: 0 20px 50px -22px color-mix(in oklab, var(--primary) 45%, transparent), 0 2px 10px -4px rgba(30,60,120,.10), inset 0 1px 0 rgba(255,255,255,.95);
+  }
+  :root:not(.dark) .calc-tile:not([data-state="active"]) { background: rgba(255,255,255,.5); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-color: rgba(255,255,255,.8); }
+  :root:not(.dark) .premium-main input:not([type=range]):not([type=checkbox]) { background: rgba(255,255,255,.6); border-color: rgba(255,255,255,.9); box-shadow: inset 0 1px 3px rgba(30,60,120,.08); }
+  :root:not(.dark) .glass-chip { background: rgba(255,255,255,.6); border-color: rgba(255,255,255,.85); }
+
+  /* ── Page / tab fade-in ── */
+  @keyframes calcPageFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .premium-main { animation: calcPageFade .45s cubic-bezier(.16,1,.3,1) both; }
+  @media (prefers-reduced-motion: reduce) { .premium-main { animation: none; } }
 }
 `;
 
-const CATEGORIES: { key: string; label: string; icon: React.ReactNode; collapsedOnMobile?: boolean }[] = [
+const CATEGORIES: { key: string; label: string; mobileLabel?: string; icon: React.ReactNode; collapsedOnMobile?: boolean }[] = [
   { key: "calculus", label: "Calculus", icon: <span className="text-xs font-bold">d/dx</span> },
   { key: "algebra", label: "Algebra", icon: <Calculator className="h-3.5 w-3.5" /> },
   { key: "graph", label: "Graph", icon: <LineChart className="h-3.5 w-3.5" /> },
-  { key: "practice", label: "Practice", icon: <PencilRuler className="h-3.5 w-3.5" /> },
   // Only these two reference-heavy categories (10 topics each) collapse
   // into a dropdown on mobile — every other category always lists its
   // tools flat, an explicit per-category flag rather than a tool-count
   // threshold, so adding another tool to Calculus (or anywhere else) can
   // never silently flip it into the collapsed treatment again.
-  { key: "definitions", label: "Definitions", icon: <Library className="h-3.5 w-3.5" />, collapsedOnMobile: true },
-  { key: "formulasheet", label: "Formula Sheet", icon: <BookOpen className="h-3.5 w-3.5" />, collapsedOnMobile: true },
+  { key: "definitions", label: "Definitions", mobileLabel: "Defs", icon: <Library className="h-3.5 w-3.5" />, collapsedOnMobile: true },
+  { key: "formulasheet", label: "Formula Sheet", mobileLabel: "Formulas", icon: <BookOpen className="h-3.5 w-3.5" />, collapsedOnMobile: true },
 ];
 
 /** Every tab value belonging to a category, in TABS' own order — the single
@@ -262,7 +279,7 @@ function categoryOf(tabValue: string) {
 
 function Index() {
   const [tab, setTabRaw] = useState<string>(() => {
-    try { return sessionStorage.getItem("calculin-tab") || "derivative"; } catch { return "derivative"; }
+    try { const t = sessionStorage.getItem("calculin-tab"); return t && TABS.some((x) => x.value === t) ? t : "derivative"; } catch { return "derivative"; }
   });
   const setTab = (t: string) => {
     setTabRaw(t);
@@ -285,7 +302,7 @@ function Index() {
 
   const selectCategory = (key: string) => {
     const cat = CATEGORIES.find((c) => c.key === key)!;
-    // Single-tool categories (Graph, Practice) jump straight there; multi-tool
+    // Single-tool categories (Graph) jump straight there; multi-tool
     // categories switch to their first tool (unless the current tab is
     // already inside this category) and reveal the sub-row.
     const tools = toolsOf(cat.key);
@@ -297,20 +314,13 @@ function Index() {
 
 
   return (
-    <div className="min-h-screen bg-background flex flex-col sm:relative sm:isolate">
+    <div className="min-h-screen bg-background flex flex-col relative isolate">
       <style>{PREMIUM_CSS}</style>
       {/* Desktop-only soft aurora behind everything; mobile keeps its plain background */}
-      <div className="calc-aurora hidden sm:block" aria-hidden="true" />
+      <div className="calc-aurora" aria-hidden="true" />
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-lg sm:border-0 sm:bg-transparent sm:backdrop-blur-none sm:pt-4">
         <div className="mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4">
           <div className="flex items-center gap-2 lg:gap-6 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:rounded-full sm:border sm:border-border/60 sm:bg-card/60 sm:backdrop-blur-xl sm:shadow-lg sm:py-2.5 sm:pl-5 sm:pr-3">
-            <button
-              className="sm:hidden mr-1 p-1.5 -ml-1.5 rounded-md hover:bg-muted/60 text-foreground"
-              onClick={() => setMobileMenuOpen(true)}
-              aria-label="Open tools menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
             <div className="flex items-center gap-2 shrink-0 sm:justify-self-start">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-primary-foreground font-bold text-lg shadow-sm sm:from-amber-200 sm:to-amber-500 sm:text-amber-950 sm:shadow-[0_0_18px_rgba(244,213,141,0.35)]">
                 ∫
@@ -344,87 +354,33 @@ function Index() {
         </div>
       </header>
 
-      {/* Mobile tools menu (hamburger) */}
-      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="w-72 overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Tools</SheetTitle>
-          </SheetHeader>
-          <nav className="px-2 pb-6 mt-2 space-y-4">
-            {CATEGORIES.map((cat) => {
-              // Small categories (Calculus, Algebra, ...) list their tools
-              // inline right away, same as before. Only the two reference
-              // categories (Definitions, Formula Sheet — 10 topics each,
-              // via collapsedOnMobile) collapse into a dropdown instead, so
-              // the menu doesn't turn into one long undifferentiated scroll.
-              const catTools = toolsOf(cat.key);
-              const isLarge = cat.collapsedOnMobile === true;
-              const isOpen = !isLarge || expandedMobileCategories.has(cat.key) || activeCategory.key === cat.key;
+      <main className="premium-main mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4 pb-16 sm:pt-8 flex-1 w-full">
+        {/* Mobile sub-tool chips: Calculus/Algebra fit on one line (active chip shows its name, the rest show their symbol); 10-topic categories scroll */}
+        {activeCategoryTools.length > 1 && (
+          <div
+            className="sm:hidden -mx-3 mb-4 flex gap-1.5 overflow-x-auto px-3 pt-3 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,#000_93%,transparent)]"
+          >
+            {activeCategoryTools.map((value) => {
+              const t = tabByValue(value);
+              const active = tab === value;
+              const compact = activeCategory.key === "calculus" || activeCategory.key === "algebra";
               return (
-                <div key={cat.key}>
-                  {isLarge ? (
-                    <button
-                      onClick={() => toggleMobileCategory(cat.key)}
-                      className="w-full flex items-center justify-between px-3 mb-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-                    >
-                      <span className="flex items-center gap-1.5">{cat.icon} {cat.label}</span>
-                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                    </button>
-                  ) : (
-                    <div className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {cat.label}
-                    </div>
-                  )}
-                  {isOpen && (
-                    <div className="space-y-1">
-                      {catTools.map((value) => {
-                        const t = tabByValue(value);
-                        return (
-                          <button
-                            key={value}
-                            onClick={() => selectTab(value)}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                              tab === value ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
-                            }`}
-                          >
-                            <span className="w-5 flex items-center justify-center">{t.icon}</span>
-                            {t.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <button
+                  key={value}
+                  ref={(el) => { if (el && active) el.scrollIntoView({ inline: "center", block: "nearest" }); }}
+                  onClick={() => selectTab(value)}
+                  className={`flex-none rounded-full border py-1.5 text-[12.5px] font-medium whitespace-nowrap transition-all ${compact && !active ? "px-3 font-display text-[15px]" : "px-3.5"} ${
+                    active ? "border-transparent bg-gradient-to-br from-primary to-cyan-400 text-white shadow-[0_6px_18px_-6px] shadow-primary" : "border-border/60 bg-foreground/[0.05] text-muted-foreground"
+                  }`}
+                  aria-label={t.label}
+                >
+                  {compact && !active ? t.shortLabel : t.label}
+                </button>
               );
             })}
-          </nav>
-        </SheetContent>
-      </Sheet>
+          </div>
+        )}
 
-      <div className="relative overflow-hidden sm:hidden">
-        <div
-          className="absolute inset-0 -z-10 opacity-[0.15] pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(600px circle at 20% 0%, var(--color-primary), transparent 60%), radial-gradient(500px circle at 85% 10%, var(--color-primary), transparent 55%)",
-          }}
-        />
-        <motion.section
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="mx-auto max-w-4xl px-4 pt-8 pb-6 text-center"
-        >
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            Solve Math <span className="text-primary">Instantly</span>
-          </h2>
-          <p className="mt-2 text-muted-foreground text-xs sm:text-sm px-2">
-            Derivatives · Integrals · Limits · Matrices · Complex Numbers · Number Systems · 2D/3D Graphs · Practice Mode
-          </p>
-        </motion.section>
-      </div>
-
-      <main className="premium-main mx-auto max-w-4xl lg:max-w-6xl px-3 sm:px-4 pb-16 sm:pt-8 flex-1 w-full">
         {/* Desktop tool switcher: big symbol tiles for Calculus/Algebra, compact
             pills for the 10-topic reference categories. Mobile uses the hamburger. */}
         {activeCategoryTools.length > 1 && (
@@ -484,11 +440,6 @@ function Index() {
         )}
 
         <Tabs value={tab} onValueChange={setTab}>
-          {/* Current tool name shown on mobile, since the tab bar is hidden in favor of the hamburger menu */}
-          <div className="sm:hidden mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
-            <span className="text-primary">{TABS.find((t) => t.value === tab)?.icon}</span>
-            {TABS.find((t) => t.value === tab)?.label}
-          </div>
 
           {TABS.filter((t) => t.value === tab).map((t) => (
             <TabsContent key={t.value} value={t.value} forceMount>
@@ -514,8 +465,33 @@ function Index() {
         </Tabs>
       </main>
 
+      {/* Mobile floating bottom bar */}
+      <nav
+        className="sm:hidden fixed inset-x-3 z-50 flex items-center justify-around rounded-full border border-white/15 bg-background/70 px-2 py-1.5 shadow-[0_16px_38px_-10px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
+        style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
+        aria-label="Main navigation"
+      >
+        {CATEGORIES.map((cat) => {
+          const active = activeCategory.key === cat.key;
+          return (
+            <button
+              key={cat.key}
+              onClick={() => selectCategory(cat.key)}
+              aria-label={cat.label}
+              aria-current={active ? "page" : undefined}
+              className={`flex h-[52px] w-[62px] flex-col items-center justify-center gap-0.5 rounded-full text-[10px] font-medium transition-all ${
+                active ? "bg-gradient-to-br from-primary/70 to-cyan-400/40 text-white shadow-[0_6px_18px_-6px] shadow-primary" : "text-muted-foreground"
+              }`}
+            >
+              <span className="flex h-5 items-center [&_svg]:h-[18px] [&_svg]:w-[18px]">{cat.icon}</span>
+              {cat.mobileLabel ?? cat.label}
+            </button>
+          );
+        })}
+      </nav>
+
       <footer className="border-t border-border/50 bg-muted/30 sm:bg-transparent">
-        <div className="mx-auto max-w-4xl px-4 py-10 sm:py-6">
+        <div className="mx-auto max-w-4xl px-4 py-10 pb-28 sm:py-6 sm:pb-6">
           {/* Desktop: all links in one horizontal row */}
           <nav className="hidden sm:flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-xs text-muted-foreground">
             <a href="/documentation" className="hover:text-primary transition-colors">Documentation</a>

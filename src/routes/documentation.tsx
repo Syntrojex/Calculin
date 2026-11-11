@@ -68,7 +68,6 @@ function DocumentationPage() {
           <li><strong>Complex</strong> — arithmetic, modulus/argument, polar-to-rectangular conversion, powers, principal roots, and De Moivre's Theorem.</li>
           <li><strong>Num Systems</strong> — convert any number between bases 2 through 36, with the full division/remainder working shown.</li>
           <li><strong>Graph</strong> — 2D function plotting with Compare Mode (overlay multiple functions with automatic intersection-point detection), and a fully interactive, color-mapped 3D surface plotter you can rotate and zoom.</li>
-          <li><strong>Practice</strong> — randomly generated problems across every category and difficulty level, including real-world word problems, with full worked solutions revealed on demand.</li>
         </ul>
       </section>
 

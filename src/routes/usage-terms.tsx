@@ -23,7 +23,7 @@ function UsageTermsPage() {
         <p>
           Calculin is free for anyone to use — students, educators, professionals, and
           hobbyists alike, anywhere in the world. No account, sign-up, subscription, or
-          payment is required for any feature, including the 3D graphing and Practice tools.
+          payment is required for any feature, including the 3D graphing tools.
         </p>
       </section>
 
