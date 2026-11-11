@@ -357,9 +357,9 @@ function MatrixGrid({ label, rows, cols, values, onCellChange, onRows, onCols }:
 
   return (
     <div className="space-y-1.5">
-      <Label className={"text-xs" + (onRows && onCols ? " sm:hidden" : "")}>{label} ({rows}×{cols})</Label>
+      <Label className={"text-xs" + (onRows && onCols ? " hidden" : "")}>{label} ({rows}×{cols})</Label>
       {onRows && onCols && (
-        <div className="hidden sm:flex items-center gap-2 pb-1">
+        <div className="flex items-center gap-2 pb-1">
           <span className="text-sm font-semibold">{label}</span>
           <SizeStepper value={rows} onChange={onRows} aria={`${label} rows`} />
           <span className="text-muted-foreground text-sm">×</span>
@@ -367,11 +367,11 @@ function MatrixGrid({ label, rows, cols, values, onCellChange, onRows, onCols }:
         </div>
       )}
       <div className="relative inline-block">
-      <span aria-hidden className="hidden sm:block pointer-events-none absolute left-0 top-0 bottom-0 w-2.5 rounded-l-md border-2 border-r-0 border-foreground/50" />
-      <span aria-hidden className="hidden sm:block pointer-events-none absolute right-0 top-0 bottom-0 w-2.5 rounded-r-md border-2 border-l-0 border-foreground/50" />
+      <span aria-hidden className="block pointer-events-none absolute left-0 top-0 bottom-0 w-2.5 rounded-l-md border-2 border-r-0 border-foreground/50" />
+      <span aria-hidden className="block pointer-events-none absolute right-0 top-0 bottom-0 w-2.5 rounded-r-md border-2 border-l-0 border-foreground/50" />
       <div
         ref={containerRef}
-        className="inline-grid gap-1 p-2 rounded-md border border-input bg-background sm:border-0 sm:bg-transparent sm:gap-2 sm:px-5 sm:py-3"
+        className="inline-grid gap-1 p-2 rounded-md border-0 bg-transparent gap-2 px-5 py-3"
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(2.5rem, 1fr))` }}
       >
         {Array.from({ length: rows }).flatMap((_, r) =>
@@ -384,7 +384,7 @@ function MatrixGrid({ label, rows, cols, values, onCellChange, onRows, onCols }:
               onChange={(e) => onCellChange(r, c, e.target.value)}
               onKeyDown={(e) => handleKeyDown(e, r, c)}
               inputMode="decimal"
-              className="w-full h-9 rounded border border-border bg-muted/30 text-center font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring sm:h-11 sm:w-14 sm:rounded-xl sm:focus:border-primary sm:focus:bg-primary/15 sm:focus:ring-primary/40"
+              className="w-14 h-11 rounded-xl border border-border bg-muted/30 text-center font-mono text-sm focus:outline-none focus:ring-2 focus:border-primary focus:bg-primary/15 focus:ring-primary/40"
             />
           ))
         )}
@@ -619,7 +619,7 @@ export function MatrixCalculator() {
 
           <div className={`grid gap-4 ${needsB ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
             <div className="space-y-2">
-              <div className="flex sm:hidden items-end gap-2">
+              <div className="hidden">
                 <div className="space-y-1">
                   <Label className="text-xs">A rows</Label>
                   <Select value={rowsA.toString()} onValueChange={(v) => changeRowsA(parseInt(v))}>
@@ -641,7 +641,7 @@ export function MatrixCalculator() {
 
             {needsB && (
               <div className="space-y-2">
-                <div className="flex sm:hidden items-end gap-2">
+                <div className="hidden">
                   <div className="space-y-1">
                     <Label className="text-xs">B rows</Label>
                     <Select value={rowsB.toString()} onValueChange={(v) => changeRowsB(parseInt(v))}>

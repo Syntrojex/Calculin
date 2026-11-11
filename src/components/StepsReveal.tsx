@@ -14,7 +14,7 @@ interface StepsRevealProps {
 
 // Desktop-only timeline look (inside min-width:640px, so mobile is untouched).
 const STEPS_CSS = `
-@media (min-width: 640px) {
+@media (min-width: 0px) {
   .steps-tl { position: relative; }
   .steps-tl::before {
     content: ""; position: absolute; left: 1.55rem; top: 2.2rem; bottom: 2.2rem; width: 2px; border-radius: 2px;
@@ -134,12 +134,12 @@ export function StepsReveal({ steps, show = true, title = "Solution Steps:", res
   return (
     <div className="space-y-2">
       <style>{STEPS_CSS}</style>
-      <div className="text-sm font-medium text-muted-foreground sm:text-[11px] sm:font-semibold sm:uppercase sm:tracking-[0.16em] sm:flex sm:justify-between sm:mb-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground flex justify-between mb-3">
         <span>{title}</span>
-        <span className="hidden sm:inline normal-case tracking-normal font-medium text-primary">{steps.length} steps</span>
+        <span className="normal-case tracking-normal font-medium text-primary">{steps.length} steps</span>
       </div>
       <AnimatePresence mode="wait">
-        <motion.div key={resetKey ?? "steps"} className="steps-tl space-y-1 sm:space-y-3">
+        <motion.div key={resetKey ?? "steps"} className="steps-tl space-y-3">
           {steps.map((step, i) => (
             <motion.div
               key={i}
@@ -150,20 +150,17 @@ export function StepsReveal({ steps, show = true, title = "Solution Steps:", res
                 duration: 0.6 * mult,
                 ease: [0.16, 1, 0.3, 1],
               }}
-              className="step-row flex items-start gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors sm:p-3.5 sm:gap-4 sm:rounded-2xl sm:border sm:border-border/50 sm:bg-foreground/[0.03] sm:hover:border-primary/40"
+              className="step-row flex items-start gap-3 p-3 rounded-2xl border border-border/50 bg-foreground/[0.03] hover:border-primary/40 transition-colors"
               style={{ willChange: "clip-path" }}
             >
-              <span className="step-num flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-medium sm:w-8 sm:h-8 sm:text-sm sm:bg-card sm:border sm:border-primary/50 sm:shadow-[0_0_14px] sm:shadow-primary/30 sm:relative sm:z-10">
+              <span className="step-num flex-shrink-0 w-8 h-8 rounded-full text-primary text-sm flex items-center justify-center font-medium bg-card border border-primary/50 shadow-[0_0_14px] shadow-primary/30 relative z-10">
                 {i === steps.length - 1 && steps.length > 1 ? (
-                  <>
-                    <span className="sm:hidden">{i + 1}</span>
-                    <Check className="hidden sm:block h-4 w-4" />
-                  </>
+                  <Check className="h-4 w-4" />
                 ) : (
                   i + 1
                 )}
               </span>
-              <span className="text-sm break-words min-w-0 flex-1 sm:overflow-x-auto">
+              <span className="text-sm break-words min-w-0 flex-1 overflow-x-auto">
                 <StepContent text={step} />
               </span>
             </motion.div>

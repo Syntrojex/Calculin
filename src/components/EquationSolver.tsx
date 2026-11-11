@@ -294,7 +294,7 @@ export function EquationSolver() {
             ) : (
               <>
                 {/* Desktop: solutions as cards, plus discriminant / root type / vertex for quadratics */}
-                <div className={`hidden sm:grid gap-3 ${result.roots.length === 1 ? "sm:grid-cols-1" : result.roots.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+                <div className={`grid gap-3 ${result.roots.length === 1 ? "grid-cols-1" : result.roots.length === 2 ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-3"}`}>
                   {result.roots.map((r, i) => {
                     const { label, value } = rootCardParts(result, r, i, settings);
                     return (
@@ -306,7 +306,7 @@ export function EquationSolver() {
                   })}
                 </div>
                 {result.quad && (
-                  <div className="hidden sm:flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {[
                       ["Discriminant", formatNumber(result.quad.disc, settings)],
                       [Math.abs(result.quad.disc) < 1e-9 ? "One repeated root" : result.quad.disc > 0 ? "Two real roots" : "Two complex roots", ""],
@@ -318,7 +318,7 @@ export function EquationSolver() {
                     ))}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2 sm:hidden">
+                <div className="hidden">
                   {result.roots.map((r, i) => (
                     <Badge key={i} variant="secondary" className="text-base font-mono px-3 py-1">
                       {result.setAnswer && result.setAnswer !== "all" && !result.setAnswer.startsWith("system") ? `${result.variable ?? "x"} ∈ ${r}` : /[=∈]/.test(r) || r.startsWith("All") || r.startsWith("True") ? r : `${result.variable ?? "x"}${result.roots.length > 1 ? `₍${i + 1}₎` : ""} = ${result.numericRoots?.[i] !== undefined ? formatNumber(result.numericRoots[i], settings) : r}`}

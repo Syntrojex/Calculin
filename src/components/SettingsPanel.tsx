@@ -300,6 +300,29 @@ export function SettingsPanel() {
               Reset to Defaults
             </Button>
           </motion.div>
+
+          {/* Mobile only: footer pages live here now (no footer on the bottom bar) */}
+          <div className="sm:hidden pt-2 pb-6">
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">About Calculin</div>
+            {[
+              ["Documentation", "/documentation"],
+              ["About", "/about"],
+              ["Feedback", "/feedback"],
+              ["Privacy Policy", "/privacy-policy"],
+              ["Terms of Service", "/terms-of-service"],
+              ["Usage Terms", "/usage-terms"],
+            ].map(([label, href]) => (
+              <a key={href} href={href} className="flex items-center justify-between border-b border-border/50 py-3 text-sm text-foreground">
+                {label}
+                <span className="text-muted-foreground">›</span>
+              </a>
+            ))}
+            <div className="mt-4 flex justify-center gap-5 text-xs text-muted-foreground">
+              <a href="https://github.com/Syntrojex" target="_blank" rel="noopener noreferrer">GitHub</a>
+              <a href="https://www.linkedin.com/in/mustafa-amir-syntrojex" target="_blank" rel="noopener noreferrer">LinkedIn</a>
+              <a href="https://wa.me/923324097601" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+            </div>
+          </div>
         </div>
       </SheetContent>
     </Sheet>

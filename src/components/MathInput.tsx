@@ -124,7 +124,7 @@ export function MathInput({
       </div>
 
       {previewTex && (
-        <div className="math-preview hidden sm:flex items-center gap-3 px-1 pt-2 text-lg overflow-x-auto">
+        <div className="math-preview flex items-center gap-3 px-1 pt-2 text-lg overflow-x-auto">
           <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground shrink-0">Preview</span>
           <MathTex latex={previewTex} />
         </div>
