@@ -25,7 +25,7 @@ export function LegalPageLayout({ title, lastUpdated, children }: LegalPageLayou
     <div className="legal-page force-light min-h-screen bg-background">
       <style>{LEGAL_CSS}</style>
       <main className="mx-auto max-w-3xl px-4 py-12">
-        <Link to="/" className="hidden sm:inline-flex items-center gap-2 mb-8 rounded-full border border-border/60 bg-card/70 px-4 py-1.5 text-sm text-muted-foreground backdrop-blur transition-colors hover:text-primary hover:border-primary/40">
+        <Link to="/" className="inline-flex items-center gap-2 mb-8 rounded-full border border-border/60 bg-card/70 px-4 py-1.5 text-sm text-muted-foreground backdrop-blur transition-colors hover:text-primary hover:border-primary/40">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to Calculin
         </Link>
         <h1 className="text-3xl font-extrabold tracking-tight text-foreground mb-2">{title}</h1>

@@ -101,7 +101,7 @@ export function MathInput({
           onChange={(e) => onChange(normalizeMathInput(e.target.value))}
           onKeyDown={(e) => e.key === "Enter" && onEnter?.()}
           placeholder={placeholder}
-          className={cn("font-mono text-sm flex-1 sm:h-12 sm:rounded-xl sm:bg-black/[0.03] sm:text-base dark:sm:bg-black/25", className)}
+          className={cn("font-mono text-sm flex-1 h-12 rounded-xl bg-black/[0.03] text-base dark:bg-black/25", className)}
           /* Suppress native keyboard on mobile when our keypad is open */
           inputMode={showKeypad ? "none" : undefined}
         />
@@ -112,7 +112,7 @@ export function MathInput({
             aria-label={showKeypad ? "Hide math keypad" : "Show math keypad"}
             title={showKeypad ? "Hide math keypad" : "Show math keypad"}
             className={cn(
-              "shrink-0 h-10 w-10 rounded-lg border flex items-center justify-center transition-all sm:h-12 sm:w-12 sm:rounded-xl",
+              "shrink-0 h-12 w-12 rounded-xl border flex items-center justify-center transition-all",
               showKeypad
                 ? "bg-primary text-primary-foreground border-primary shadow-sm"
                 : "bg-muted/60 text-muted-foreground border-border hover:bg-muted hover:text-foreground"

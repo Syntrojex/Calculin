@@ -6,7 +6,7 @@ import { MathInput } from "./MathInput";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { solveDoubleIntegral } from "@/lib/math-solver";
+import { runIntegral, plain, CANCELLED } from "@/lib/run-integral";
 import { StepsReveal } from "./StepsReveal";
 import type { MathResult } from "@/lib/math-solver";
 import { ArrowRight, Layers, Camera } from "lucide-react";
@@ -46,12 +46,12 @@ export function DoubleIntegralCalculator() {
   useEffect(() => setShowSteps(settings.showSteps), [settings.showSteps]);
 
   const solve = useCallback(() => {
-    setResult(solveDoubleIntegral(
-      expr, variable, varY,
-      lower, upper,
-      yLower, yUpper,
-      100, settings
-    ));
+    runIntegral(
+      { kind: "double", args: [expr, variable, varY, lower, upper, yLower, yUpper, 100, plain(settings)] } as never,
+      expr,
+    ).then((r) => {
+      if (r.error !== CANCELLED) setResult(r);
+    });
   }, [expr, variable, varY, lower, upper, yLower, yUpper, settings]);
 
   useAutoRun([expr, variable, varY, lower, upper, yLower, yUpper, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);

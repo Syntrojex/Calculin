@@ -49,7 +49,7 @@ const SPEEDS: { id: AnimationSpeed; label: string }[] = [
 
 // Desktop-only polish for the sheet; everything is inside min-width:640px so mobile is untouched.
 const SETTINGS_CSS = `
-@media (min-width: 640px) {
+@media (min-width: 0px) {
   .settings-sheet {
     background:
       radial-gradient(420px 170px at 70% 0, color-mix(in oklab, var(--primary) 26%, transparent), transparent 75%),
@@ -73,7 +73,7 @@ function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: st
   return (
     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
       {children}
-      {hint && <span className="hidden sm:inline float-right normal-case tracking-normal text-primary">{hint}</span>}
+      {hint && <span className="float-right normal-case tracking-normal text-primary">{hint}</span>}
     </h3>
   );
 }
@@ -110,27 +110,27 @@ export function SettingsPanel() {
         </Button>
       </SheetTrigger>
 
-      <SheetContent side="right" className="settings-sheet w-full sm:max-w-[460px] overflow-y-auto">
+      <SheetContent side="right" className="settings-sheet w-[88%] max-w-[460px] rounded-l-3xl border-l border-white/10 sm:w-full sm:rounded-none overflow-y-auto">
         <style>{SETTINGS_CSS}</style>
-        <SheetHeader className="sm:pt-3">
+        <SheetHeader className="pt-3">
           <SheetTitle className="flex items-center gap-2">
             <SettingsIcon className="h-5 w-5 text-primary" />
             Settings
           </SheetTitle>
           <SheetDescription>
-            <span className="sm:hidden">Customize how Calculin looks and calculates. Saved automatically on this device.</span>
-            <span className="hidden sm:inline">Saved automatically on this device</span>
+            <span className="hidden">Customize how Calculin looks and calculates. Saved automatically on this device.</span>
+            <span className="inline">Saved automatically on this device</span>
           </SheetDescription>
         </SheetHeader>
 
-        <div className="px-4 pb-8 space-y-6 mt-2 sm:mt-5">
+        <div className="px-4 pb-8 space-y-6 mt-5">
           {/* Appearance */}
           <motion.div custom={0} initial="hidden" animate="visible" variants={rowVariants}>
             <SectionLabel>Appearance</SectionLabel>
-            <div className="flex items-center gap-2 mb-4 sm:gap-1 sm:p-1 sm:rounded-2xl sm:border sm:bg-muted/30">
+            <div className="flex items-center gap-1 mb-4 p-1 rounded-2xl border bg-muted/30">
               <button
                 onClick={() => s.update("theme", "light")}
-                className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2 text-sm font-medium transition-all sm:rounded-xl sm:py-2.5 ${
+                className={`flex-1 flex items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-medium transition-all ${
                   s.theme === "light"
                     ? "border-primary bg-primary/10 text-primary set-seg-on"
                     : "border-border text-muted-foreground hover:bg-muted/50"
@@ -140,7 +140,7 @@ export function SettingsPanel() {
               </button>
               <button
                 onClick={() => s.update("theme", "dark")}
-                className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2 text-sm font-medium transition-all sm:rounded-xl sm:py-2.5 ${
+                className={`flex-1 flex items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-medium transition-all ${
                   s.theme === "dark"
                     ? "border-primary bg-primary/10 text-primary set-seg-on"
                     : "border-border text-muted-foreground hover:bg-muted/50"
@@ -151,30 +151,30 @@ export function SettingsPanel() {
             </div>
 
             <Label className="text-xs text-muted-foreground mb-2 block">Accent Color</Label>
-            <div className="flex items-center gap-3 sm:gap-2.5">
+            <div className="flex items-center gap-2.5">
               {ACCENTS.map((a) => (
                 <button
                   key={a.id}
                   onClick={() => s.update("accent", a.id)}
                   title={a.label}
                   aria-label={a.label}
-                  className={`relative flex flex-col items-center transition-transform hover:scale-110 active:scale-95 sm:flex-1 sm:gap-1.5 sm:rounded-2xl sm:border sm:bg-muted/30 sm:py-2.5 sm:text-[11px] sm:text-muted-foreground sm:hover:scale-[1.04] ${
-                    s.accent === a.id ? "set-tile-on sm:text-foreground" : ""
+                  className={`relative flex flex-col items-center transition-transform active:scale-95 flex-1 gap-1.5 rounded-2xl border bg-muted/30 py-2.5 text-[11px] text-muted-foreground hover:scale-[1.04] ${
+                    s.accent === a.id ? "set-tile-on text-foreground" : ""
                   }`}
                 >
                   <span
-                    className="h-9 w-9 sm:h-7 sm:w-7 rounded-full flex items-center justify-center"
+                    className="h-7 w-7 rounded-full flex items-center justify-center"
                     style={{ backgroundColor: a.swatch }}
                   >
-                    {s.accent === a.id && <Check className="h-4 w-4 sm:h-3.5 sm:w-3.5 text-white drop-shadow" />}
+                    {s.accent === a.id && <Check className="h-3.5 w-3.5 text-white drop-shadow" />}
                   </span>
-                  <span className="hidden sm:block">{a.label}</span>
+                  <span className="block">{a.label}</span>
                 </button>
               ))}
             </div>
           </motion.div>
 
-          <Separator className="sm:hidden" />
+          <Separator className="hidden" />
 
           {/* Number format */}
           <motion.div custom={1} initial="hidden" animate="visible" variants={rowVariants}>
@@ -184,15 +184,15 @@ export function SettingsPanel() {
                 <button
                   key={id}
                   onClick={() => s.update("numberForm", id)}
-                  className={`flex flex-col items-center gap-1.5 rounded-lg border py-2.5 text-xs font-medium transition-all sm:items-start sm:rounded-xl sm:px-3 sm:gap-0.5 ${
+                  className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-xs font-medium transition-all ${
                     s.numberForm === id
-                      ? "border-primary bg-primary/10 text-primary sm:text-foreground"
+                      ? "border-primary bg-primary/10 text-foreground"
                       : "border-border text-muted-foreground hover:bg-muted/50"
                   }`}
                 >
-                  <Icon className="h-4 w-4 sm:hidden" />
+                  <Icon className="hidden h-4 w-4" />
                   {label}
-                  <span className="hidden sm:block font-normal text-[1.15rem] leading-tight" style={{ fontFamily: '"Instrument Serif", Georgia, serif' }}>
+                  <span className="block font-normal text-[0.95rem] sm:text-[1.15rem] leading-tight whitespace-nowrap" style={{ fontFamily: '"Instrument Serif", Georgia, serif' }}>
                     {NUMBER_SAMPLES[id]}
                   </span>
                 </button>
@@ -200,7 +200,7 @@ export function SettingsPanel() {
             </div>
 
             {s.numberForm === "decimal" && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="sm:rounded-xl sm:border sm:bg-muted/30 sm:p-4">
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="rounded-xl border bg-muted/30 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <Label className="text-xs text-muted-foreground">Decimal Places</Label>
                   <span className="text-xs font-mono font-semibold text-primary">{s.decimalPlaces}</span>
@@ -216,13 +216,13 @@ export function SettingsPanel() {
             )}
           </motion.div>
 
-          <Separator className="sm:hidden" />
+          <Separator className="hidden" />
 
           {/* Calculator behavior */}
           <motion.div custom={2} initial="hidden" animate="visible" variants={rowVariants} className="space-y-4">
             <SectionLabel>Calculator Behavior</SectionLabel>
 
-            <div className="space-y-4 sm:space-y-0 sm:rounded-2xl sm:border sm:bg-muted/30 sm:divide-y sm:divide-border">
+            <div className="rounded-2xl border bg-muted/30 divide-y divide-border">
             <SettingRow
               label="Show Steps"
               description="Display step-by-step solutions by default"
@@ -244,13 +244,13 @@ export function SettingsPanel() {
             </div>
           </motion.div>
 
-          <Separator className="sm:hidden" />
+          <Separator className="hidden" />
 
           {/* Graphing & Animation */}
           <motion.div custom={2.5} initial="hidden" animate="visible" variants={rowVariants}>
             <SectionLabel>Graphing & Animation</SectionLabel>
 
-            <div className="sm:rounded-xl sm:border sm:bg-muted/30 sm:p-4 sm:mb-3">
+            <div className="rounded-xl border bg-muted/30 p-4 mb-3">
             <div className="flex items-center justify-between mb-2">
               <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
                 <LineChart className="h-3.5 w-3.5" /> Default Graph Range (±)
@@ -263,19 +263,19 @@ export function SettingsPanel() {
               min={2}
               max={50}
               step={1}
-              className="mb-4 sm:mb-0"
+              className="mb-0"
             />
             </div>
 
             <Label className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
               <Gauge className="h-3.5 w-3.5" /> Step Animation Speed
             </Label>
-            <div className="grid grid-cols-3 gap-2 sm:gap-1 sm:p-1 sm:rounded-2xl sm:border sm:bg-muted/30">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl border bg-muted/30">
               {SPEEDS.map(({ id, label }) => (
                 <button
                   key={id}
                   onClick={() => s.update("animationSpeed", id)}
-                  className={`rounded-lg border py-2 text-xs font-medium transition-all sm:rounded-xl sm:py-2.5 sm:text-[13px] ${
+                  className={`rounded-xl border py-2.5 text-[13px] font-medium transition-all ${
                     s.animationSpeed === id
                       ? "border-primary bg-primary/10 text-primary set-seg-on"
                       : "border-border text-muted-foreground hover:bg-muted/50"
@@ -287,9 +287,9 @@ export function SettingsPanel() {
             </div>
           </motion.div>
 
-          <Separator className="sm:hidden" />
+          <Separator className="hidden" />
 
-          <motion.div custom={3} initial="hidden" animate="visible" variants={rowVariants} className="sm:sticky sm:bottom-0 sm:-mx-4 sm:px-4 sm:py-4 sm:border-t sm:bg-background sm:flex sm:items-center sm:gap-3">
+          <motion.div custom={3} initial="hidden" animate="visible" variants={rowVariants} className="sticky bottom-0 -mx-4 px-4 py-4 border-t bg-background flex items-center gap-3">
             <span className="hidden sm:block flex-1 text-xs text-muted-foreground">Changes apply instantly</span>
             <Button
               variant="outline"
@@ -341,7 +341,7 @@ function SettingRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 sm:px-4 sm:py-3">
+    <div className="flex items-center justify-between gap-4 px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-foreground">{label}</div>
         <div className="text-xs text-muted-foreground">{description}</div>

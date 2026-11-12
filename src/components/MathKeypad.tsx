@@ -164,10 +164,10 @@ const PAGES: { key: PageKey; label: string; rows: Key[][] }[] = [
 const ENTER_KEY: Key = { label: "enter", action: "enter", category: "action" };
 
 const CAT_STYLES: Record<Key["category"], string> = {
-  fn:     "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 active:bg-primary/30 font-semibold sm:bg-primary/[0.12] sm:border-primary/25",
+  fn:     "bg-primary/[0.12] text-primary border-primary/25 hover:bg-primary/20 active:bg-primary/30 font-semibold",
   const:  "bg-violet-500/10 text-violet-600 dark:text-violet-300 border-violet-500/20 hover:bg-violet-500/20 active:bg-violet-500/30 font-mono font-bold",
-  op:     "bg-muted/60 text-foreground border-border hover:bg-muted active:bg-muted/80 sm:bg-foreground/[0.06] sm:border-transparent",
-  num:    "bg-background text-foreground border-border hover:bg-muted/60 active:bg-muted font-mono font-semibold sm:bg-foreground/[0.03] sm:border-border/60 sm:text-base",
+  op:     "bg-foreground/[0.06] text-foreground border-transparent hover:bg-muted active:bg-muted/80",
+  num:    "bg-foreground/[0.03] text-foreground border-border/60 text-base hover:bg-muted/60 active:bg-muted font-mono font-semibold",
   action: "text-foreground border-border",
 };
 
@@ -197,32 +197,32 @@ export function MathKeypad({ onInput, onBackspace, onClear, onEnter }: MathKeypa
         exit={{ opacity: 0, y: -4, scaleY: 0.97 }}
         transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
         style={{ transformOrigin: "top" }}
-        className="mt-1.5 rounded-xl border border-border/60 bg-card shadow-xl overflow-hidden select-none sm:mt-3 sm:rounded-2xl sm:border-border/50 sm:bg-card/80 sm:backdrop-blur-xl sm:shadow-2xl"
+        className="mt-3 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-xl shadow-2xl overflow-hidden select-none"
         onPointerDown={(e) => e.preventDefault()} // prevents input from losing focus
       >
         {/* Page switcher */}
-        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-muted/40 border-b border-border/40 sm:bg-transparent sm:border-0 sm:px-3 sm:pt-3 sm:pb-0 sm:gap-1">
+        <div className="flex items-center gap-1 px-3 pt-3 pb-0">
           {PAGES.map((p) => (
             <button
               key={p.key}
               onPointerDown={(e) => { e.preventDefault(); setPage(p.key); }}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors sm:rounded-full sm:px-4 sm:py-1.5 sm:text-xs ${
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
                 page === p.key
-                  ? "bg-primary text-primary-foreground shadow-sm sm:bg-gradient-to-br sm:from-primary sm:to-cyan-400/80 sm:shadow-[0_6px_18px_-6px] sm:shadow-primary"
+                  ? "bg-gradient-to-br from-primary to-cyan-400/80 text-primary-foreground shadow-[0_6px_18px_-6px] shadow-primary"
                   : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
               }`}
             >
               {p.label}
             </button>
           ))}
-          <span className="ml-auto text-[10px] text-muted-foreground tracking-wide uppercase font-medium hidden sm:inline">
+          <span className="ml-auto text-[10px] text-muted-foreground tracking-wide uppercase font-medium hidden">
             Math Keypad
           </span>
         </div>
 
-        <div className="p-2 space-y-1 sm:p-3 sm:space-y-1.5">
+        <div className="p-3 space-y-1.5">
           {activePage.rows.map((row, ri) => (
-            <div key={`${page}-${ri}`} className="flex gap-1 sm:gap-1.5">
+            <div key={`${page}-${ri}`} className="flex gap-1.5">
               {row.map((key, ki) => (
                 <KeyButton key={ki} k={key} onPress={() => handleKey(key)} />
               ))}
@@ -247,7 +247,7 @@ function KeyButton({ k, onPress }: { k: Key; onPress: () => void }) {
   const isBackspace = k.action === "backspace";
   const isClear     = k.action === "clear";
 
-  const base = "flex-1 h-10 min-w-0 rounded-lg border text-xs transition-all active:scale-[0.93] flex items-center justify-center sm:h-11 sm:rounded-xl sm:text-sm sm:hover:-translate-y-px";
+  const base = "flex-1 h-11 min-w-0 rounded-xl border text-sm transition-all active:scale-[0.93] flex items-center justify-center";
 
   const style = isBackspace
     ? "bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20 active:bg-rose-500/30"

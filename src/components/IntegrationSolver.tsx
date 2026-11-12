@@ -7,11 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  solveDefiniteIntegral,
-  solveIndefiniteIntegral,
-  validateGraphExpression,
-} from "@/lib/math-solver";
+import { validateGraphExpression } from "@/lib/math-solver";
+import { runIntegral, plain, CANCELLED } from "@/lib/run-integral";
 import { FunctionGraph, type PlotShade } from "./FunctionGraph";
 import { StepsReveal } from "./StepsReveal";
 import type { MathResult } from "@/lib/math-solver";
@@ -44,14 +41,18 @@ export function IntegrationSolver() {
 
   useEffect(() => setShowSteps(settings.showSteps), [settings.showSteps]);
 
+  const [solving, setSolving] = useState(false);
   const solve = useCallback(() => {
-    if (mode === "definite") {
-      setResult(
-        solveDefiniteIntegral(expr, variable, parseNumericInput(lower), parseNumericInput(upper), 1000, settings, { lower, upper }),
-      );
-    } else {
-      setResult(solveIndefiniteIntegral(expr, variable));
-    }
+    setSolving(true);
+    const job =
+      mode === "definite"
+        ? ({ kind: "definite", args: [expr, variable, parseNumericInput(lower), parseNumericInput(upper), 1000, plain(settings), { lower, upper }] } as const)
+        : ({ kind: "indefinite", args: [expr, variable] } as const);
+    runIntegral(job as never, expr).then((r) => {
+      if (r.error === CANCELLED) return;
+      setResult(r);
+      setSolving(false);
+    });
   }, [mode, expr, variable, lower, upper, settings]);
 
   useAutoRun([expr, variable, lower, upper, mode, settings.numberForm, settings.decimalPlaces], solve, settings.autoCalculate);

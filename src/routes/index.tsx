@@ -490,8 +490,8 @@ function Index() {
         })}
       </nav>
 
-      <footer className="border-t border-border/50 bg-muted/30 sm:bg-transparent">
-        <div className="mx-auto max-w-4xl px-4 py-10 pb-28 sm:py-6 sm:pb-6">
+      <footer className="border-t border-border/50 bg-muted/30 pb-24 sm:bg-transparent sm:pb-0">
+        <div className="mx-auto max-w-4xl px-4 py-10 sm:py-6">
           {/* Desktop: all links in one horizontal row */}
           <nav className="hidden sm:flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-xs text-muted-foreground">
             <a href="/documentation" className="hover:text-primary transition-colors">Documentation</a>
