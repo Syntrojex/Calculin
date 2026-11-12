@@ -19,6 +19,7 @@ export default defineConfig({
     viteReact(),
     tailwindcss(),
   ],
+  worker: { format: "es", plugins: () => [tsConfigPaths()] },
   build: {
     outDir: "dist",
     // three.js and mathjs are inherently large, but both are only pulled in
